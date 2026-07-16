@@ -25,8 +25,8 @@ app_license = "mit"
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/webodm_frontend/css/webodm_frontend.css"
-# app_include_js = "/assets/webodm_frontend/js/webodm_frontend.js"
+app_include_css = "/assets/webodm_frontend/css/webodm_frontend.css"
+app_include_js = "/assets/webodm_frontend/js/webodm_frontend.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/webodm_frontend/css/webodm_frontend.css"
@@ -124,15 +124,8 @@ app_license = "mit"
 
 # Permissions
 # -----------
-# Permissions evaluated in scripted ways
-
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+# Permissions for WebODM Project / Task are defined in webodm_core, which now
+# owns those DocTypes (see webodm_core/permissions.py).
 
 # Document Events
 # ---------------

@@ -1,0 +1,31 @@
+{
+  "name": "webodm-frontend",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/forms": "^0.5.11",
+    "@tailwindcss/typography": "^0.5.20",
+    "@vue-leaflet/vue-leaflet": "^0.10.1",
+    "frappe-ui": "^0.1.270",
+    "jszip": "^3.10.1",
+    "leaflet": "^1.9.4",
+    "three": "^0.185.1",
+    "vue": "^3.5.0",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.116",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^3.4.0",
+    "unplugin-icons": "^23.0.1",
+    "vite": "^6.3.0"
+  }
+}
