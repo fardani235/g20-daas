@@ -10,7 +10,9 @@
   "file_size",
   "gps_section",
   "latitude",
-  "longitude"
+  "longitude",
+  "altitude",
+  "capture_time"
  ],
  "fields": [
   {
@@ -46,6 +48,20 @@
    "fieldname": "longitude",
    "fieldtype": "Float",
    "label": "Longitude",
+   "allow_null": 1
+  },
+  {
+   "fieldname": "altitude",
+   "fieldtype": "Float",
+   "label": "Altitude (m)",
+   "read_only": 1,
+   "allow_null": 1
+  },
+  {
+   "fieldname": "capture_time",
+   "fieldtype": "Datetime",
+   "label": "Capture Time",
+   "read_only": 1,
    "allow_null": 1
   }
  ],
