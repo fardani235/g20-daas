@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "autoname": "field:redirect_name",
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "redirect_name",
+  "source_path",
+  "target_url",
+  "is_active"
+ ],
+ "fields": [
+  {
+   "fieldname": "redirect_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Redirect Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "source_path",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Source Path",
+   "reqd": 1
+  },
+  {
+   "fieldname": "target_url",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Target URL",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Active"
+  }
+ ],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Redirect",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "redirect_name,source_path",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "redirect_name"
+}

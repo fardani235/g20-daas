@@ -1,0 +1,105 @@
+{
+ "actions": [],
+ "autoname": "field:basemap_name",
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "basemap_name",
+  "type",
+  "url",
+  "max_zoom",
+  "min_zoom",
+  "attribution",
+  "api_key",
+  "enabled"
+ ],
+ "fields": [
+  {
+   "fieldname": "basemap_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Basemap Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "TMS\nWMS",
+   "reqd": 1
+  },
+  {
+   "fieldname": "url",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Tile URL",
+   "reqd": 1
+  },
+  {
+   "default": "18",
+   "fieldname": "max_zoom",
+   "fieldtype": "Int",
+   "label": "Max Zoom"
+  },
+  {
+   "default": "0",
+   "fieldname": "min_zoom",
+   "fieldtype": "Int",
+   "label": "Min Zoom"
+  },
+  {
+   "fieldname": "attribution",
+   "fieldtype": "Text",
+   "label": "Attribution"
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  }
+ ],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Basemap",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "basemap_name",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "basemap_name"
+}

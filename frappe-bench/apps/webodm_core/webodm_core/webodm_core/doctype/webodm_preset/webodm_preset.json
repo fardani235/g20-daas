@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "autoname": "field:preset_name",
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "preset_name",
+  "owner",
+  "system",
+  "options"
+ ],
+ "fields": [
+  {
+   "fieldname": "preset_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Preset Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "owner",
+   "fieldtype": "Link",
+   "label": "Owner",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "system",
+   "fieldtype": "Check",
+   "label": "System Preset"
+  },
+  {
+   "fieldname": "options",
+   "fieldtype": "JSON",
+   "label": "Processing Options",
+   "reqd": 1
+  }
+ ],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Preset",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "preset_name",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "preset_name"
+}

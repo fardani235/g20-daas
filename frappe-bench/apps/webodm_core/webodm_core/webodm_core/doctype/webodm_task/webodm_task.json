@@ -1,0 +1,200 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "project",
+  "title",
+  "status",
+  "progress",
+  "resolution",
+  "processing_options",
+  "images_section",
+  "images",
+  "outputs_section",
+  "orthophoto",
+  "dsm",
+  "dtm",
+  "point_cloud",
+  "model",
+  "geospatial_section",
+  "epsg",
+  "wkt",
+  "orthophoto_extent",
+  "dsm_extent",
+  "dtm_extent"
+ ],
+ "fields": [
+  {
+   "fieldname": "project",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Project",
+   "options": "WebODM Project",
+   "reqd": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "default": "Pending",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Pending\nQueued\nRunning\nCompleted\nFailed\nCancelled"
+  },
+  {
+   "fieldname": "progress",
+   "fieldtype": "Percent",
+   "label": "Progress"
+  },
+  {
+   "fieldname": "resolution",
+   "fieldtype": "Float",
+   "label": "Resolution (cm/pixel)"
+  },
+  {
+   "fieldname": "processing_options",
+   "fieldtype": "JSON",
+   "label": "Processing Options"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "images_section",
+   "fieldtype": "Section Break",
+   "label": "Images"
+  },
+  {
+   "fieldname": "images",
+   "fieldtype": "Table",
+   "label": "Images",
+   "options": "WebODM Task Image"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "outputs_section",
+   "fieldtype": "Section Break",
+   "label": "Outputs"
+  },
+  {
+   "fieldname": "orthophoto",
+   "fieldtype": "Attach",
+   "label": "Orthophoto"
+  },
+  {
+   "fieldname": "dsm",
+   "fieldtype": "Attach",
+   "label": "DSM"
+  },
+  {
+   "fieldname": "dtm",
+   "fieldtype": "Attach",
+   "label": "DTM"
+  },
+  {
+   "fieldname": "point_cloud",
+   "fieldtype": "Attach",
+   "label": "Point Cloud"
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Attach",
+   "label": "3D Model"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "geospatial_section",
+   "fieldtype": "Section Break",
+   "label": "Geospatial"
+  },
+  {
+   "description": "Coordinate reference system EPSG code detected from the georeferenced rasters.",
+   "fieldname": "epsg",
+   "fieldtype": "Int",
+   "label": "EPSG",
+   "read_only": 1
+  },
+  {
+   "description": "CRS as WKT when no EPSG code is available.",
+   "fieldname": "wkt",
+   "fieldtype": "Long Text",
+   "label": "WKT",
+   "read_only": 1
+  },
+  {
+   "description": "Orthophoto bounds as a GeoJSON Polygon in EPSG:4326.",
+   "fieldname": "orthophoto_extent",
+   "fieldtype": "JSON",
+   "label": "Orthophoto Extent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "dsm_extent",
+   "fieldtype": "JSON",
+   "label": "DSM Extent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "dtm_extent",
+   "fieldtype": "JSON",
+   "label": "DTM Extent",
+   "read_only": 1
+  }
+ ],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Task",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WebODM User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "title",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

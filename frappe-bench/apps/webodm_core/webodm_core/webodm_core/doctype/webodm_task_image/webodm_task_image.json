@@ -1,0 +1,62 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "image",
+  "filename",
+  "file_size",
+  "gps_section",
+  "latitude",
+  "longitude"
+ ],
+ "fields": [
+  {
+   "fieldname": "image",
+   "fieldtype": "Attach",
+   "in_list_view": 1,
+   "label": "Image",
+   "reqd": 1
+  },
+  {
+   "fieldname": "filename",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Filename"
+  },
+  {
+   "fieldname": "file_size",
+   "fieldtype": "Int",
+   "label": "File Size (bytes)"
+  },
+  {
+   "fieldname": "gps_section",
+   "fieldtype": "Section Break",
+   "label": "GPS Coordinates"
+  },
+  {
+   "fieldname": "latitude",
+   "fieldtype": "Float",
+   "label": "Latitude",
+   "allow_null": 1
+  },
+  {
+   "fieldname": "longitude",
+   "fieldtype": "Float",
+   "label": "Longitude",
+   "allow_null": 1
+  }
+ ],
+ "istable": 1,
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Task Image",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

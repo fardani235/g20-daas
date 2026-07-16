@@ -146,26 +146,31 @@ app_license = "mit"
 # 	}
 # }
 
+# Permissions
+# -----------
+# WebODM Project / Task DocTypes are owned by this app; enforce owner-scoped access.
+
+permission_query_conditions = {
+    "WebODM Project": "webodm_core.permissions.get_project_permission_query_conditions",
+    "WebODM Task": "webodm_core.permissions.get_task_permission_query_conditions",
+}
+
+has_permission = {
+    "WebODM Project": "webodm_core.permissions.has_project_permission",
+    "WebODM Task": "webodm_core.permissions.has_task_permission",
+}
+
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"webodm_core.tasks.all"
-# 	],
-# 	"daily": [
-# 		"webodm_core.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"webodm_core.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"webodm_core.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"webodm_core.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+    "cron": {
+        "*/1 * * * *": [
+            "webodm_core.webodm_core.processing.task_runner.process_pending_tasks",
+            "webodm_core.webodm_core.processing.task_runner.update_running_tasks",
+        ],
+    },
+}
 
 # Testing
 # -------

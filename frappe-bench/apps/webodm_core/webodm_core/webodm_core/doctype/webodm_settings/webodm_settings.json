@@ -1,0 +1,98 @@
+{
+ "actions": [],
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "default_basemap",
+  "enable_public_sharing",
+  "section_limits",
+  "max_file_size_mb",
+  "max_project_count",
+  "section_notifications",
+  "slack_webhook_url",
+  "email_notifications"
+ ],
+ "fields": [
+  {
+   "fieldname": "default_basemap",
+   "fieldtype": "Link",
+   "label": "Default Basemap",
+   "options": "WebODM Basemap"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_public_sharing",
+   "fieldtype": "Check",
+   "label": "Enable Public Sharing"
+  },
+  {
+   "fieldname": "section_limits",
+   "fieldtype": "Section Break",
+   "label": "Limits"
+  },
+  {
+   "default": "200",
+   "fieldname": "max_file_size_mb",
+   "fieldtype": "Int",
+   "label": "Max File Size (MB)"
+  },
+  {
+   "default": "100",
+   "fieldname": "max_project_count",
+   "fieldtype": "Int",
+   "label": "Max Projects per User"
+  },
+  {
+   "fieldname": "section_notifications",
+   "fieldtype": "Section Break",
+   "label": "Notifications"
+  },
+  {
+   "fieldname": "slack_webhook_url",
+   "fieldtype": "Data",
+   "label": "Slack Webhook URL"
+  },
+  {
+   "default": "1",
+   "fieldname": "email_notifications",
+   "fieldtype": "Check",
+   "label": "Email Notifications"
+  }
+ ],
+ "issingle": 1,
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

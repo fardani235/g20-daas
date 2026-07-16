@@ -1,0 +1,121 @@
+{
+ "actions": [],
+ "autoname": "field:node_name",
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "node_name",
+  "hostname",
+  "port",
+  "api_version",
+  "token",
+  "engine",
+  "section_limits",
+  "queue_count",
+  "max_images",
+  "available_options",
+  "last_refreshed"
+ ],
+ "fields": [
+  {
+   "fieldname": "node_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Node Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "hostname",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Hostname",
+   "reqd": 1
+  },
+  {
+   "fieldname": "port",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Port",
+   "reqd": 1
+  },
+  {
+   "fieldname": "api_version",
+   "fieldtype": "Data",
+   "label": "API Version"
+  },
+  {
+   "fieldname": "token",
+   "fieldtype": "Password",
+   "label": "Authentication Token"
+  },
+  {
+   "fieldname": "engine",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Engine",
+   "options": "NodeODM\nMicMac\nODX\nLGT"
+  },
+  {
+   "fieldname": "section_limits",
+   "fieldtype": "Section Break",
+   "label": "Limits"
+  },
+  {
+   "fieldname": "queue_count",
+   "fieldtype": "Int",
+   "label": "Queue Count"
+  },
+  {
+   "fieldname": "max_images",
+   "fieldtype": "Int",
+   "label": "Max Images"
+  },
+  {
+   "fieldname": "available_options",
+   "fieldtype": "JSON",
+   "label": "Available Options"
+  },
+  {
+   "fieldname": "last_refreshed",
+   "fieldtype": "Datetime",
+   "label": "Last Refreshed"
+  }
+ ],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Processing Node",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "node_name",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "node_name"
+}
