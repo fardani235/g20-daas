@@ -135,7 +135,14 @@ def _extract_photo_meta(content: bytes):
             s = str(dto).strip()
             date_part, _, time_part = s.partition(" ")
             date_part = date_part.replace(":", "-")
-            meta["capture_time"] = (date_part + " " + time_part).strip()
+            candidate = (date_part + " " + time_part).strip()
+            # Only keep a value Frappe's Datetime field can actually store, so a
+            # malformed-but-truthy tag can never raise at task.save() and block the
+            # whole upload batch. Unparseable -> leave capture_time None.
+            from frappe.utils import get_datetime
+
+            get_datetime(candidate)
+            meta["capture_time"] = candidate
     except Exception:
         pass
 

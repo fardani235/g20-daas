@@ -44,6 +44,12 @@ class TestExtractPhotoMeta(unittest.TestCase):
         self.assertEqual(meta["lat"], None)
         self.assertEqual(meta["capture_time"], None)
 
+    def test_malformed_datetime_degrades_to_none(self):
+        # A truthy-but-unparseable DateTime tag must not survive into the row,
+        # or task.save() would raise on the Datetime field and block the batch.
+        meta = _extract_photo_meta(_jpeg_with_datetime("not-a-date"))
+        self.assertIsNone(meta["capture_time"])
+
 
 if __name__ == "__main__":
     unittest.main()
