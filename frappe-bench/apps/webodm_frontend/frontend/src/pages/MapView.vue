@@ -81,14 +81,68 @@
     ></div>
     <div class="flex-1 relative bg-gray-50 dark:bg-gray-900">
       <div id="map" class="h-full w-full"></div>
+      <div class="absolute top-4 left-4 z-[1000] bg-white dark:bg-gray-800 rounded-lg shadow-md border dark:border-gray-700 p-2 flex items-center gap-2">
+        <Button size="sm" :variant="measure.state.mode === 'distance' ? 'solid' : 'outline'" @click="startMeasure('distance')" title="Measure distance">
+          <template #prefix><FeatherIcon name="minus" class="h-3.5 w-3.5" /></template>
+          Distance
+        </Button>
+        <Button size="sm" :variant="measure.state.mode === 'area' ? 'solid' : 'outline'" @click="startMeasure('area')" title="Measure area">
+          <template #prefix><FeatherIcon name="square" class="h-3.5 w-3.5" /></template>
+          Area
+        </Button>
+        <Button size="sm" variant="ghost" @click="clearMeasure" title="Clear measurement">
+          <FeatherIcon name="trash-2" class="h-3.5 w-3.5" />
+        </Button>
+        <span v-if="measure.state.formatted" class="text-sm font-medium text-gray-700 dark:text-gray-200 pl-1">
+          {{ measure.state.formatted }}
+        </span>
+      </div>
       <div class="absolute top-4 right-4 z-[1000] space-y-2 flex flex-col items-end">
         <Button variant="outline" size="sm" @click="zoomToFit">Zoom To Fit</Button>
-        <div v-if="overlays.length" class="bg-white dark:bg-gray-800 rounded-lg shadow-md border dark:border-gray-700 p-3 min-w-[140px]">
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Layers</p>
-          <label v-for="o in overlays" :key="o.key" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 py-0.5 cursor-pointer">
-            <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded dark:bg-gray-700" />
-            {{ o.label }}
-          </label>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md border dark:border-gray-700 w-[200px] text-sm">
+          <!-- Basemap -->
+          <div class="p-3 border-b dark:border-gray-700">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Basemap</p>
+            <label v-for="b in BASEMAPS" :key="b.id" class="flex items-center gap-2 text-gray-700 dark:text-gray-300 py-0.5 cursor-pointer">
+              <input type="radio" name="basemap" :value="b.id" :checked="currentBasemap === b.id" @change="setBasemap(b.id)" />
+              {{ b.label }}
+            </label>
+          </div>
+          <!-- Layers + opacity -->
+          <div v-if="overlays.length" class="p-3 border-b dark:border-gray-700">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Layers</p>
+            <div v-for="o in overlays" :key="o.key" class="py-1">
+              <label class="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded dark:bg-gray-700" />
+                {{ o.label }}
+              </label>
+              <input
+                v-if="o.visible"
+                type="range" min="0" max="100" step="5"
+                :value="o.opacity"
+                @input="setOverlayOpacity(o, $event.target.value)"
+                class="w-full mt-1"
+              />
+            </div>
+          </div>
+          <!-- Show toggles -->
+          <div class="p-3">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Show</p>
+            <label
+              class="flex items-center gap-2 py-0.5"
+              :class="hasGps ? 'text-gray-700 dark:text-gray-300 cursor-pointer' : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'"
+            >
+              <input type="checkbox" :checked="showMarkers" :disabled="!hasGps" @change="toggleMarkers" class="rounded dark:bg-gray-700" />
+              Image markers
+            </label>
+            <label
+              class="flex items-center gap-2 py-0.5"
+              :class="hasGps ? 'text-gray-700 dark:text-gray-300 cursor-pointer' : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'"
+            >
+              <input type="checkbox" :checked="showFlightPath" :disabled="!hasGps" @change="toggleFlightPath" class="rounded dark:bg-gray-700" />
+              Flight path
+            </label>
+          </div>
         </div>
       </div>
     </div>
@@ -130,11 +184,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button, Badge, FeatherIcon } from 'frappe-ui'
 import L from 'leaflet'
 import { toast } from 'frappe-ui'
+import { BASEMAPS, createBasemap } from '@/lib/mapLayers'
+import { sortImagesByCapture } from '@/lib/flightPath'
+import { useMeasure } from '@/composables/useMeasure'
 
 const route = useRoute()
 const router = useRouter()
@@ -148,9 +205,23 @@ const outputOpts = ref({ orthophoto: true, dsm: false, dtm: false, model: false,
 const sidebarWidth = ref(360)
 // Raster overlays available for the selected task: { key, label, visible }.
 const overlays = ref([])
+const currentBasemap = ref('osm')
+const showMarkers = ref(true)
+const currentImages = ref([])
+const hasGps = computed(() =>
+  currentImages.value.some(img => {
+    const lat = parseFloat(img.latitude)
+    const lng = parseFloat(img.longitude)
+    return !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0)
+  })
+)
 let resizing = false
 let map = null
 let imageMarkers = null
+let baseLayer = null
+let flightPathLayer = null
+const showFlightPath = ref(false)
+const measure = useMeasure(() => map)
 const overlayLayers = {}  // key -> Leaflet tileLayer
 
 const DATASET_LABELS = { orthophoto: 'Orthophoto', dsm: 'DSM', dtm: 'DTM' }
@@ -189,7 +260,7 @@ function plotImageMarkers(images) {
   }
 
   if (hasGps) {
-    imageMarkers.addTo(map)
+    if (showMarkers.value) imageMarkers.addTo(map)
     map.fitBounds(bounds, { padding: [50, 50] })
   }
 }
@@ -236,7 +307,7 @@ function loadOverlays(task) {
     const visible = key === 'orthophoto'  // show orthophoto by default
     if (visible) layer.addTo(map)
     overlayLayers[key] = layer
-    overlays.value.push({ key, label: DATASET_LABELS[key], visible })
+    overlays.value.push({ key, label: DATASET_LABELS[key], visible, opacity: 100 })
     if (visible && bounds) fitB = bounds
   }
   if (fitB) map.fitBounds(fitB, { padding: [30, 30] })
@@ -248,6 +319,100 @@ function toggleOverlay(o) {
   if (!layer || !map) return
   if (o.visible) layer.addTo(map)
   else map.removeLayer(layer)
+}
+
+function setOverlayOpacity(o, value) {
+  o.opacity = Number(value)
+  const layer = overlayLayers[o.key]
+  if (layer) layer.setOpacity(o.opacity / 100)
+}
+
+function setBasemap(id) {
+  currentBasemap.value = id
+  if (!map) return
+  if (baseLayer) map.removeLayer(baseLayer)
+  baseLayer = createBasemap(id)
+  baseLayer.addTo(map)
+  baseLayer.bringToBack() // keep orthophoto/overlays on top
+}
+
+function toggleMarkers() {
+  showMarkers.value = !showMarkers.value
+  if (!map || !imageMarkers) return
+  if (showMarkers.value) imageMarkers.addTo(map)
+  else map.removeLayer(imageMarkers)
+}
+
+function flightEndpointIcon(label, color) {
+  return L.divIcon({
+    className: 'flight-endpoint',
+    html: `<div style="background:${color};color:#fff;border-radius:9999px;width:20px;height:20px;`
+      + `display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;`
+      + `box-shadow:0 1px 3px rgba(0,0,0,.4)">${label}</div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  })
+}
+
+function flightArrowIcon(angleDeg) {
+  return L.divIcon({
+    className: 'flight-arrow',
+    html: `<div style="transform:rotate(${angleDeg}deg);color:#f59e0b;font-size:14px;line-height:1">▲</div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  })
+}
+
+// Arrow markers are placed in screen space, so recompute them whenever the
+// map is zoomed while the flight path is shown.
+let flightLatLngs = []
+let flightArrows = []
+
+function drawFlightArrows() {
+  if (!map || !flightPathLayer) return
+  for (const a of flightArrows) flightPathLayer.removeLayer(a)
+  flightArrows = []
+  for (let i = 0; i < flightLatLngs.length - 1; i++) {
+    const p1 = map.latLngToLayerPoint(flightLatLngs[i])
+    const p2 = map.latLngToLayerPoint(flightLatLngs[i + 1])
+    const angle = Math.atan2(p2.x - p1.x, -(p2.y - p1.y)) * 180 / Math.PI // 0° = north (▲ up)
+    const mid = [
+      (flightLatLngs[i][0] + flightLatLngs[i + 1][0]) / 2,
+      (flightLatLngs[i][1] + flightLatLngs[i + 1][1]) / 2,
+    ]
+    const arrow = L.marker(mid, { icon: flightArrowIcon(angle), interactive: false })
+    arrow.addTo(flightPathLayer)
+    flightArrows.push(arrow)
+  }
+}
+
+function removeFlightPath() {
+  if (map) map.off('zoomend', drawFlightArrows)
+  if (map && flightPathLayer) map.removeLayer(flightPathLayer)
+  flightPathLayer = null
+  flightArrows = []
+  flightLatLngs = []
+}
+
+function buildFlightPath(images) {
+  removeFlightPath()
+  if (!map) return
+  const ordered = sortImagesByCapture(images)
+  if (ordered.length < 2) return
+  flightLatLngs = ordered.map(img => [parseFloat(img.latitude), parseFloat(img.longitude)])
+  flightPathLayer = L.featureGroup()
+  L.polyline(flightLatLngs, { color: '#f59e0b', weight: 2, opacity: 0.9 }).addTo(flightPathLayer)
+  L.marker(flightLatLngs[0], { icon: flightEndpointIcon('A', '#16a34a') }).addTo(flightPathLayer)
+  L.marker(flightLatLngs[flightLatLngs.length - 1], { icon: flightEndpointIcon('B', '#dc2626') }).addTo(flightPathLayer)
+  flightPathLayer.addTo(map)
+  drawFlightArrows()
+  map.on('zoomend', drawFlightArrows)
+}
+
+function toggleFlightPath() {
+  showFlightPath.value = !showFlightPath.value
+  if (showFlightPath.value) buildFlightPath(currentImages.value)
+  else removeFlightPath()
 }
 
 async function selectTask(task) {
@@ -264,8 +429,18 @@ async function selectTask(task) {
       }
     } catch {}
   }
+  currentImages.value = full.images || []
   plotImageMarkers(full.images)
   loadOverlays(full)
+  if (showFlightPath.value) buildFlightPath(currentImages.value)
+}
+
+function startMeasure(mode) {
+  measure.start(mode)
+}
+
+function clearMeasure() {
+  measure.clear()
 }
 
 function openTaskConsole(task) {
@@ -418,12 +593,13 @@ onMounted(() => {
   fetchTasks()
 
   map = L.map('map').setView([0, 0], 2)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map)
+  baseLayer = createBasemap(currentBasemap.value)
+  baseLayer.addTo(map)
 })
 
 onUnmounted(() => {
+  measure.clear()
+  removeFlightPath()
   if (map) {
     map.remove()
     map = null
