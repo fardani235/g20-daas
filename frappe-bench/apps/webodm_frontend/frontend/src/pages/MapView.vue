@@ -83,12 +83,43 @@
       <div id="map" class="h-full w-full"></div>
       <div class="absolute top-4 right-4 z-[1000] space-y-2 flex flex-col items-end">
         <Button variant="outline" size="sm" @click="zoomToFit">Zoom To Fit</Button>
-        <div v-if="overlays.length" class="bg-white dark:bg-gray-800 rounded-lg shadow-md border dark:border-gray-700 p-3 min-w-[140px]">
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Layers</p>
-          <label v-for="o in overlays" :key="o.key" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 py-0.5 cursor-pointer">
-            <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded dark:bg-gray-700" />
-            {{ o.label }}
-          </label>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md border dark:border-gray-700 w-[200px] text-sm">
+          <!-- Basemap -->
+          <div class="p-3 border-b dark:border-gray-700">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Basemap</p>
+            <label v-for="b in BASEMAPS" :key="b.id" class="flex items-center gap-2 text-gray-700 dark:text-gray-300 py-0.5 cursor-pointer">
+              <input type="radio" name="basemap" :value="b.id" :checked="currentBasemap === b.id" @change="setBasemap(b.id)" />
+              {{ b.label }}
+            </label>
+          </div>
+          <!-- Layers + opacity -->
+          <div v-if="overlays.length" class="p-3 border-b dark:border-gray-700">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Layers</p>
+            <div v-for="o in overlays" :key="o.key" class="py-1">
+              <label class="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded dark:bg-gray-700" />
+                {{ o.label }}
+              </label>
+              <input
+                v-if="o.visible"
+                type="range" min="0" max="100" step="5"
+                :value="o.opacity"
+                @input="setOverlayOpacity(o, $event.target.value)"
+                class="w-full mt-1"
+              />
+            </div>
+          </div>
+          <!-- Show toggles -->
+          <div class="p-3">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Show</p>
+            <label
+              class="flex items-center gap-2 py-0.5"
+              :class="hasGps ? 'text-gray-700 dark:text-gray-300 cursor-pointer' : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'"
+            >
+              <input type="checkbox" :checked="showMarkers" :disabled="!hasGps" @change="toggleMarkers" class="rounded dark:bg-gray-700" />
+              Image markers
+            </label>
+          </div>
         </div>
       </div>
     </div>
@@ -130,11 +161,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button, Badge, FeatherIcon } from 'frappe-ui'
 import L from 'leaflet'
 import { toast } from 'frappe-ui'
+import { BASEMAPS, createBasemap } from '@/lib/mapLayers'
 
 const route = useRoute()
 const router = useRouter()
@@ -148,9 +180,20 @@ const outputOpts = ref({ orthophoto: true, dsm: false, dtm: false, model: false,
 const sidebarWidth = ref(360)
 // Raster overlays available for the selected task: { key, label, visible }.
 const overlays = ref([])
+const currentBasemap = ref('osm')
+const showMarkers = ref(true)
+const currentImages = ref([])
+const hasGps = computed(() =>
+  currentImages.value.some(img => {
+    const lat = parseFloat(img.latitude)
+    const lng = parseFloat(img.longitude)
+    return !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0)
+  })
+)
 let resizing = false
 let map = null
 let imageMarkers = null
+let baseLayer = null
 const overlayLayers = {}  // key -> Leaflet tileLayer
 
 const DATASET_LABELS = { orthophoto: 'Orthophoto', dsm: 'DSM', dtm: 'DTM' }
@@ -189,7 +232,7 @@ function plotImageMarkers(images) {
   }
 
   if (hasGps) {
-    imageMarkers.addTo(map)
+    if (showMarkers.value) imageMarkers.addTo(map)
     map.fitBounds(bounds, { padding: [50, 50] })
   }
 }
@@ -236,7 +279,7 @@ function loadOverlays(task) {
     const visible = key === 'orthophoto'  // show orthophoto by default
     if (visible) layer.addTo(map)
     overlayLayers[key] = layer
-    overlays.value.push({ key, label: DATASET_LABELS[key], visible })
+    overlays.value.push({ key, label: DATASET_LABELS[key], visible, opacity: 100 })
     if (visible && bounds) fitB = bounds
   }
   if (fitB) map.fitBounds(fitB, { padding: [30, 30] })
@@ -248,6 +291,28 @@ function toggleOverlay(o) {
   if (!layer || !map) return
   if (o.visible) layer.addTo(map)
   else map.removeLayer(layer)
+}
+
+function setOverlayOpacity(o, value) {
+  o.opacity = Number(value)
+  const layer = overlayLayers[o.key]
+  if (layer) layer.setOpacity(o.opacity / 100)
+}
+
+function setBasemap(id) {
+  currentBasemap.value = id
+  if (!map) return
+  if (baseLayer) map.removeLayer(baseLayer)
+  baseLayer = createBasemap(id)
+  baseLayer.addTo(map)
+  baseLayer.bringToBack() // keep orthophoto/overlays on top
+}
+
+function toggleMarkers() {
+  showMarkers.value = !showMarkers.value
+  if (!map || !imageMarkers) return
+  if (showMarkers.value) imageMarkers.addTo(map)
+  else map.removeLayer(imageMarkers)
 }
 
 async function selectTask(task) {
@@ -264,6 +329,7 @@ async function selectTask(task) {
       }
     } catch {}
   }
+  currentImages.value = full.images || []
   plotImageMarkers(full.images)
   loadOverlays(full)
 }
@@ -418,9 +484,8 @@ onMounted(() => {
   fetchTasks()
 
   map = L.map('map').setView([0, 0], 2)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map)
+  baseLayer = createBasemap(currentBasemap.value)
+  baseLayer.addTo(map)
 })
 
 onUnmounted(() => {
