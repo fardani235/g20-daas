@@ -81,6 +81,22 @@
     ></div>
     <div class="flex-1 relative bg-gray-50 dark:bg-gray-900">
       <div id="map" class="h-full w-full"></div>
+      <div class="absolute top-4 left-4 z-[1000] bg-white dark:bg-gray-800 rounded-lg shadow-md border dark:border-gray-700 p-2 flex items-center gap-2">
+        <Button size="sm" :variant="measure.state.mode === 'distance' ? 'solid' : 'outline'" @click="startMeasure('distance')" title="Measure distance">
+          <template #prefix><FeatherIcon name="minus" class="h-3.5 w-3.5" /></template>
+          Distance
+        </Button>
+        <Button size="sm" :variant="measure.state.mode === 'area' ? 'solid' : 'outline'" @click="startMeasure('area')" title="Measure area">
+          <template #prefix><FeatherIcon name="square" class="h-3.5 w-3.5" /></template>
+          Area
+        </Button>
+        <Button size="sm" variant="ghost" @click="clearMeasure" title="Clear measurement">
+          <FeatherIcon name="trash-2" class="h-3.5 w-3.5" />
+        </Button>
+        <span v-if="measure.state.formatted" class="text-sm font-medium text-gray-700 dark:text-gray-200 pl-1">
+          {{ measure.state.formatted }}
+        </span>
+      </div>
       <div class="absolute top-4 right-4 z-[1000] space-y-2 flex flex-col items-end">
         <Button variant="outline" size="sm" @click="zoomToFit">Zoom To Fit</Button>
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md border dark:border-gray-700 w-[200px] text-sm">
@@ -118,6 +134,13 @@
             >
               <input type="checkbox" :checked="showMarkers" :disabled="!hasGps" @change="toggleMarkers" class="rounded dark:bg-gray-700" />
               Image markers
+            </label>
+            <label
+              class="flex items-center gap-2 py-0.5"
+              :class="hasGps ? 'text-gray-700 dark:text-gray-300 cursor-pointer' : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'"
+            >
+              <input type="checkbox" :checked="showFlightPath" :disabled="!hasGps" @change="toggleFlightPath" class="rounded dark:bg-gray-700" />
+              Flight path
             </label>
           </div>
         </div>
@@ -167,6 +190,8 @@ import { Button, Badge, FeatherIcon } from 'frappe-ui'
 import L from 'leaflet'
 import { toast } from 'frappe-ui'
 import { BASEMAPS, createBasemap } from '@/lib/mapLayers'
+import { sortImagesByCapture } from '@/lib/flightPath'
+import { useMeasure } from '@/composables/useMeasure'
 
 const route = useRoute()
 const router = useRouter()
@@ -194,6 +219,9 @@ let resizing = false
 let map = null
 let imageMarkers = null
 let baseLayer = null
+let flightPathLayer = null
+const showFlightPath = ref(false)
+const measure = useMeasure(() => map)
 const overlayLayers = {}  // key -> Leaflet tileLayer
 
 const DATASET_LABELS = { orthophoto: 'Orthophoto', dsm: 'DSM', dtm: 'DTM' }
@@ -315,6 +343,78 @@ function toggleMarkers() {
   else map.removeLayer(imageMarkers)
 }
 
+function flightEndpointIcon(label, color) {
+  return L.divIcon({
+    className: 'flight-endpoint',
+    html: `<div style="background:${color};color:#fff;border-radius:9999px;width:20px;height:20px;`
+      + `display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;`
+      + `box-shadow:0 1px 3px rgba(0,0,0,.4)">${label}</div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  })
+}
+
+function flightArrowIcon(angleDeg) {
+  return L.divIcon({
+    className: 'flight-arrow',
+    html: `<div style="transform:rotate(${angleDeg}deg);color:#f59e0b;font-size:14px;line-height:1">▲</div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  })
+}
+
+// Arrow markers are placed in screen space, so recompute them whenever the
+// map is zoomed while the flight path is shown.
+let flightLatLngs = []
+let flightArrows = []
+
+function drawFlightArrows() {
+  if (!map || !flightPathLayer) return
+  for (const a of flightArrows) flightPathLayer.removeLayer(a)
+  flightArrows = []
+  for (let i = 0; i < flightLatLngs.length - 1; i++) {
+    const p1 = map.latLngToLayerPoint(flightLatLngs[i])
+    const p2 = map.latLngToLayerPoint(flightLatLngs[i + 1])
+    const angle = Math.atan2(p2.x - p1.x, -(p2.y - p1.y)) * 180 / Math.PI // 0° = north (▲ up)
+    const mid = [
+      (flightLatLngs[i][0] + flightLatLngs[i + 1][0]) / 2,
+      (flightLatLngs[i][1] + flightLatLngs[i + 1][1]) / 2,
+    ]
+    const arrow = L.marker(mid, { icon: flightArrowIcon(angle), interactive: false })
+    arrow.addTo(flightPathLayer)
+    flightArrows.push(arrow)
+  }
+}
+
+function removeFlightPath() {
+  if (map) map.off('zoomend', drawFlightArrows)
+  if (map && flightPathLayer) map.removeLayer(flightPathLayer)
+  flightPathLayer = null
+  flightArrows = []
+  flightLatLngs = []
+}
+
+function buildFlightPath(images) {
+  removeFlightPath()
+  if (!map) return
+  const ordered = sortImagesByCapture(images)
+  if (ordered.length < 2) return
+  flightLatLngs = ordered.map(img => [parseFloat(img.latitude), parseFloat(img.longitude)])
+  flightPathLayer = L.featureGroup()
+  L.polyline(flightLatLngs, { color: '#f59e0b', weight: 2, opacity: 0.9 }).addTo(flightPathLayer)
+  L.marker(flightLatLngs[0], { icon: flightEndpointIcon('A', '#16a34a') }).addTo(flightPathLayer)
+  L.marker(flightLatLngs[flightLatLngs.length - 1], { icon: flightEndpointIcon('B', '#dc2626') }).addTo(flightPathLayer)
+  flightPathLayer.addTo(map)
+  drawFlightArrows()
+  map.on('zoomend', drawFlightArrows)
+}
+
+function toggleFlightPath() {
+  showFlightPath.value = !showFlightPath.value
+  if (showFlightPath.value) buildFlightPath(currentImages.value)
+  else removeFlightPath()
+}
+
 async function selectTask(task) {
   selectedTask.value = task.name
   let full = task
@@ -332,6 +432,15 @@ async function selectTask(task) {
   currentImages.value = full.images || []
   plotImageMarkers(full.images)
   loadOverlays(full)
+  if (showFlightPath.value) buildFlightPath(currentImages.value)
+}
+
+function startMeasure(mode) {
+  measure.start(mode)
+}
+
+function clearMeasure() {
+  measure.clear()
 }
 
 function openTaskConsole(task) {
@@ -489,6 +598,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  measure.clear()
+  removeFlightPath()
   if (map) {
     map.remove()
     map = null
