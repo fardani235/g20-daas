@@ -65,38 +65,88 @@ def cancel_task():
     return f"Task {task_name} cancelled"
 
 
-def _extract_gps(content: bytes):
+def _gps_to_decimal(dms, ref):
+    deg, min_, sec = dms
+    decimal = float(deg) + float(min_) / 60 + float(sec) / 3600
+    if ref in ("S", "W"):
+        decimal = -decimal
+    return round(decimal, 6)
+
+
+def _extract_photo_meta(content: bytes):
+    """Extract georeferencing/timing metadata from an image's EXIF.
+
+    Returns a dict with keys ``lat``, ``lng``, ``altitude`` (metres, signed),
+    and ``capture_time`` (Frappe ``YYYY-MM-DD HH:MM:SS`` string). Every field is
+    independently optional: a missing or malformed tag yields ``None`` and never
+    raises, so a bad tag can never block an upload.
+    """
+    meta = {"lat": None, "lng": None, "altitude": None, "capture_time": None}
+
     try:
         img = Image.open(io.BytesIO(content))
         exif = img.getexif()
-        if not exif:
-            return None, None
-
-        gps_ifd = exif.get_ifd(34853)
-        if not gps_ifd:
-            return None, None
-
-        gps_info = {}
-        for k, v in gps_ifd.items():
-            tag = GPSTAGS.get(k)
-            if tag:
-                gps_info[tag] = v
-
-        if "GPSLatitude" not in gps_info or "GPSLongitude" not in gps_info:
-            return None, None
-
-        def _to_decimal(dms, ref):
-            deg, min_, sec = dms
-            decimal = float(deg) + float(min_) / 60 + float(sec) / 3600
-            if ref in ("S", "W"):
-                decimal = -decimal
-            return round(decimal, 6)
-
-        lat = _to_decimal(gps_info["GPSLatitude"], gps_info.get("GPSLatitudeRef", "N"))
-        lng = _to_decimal(gps_info["GPSLongitude"], gps_info.get("GPSLongitudeRef", "E"))
-        return lat, lng
     except Exception:
-        return None, None
+        return meta
+    if not exif:
+        return meta
+
+    # --- GPS: latitude / longitude / altitude (GPS IFD 34853) ---
+    try:
+        gps_ifd = exif.get_ifd(34853)
+        if gps_ifd:
+            gps_info = {}
+            for k, v in gps_ifd.items():
+                tag = GPSTAGS.get(k)
+                if tag:
+                    gps_info[tag] = v
+
+            if "GPSLatitude" in gps_info and "GPSLongitude" in gps_info:
+                meta["lat"] = _gps_to_decimal(
+                    gps_info["GPSLatitude"], gps_info.get("GPSLatitudeRef", "N")
+                )
+                meta["lng"] = _gps_to_decimal(
+                    gps_info["GPSLongitude"], gps_info.get("GPSLongitudeRef", "E")
+                )
+
+            if "GPSAltitude" in gps_info:
+                try:
+                    alt = float(gps_info["GPSAltitude"])
+                    ref = gps_info.get("GPSAltitudeRef", 0)
+                    # GPSAltitudeRef == 1 (or b"\x01") means below sea level.
+                    if ref in (1, b"\x01"):
+                        alt = -alt
+                    meta["altitude"] = round(alt, 3)
+                except (TypeError, ValueError):
+                    pass
+    except Exception:
+        pass
+
+    # --- Capture time: DateTimeOriginal (Exif IFD), then DateTime (base IFD) ---
+    try:
+        dto = None
+        exif_ifd = exif.get_ifd(34665)  # ExifIFD
+        if exif_ifd:
+            dto = exif_ifd.get(36867)  # DateTimeOriginal
+        if not dto:
+            dto = exif.get(306)  # DateTime
+        if dto:
+            # EXIF "YYYY:MM:DD HH:MM:SS" -> Frappe "YYYY-MM-DD HH:MM:SS".
+            s = str(dto).strip()
+            date_part, _, time_part = s.partition(" ")
+            date_part = date_part.replace(":", "-")
+            candidate = (date_part + " " + time_part).strip()
+            # Only keep a value Frappe's Datetime field can actually store, so a
+            # malformed-but-truthy tag can never raise at task.save() and block the
+            # whole upload batch. Unparseable -> leave capture_time None.
+            from frappe.utils import get_datetime
+
+            get_datetime(candidate)
+            meta["capture_time"] = candidate
+    except Exception:
+        pass
+
+    return meta
 
 
 def _save_task_image_file(content: bytes, file_name: str, task_name: str):
@@ -183,16 +233,20 @@ def upload_images():
 
         file_doc = _save_task_image_file(content, file_name, task.name)
 
-        lat, lng = _extract_gps(content)
+        meta = _extract_photo_meta(content)
 
         img_row = {
             "image": file_doc.file_url,
             "filename": file_name,
             "file_size": file_size,
         }
-        if lat is not None and lng is not None:
-            img_row["latitude"] = lat
-            img_row["longitude"] = lng
+        if meta["lat"] is not None and meta["lng"] is not None:
+            img_row["latitude"] = meta["lat"]
+            img_row["longitude"] = meta["lng"]
+        if meta["altitude"] is not None:
+            img_row["altitude"] = meta["altitude"]
+        if meta["capture_time"]:
+            img_row["capture_time"] = meta["capture_time"]
         task.append("images", img_row)
 
     task.save()
