@@ -5,17 +5,23 @@ import { formatDistance, formatArea } from '@/lib/format'
 
 const DRAW_COLOR = '#2563eb'
 
-// Click-to-draw distance/area measurement over a Leaflet map.
-// getMap() returns the live L.Map (MapView holds it in a module-scoped let).
-export function useMeasure(getMap) {
+// Click-to-draw distance/area/volume measurement over a Leaflet map.
+// getMap() returns the live L.Map. onVolume(latlngs) -> Promise<string> is
+// called when a volume polygon is finished; distance/area need no callback.
+export function useMeasure(getMap, { onVolume } = {}) {
   const state = reactive({ mode: null, value: 0, formatted: '' })
 
   let points = [] // L.LatLng[]
-  let shape = null // L.Polyline (distance) | L.Polygon (area)
+  let shape = null // L.Polyline (distance) | L.Polygon (area/volume)
   let dots = [] // L.CircleMarker[]
+  let reqToken = 0 // guards stale async volume results
 
   function toCoords(latlngs) {
     return latlngs.map(p => [p.lng, p.lat]) // GeoJSON is [lng, lat]
+  }
+
+  function isPolygonMode() {
+    return state.mode === 'area' || state.mode === 'volume'
   }
 
   function recompute() {
@@ -40,13 +46,14 @@ export function useMeasure(getMap) {
       state.value = turfArea(gj)
       state.formatted = formatArea(state.value)
     }
+    // 'volume' does no live computation while drawing; the readout is set on finish().
   }
 
   function redraw() {
     const map = getMap()
     if (!map) return
     if (!shape) {
-      shape = state.mode === 'area'
+      shape = isPolygonMode()
         ? L.polygon(points, { color: DRAW_COLOR, weight: 2, fillOpacity: 0.1 })
         : L.polyline(points, { color: DRAW_COLOR, weight: 2 })
       shape.addTo(map)
@@ -88,6 +95,39 @@ export function useMeasure(getMap) {
     document.removeEventListener('keydown', onKey)
   }
 
+  function setReadout(text) {
+    state.formatted = text
+    if (shape) shape.setTooltipContent(text)
+  }
+
+  async function finishVolume() {
+    stopListening()
+    if (points.length < 3) {
+      clear()
+      return
+    }
+    redraw()
+    setReadout('Computing…')
+    const token = ++reqToken
+    const latlngs = points.slice()
+    try {
+      const text = onVolume ? await onVolume(latlngs) : ''
+      if (state.mode === 'volume' && token === reqToken) setReadout(text)
+    } catch (e) {
+      if (state.mode === 'volume' && token === reqToken) setReadout('Volume failed')
+    }
+  }
+
+  function finish() {
+    if (state.mode === 'volume') {
+      finishVolume()
+      return
+    }
+    recompute()
+    redraw()
+    stopListening()
+  }
+
   function start(mode) {
     clear()
     state.mode = mode
@@ -99,15 +139,10 @@ export function useMeasure(getMap) {
     document.addEventListener('keydown', onKey)
   }
 
-  function finish() {
-    recompute()
-    redraw()
-    stopListening()
-  }
-
   function clear() {
     const map = getMap()
     stopListening()
+    reqToken++ // invalidate any in-flight volume request
     if (map) {
       if (shape) map.removeLayer(shape)
       for (const d of dots) map.removeLayer(d)

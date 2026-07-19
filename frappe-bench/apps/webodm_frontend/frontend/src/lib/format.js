@@ -15,3 +15,13 @@ export function formatArea(m2) {
   if (a < 10000) return `${a.toFixed(1)} m² (${acres.toFixed(2)} ac)`
   return `${(a / 10000).toFixed(2)} ha (${acres.toFixed(2)} ac)`
 }
+
+export function formatVolume({ volume, fill, cut, area } = {}) {
+  const a = Number.isFinite(area) ? area : 0
+  if (a === 0) return 'No DSM data under polygon'
+  const v = Number.isFinite(volume) ? volume : 0
+  const f = Number.isFinite(fill) ? fill : 0
+  const c = Number.isFinite(cut) ? cut : 0
+  const n = x => Math.round(x).toLocaleString('en-US')
+  return `${n(v)} m³ (fill ${n(f)} / cut ${n(c)}) · ${n(a)} m²`
+}
