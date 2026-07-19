@@ -41,7 +41,7 @@ class NodeODMClient:
     def version(self) -> str:
         return self._get("version")
 
-    def create_task(self, images: list[tuple[str, bytes]], options: dict | None = None) -> dict:
+    def create_task(self, images: list[tuple[str, bytes]], options: list[dict] | None = None) -> dict:
         files = [("images", (name, data, "image/jpeg")) for name, data in images]
         data = {}
         if options:
