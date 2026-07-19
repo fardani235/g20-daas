@@ -90,6 +90,16 @@
           <template #prefix><FeatherIcon name="square" class="h-3.5 w-3.5" /></template>
           Area
         </Button>
+        <Button
+          size="sm"
+          :variant="measure.state.mode === 'volume' ? 'solid' : 'outline'"
+          :disabled="!hasDsm"
+          @click="startMeasure('volume')"
+          :title="hasDsm ? 'Measure volume (needs DSM)' : 'Volume requires a DSM'"
+        >
+          <template #prefix><FeatherIcon name="box" class="h-3.5 w-3.5" /></template>
+          Volume
+        </Button>
         <Button size="sm" variant="ghost" @click="clearMeasure" title="Clear measurement">
           <FeatherIcon name="trash-2" class="h-3.5 w-3.5" />
         </Button>
@@ -189,6 +199,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Button, Badge, FeatherIcon } from 'frappe-ui'
 import L from 'leaflet'
 import { toast } from 'frappe-ui'
+import { formatVolume } from '@/lib/format'
 import { BASEMAPS, createBasemap } from '@/lib/mapLayers'
 import { sortImagesByCapture } from '@/lib/flightPath'
 import { useMeasure } from '@/composables/useMeasure'
@@ -208,6 +219,8 @@ const overlays = ref([])
 const currentBasemap = ref('osm')
 const showMarkers = ref(true)
 const currentImages = ref([])
+const currentTask = ref(null)
+const hasDsm = computed(() => !!currentTask.value?.dsm)
 const hasGps = computed(() =>
   currentImages.value.some(img => {
     const lat = parseFloat(img.latitude)
@@ -221,7 +234,7 @@ let imageMarkers = null
 let baseLayer = null
 let flightPathLayer = null
 const showFlightPath = ref(false)
-const measure = useMeasure(() => map)
+const measure = useMeasure(() => map, { onVolume: computeVolume })
 const overlayLayers = {}  // key -> Leaflet tileLayer
 
 const DATASET_LABELS = { orthophoto: 'Orthophoto', dsm: 'DSM', dtm: 'DTM' }
@@ -430,6 +443,8 @@ async function selectTask(task) {
     } catch {}
   }
   currentImages.value = full.images || []
+  currentTask.value = full
+  measure.clear()
   plotImageMarkers(full.images)
   loadOverlays(full)
   if (showFlightPath.value) buildFlightPath(currentImages.value)
@@ -441,6 +456,34 @@ function startMeasure(mode) {
 
 function clearMeasure() {
   measure.clear()
+}
+
+async function computeVolume(latlngs) {
+  try {
+    const ring = latlngs.map(p => [p.lng, p.lat])
+    if (ring.length) {
+      const [fx, fy] = ring[0]
+      const [lx, ly] = ring[ring.length - 1]
+      if (fx !== lx || fy !== ly) ring.push([fx, fy]) // close the ring
+    }
+    const polygon = { type: 'Polygon', coordinates: [ring] }
+    const headers = { 'Content-Type': 'application/json' }
+    if (window.csrf_token) headers['X-Frappe-CSRF-Token'] = window.csrf_token
+    const res = await fetch('/api/method/webodm_core.api.tiles.volume', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ task_name: selectedTask.value, polygon: JSON.stringify(polygon) }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.message || 'Volume calculation failed')
+    }
+    const data = await res.json()
+    return formatVolume(data.message || data)
+  } catch (e) {
+    toast.error(e.message || 'Volume calculation failed')
+    throw e // let useMeasure show "Volume failed"
+  }
 }
 
 function openTaskConsole(task) {
