@@ -104,3 +104,24 @@ def serve(task_name: str, dataset: str, z: int, x: int, y: int):
         return _png_response(_EMPTY_PNG)
 
     return _png_response(resp.content)
+
+
+@frappe.whitelist(allow_guest=False)
+def volume(task_name, polygon):
+    """Compute stockpile/earthwork volume for a polygon over the task's DSM.
+
+    ``polygon`` is a GeoJSON Polygon (EPSG:4326), sent as a JSON string. Resolves
+    the task's DSM (throws if absent) and forwards to the geospatial service.
+    """
+    path = _resolve_raster_path(task_name, "dsm")
+    poly = frappe.parse_json(polygon) if isinstance(polygon, str) else polygon
+    try:
+        resp = requests.post(
+            f"{_geospatial_url().rstrip('/')}/volume",
+            json={"path": path, "polygon": poly},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        frappe.throw(f"Geospatial service unavailable: {e}")
