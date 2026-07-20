@@ -9,7 +9,7 @@ describe('useMeasure module', () => {
     expect(typeof m.start).toBe('function')
     expect(typeof m.finish).toBe('function')
     expect(typeof m.clear).toBe('function')
-    expect(m.state).toMatchObject({ mode: null, value: 0, formatted: '' })
+    expect(m.state).toMatchObject({ mode: null, value: 0, formatted: '', drawing: false })
   })
 
   it('accepts an onVolume option without changing the interface', () => {

@@ -8,8 +8,14 @@ const DRAW_COLOR = '#2563eb'
 // Click-to-draw distance/area/volume measurement over a Leaflet map.
 // getMap() returns the live L.Map. onVolume(latlngs) -> Promise<string> is
 // called when a volume polygon is finished; distance/area need no callback.
+// Clicking within this many screen pixels of the first vertex closes/finishes
+// the shape — the version-proof alternative to relying on dblclick.
+const CLOSE_PX = 14
+
 export function useMeasure(getMap, { onVolume } = {}) {
-  const state = reactive({ mode: null, value: 0, formatted: '' })
+  // `drawing` is true while the map is accepting vertex clicks; the toolbar
+  // uses it to show the Finish button.
+  const state = reactive({ mode: null, value: 0, formatted: '', drawing: false })
 
   let points = [] // L.LatLng[]
   let shape = null // L.Polyline (distance) | L.Polygon (area/volume)
@@ -61,16 +67,42 @@ export function useMeasure(getMap, { onVolume } = {}) {
       shape.setLatLngs(points)
     }
     for (const d of dots) map.removeLayer(d)
-    dots = points.map(p =>
-      L.circleMarker(p, { radius: 4, color: DRAW_COLOR, fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(map)
-    )
+    dots = points.map((p, i) => {
+      // The first vertex is the click-to-close target once the shape is
+      // finishable, so make it larger with a pointer cursor.
+      const isCloseTarget = i === 0 && points.length >= minPoints()
+      return L.circleMarker(p, {
+        radius: isCloseTarget ? 7 : 4,
+        color: DRAW_COLOR,
+        fillColor: isCloseTarget ? DRAW_COLOR : '#fff',
+        fillOpacity: 1,
+        weight: 2,
+        className: isCloseTarget ? 'measure-close-target' : '',
+      }).addTo(map)
+    })
     if (shape) {
       shape.bindTooltip(state.formatted || '', { permanent: true, direction: 'top', className: 'measure-tooltip' })
       shape.openTooltip(points[points.length - 1])
     }
   }
 
+  // Minimum vertices before a shape can be finished/closed.
+  function minPoints() {
+    return isPolygonMode() ? 3 : 2
+  }
+
   function onClick(e) {
+    const map = getMap()
+    // If the click lands on/near the first vertex and we already have enough
+    // points, treat it as "close the shape" rather than adding a vertex.
+    if (map && points.length >= minPoints()) {
+      const first = map.latLngToContainerPoint(points[0])
+      const here = map.latLngToContainerPoint(e.latlng)
+      if (first.distanceTo(here) <= CLOSE_PX) {
+        finish()
+        return
+      }
+    }
     points.push(e.latlng)
     recompute()
     redraw()
@@ -102,6 +134,7 @@ export function useMeasure(getMap, { onVolume } = {}) {
 
   async function finishVolume() {
     stopListening()
+    state.drawing = false
     if (points.length < 3) {
       clear()
       return
@@ -126,11 +159,13 @@ export function useMeasure(getMap, { onVolume } = {}) {
     recompute()
     redraw()
     stopListening()
+    state.drawing = false
   }
 
   function start(mode) {
     clear()
     state.mode = mode
+    state.drawing = true
     const map = getMap()
     if (!map) return
     map.doubleClickZoom.disable()
@@ -153,6 +188,7 @@ export function useMeasure(getMap, { onVolume } = {}) {
     state.mode = null
     state.value = 0
     state.formatted = ''
+    state.drawing = false
   }
 
   return { state, start, finish, clear }
