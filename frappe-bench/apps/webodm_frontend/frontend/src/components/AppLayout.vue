@@ -39,7 +39,11 @@
         <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ pageTitle }}</h1>
       </header>
       <main class="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
-        <slot />
+        <router-view v-slot="{ Component }">
+          <Transition name="page" mode="out-in">
+            <component :is="Component" />
+          </Transition>
+        </router-view>
       </main>
     </div>
   </div>
@@ -57,13 +61,17 @@ const router = useRouter()
 const { current, cycle } = useTheme()
 
 const navItems = [
-  { to: '/', icon: 'grid', label: 'Dashboard' },
+  { to: '/dashboard', icon: 'grid', label: 'Dashboard' },
   { to: '/projects', icon: 'folder', label: 'Projects' },
+  { to: '/presets', icon: 'sliders', label: 'Presets' },
+  { to: '/invoices', icon: 'file-text', label: 'Invoices' },
+  { to: '/settings', icon: 'settings', label: 'Settings' },
+  { to: '/plugins', icon: 'puzzle', label: 'Plugins' },
 ]
 
 const pageTitle = computed(() => route.meta?.title || '')
 
-const isActive = (path) => path === '/' ? route.path === '/' : route.path.startsWith(path)
+const isActive = (path) => route.path === path || route.path.startsWith(path + '/')
 
 const themeIcon = computed(() => {
   if (current.value === 'light') return 'sun'
@@ -79,6 +87,6 @@ async function logout() {
   try {
     await fetch('/api/method/logout', { method: 'POST' })
   } catch {}
-  router.push('/login')
+  router.push('/')
 }
 </script>

@@ -3,10 +3,12 @@
     <div class="fixed top-0 left-0 right-0 z-[99999] h-0.5 transition-opacity duration-200" :class="navigating ? 'opacity-100' : 'opacity-0'">
       <div class="h-full bg-blue-500 animate-pulse"></div>
     </div>
-    <AppLayout v-if="route.meta.layout !== false">
-      <router-view />
-    </AppLayout>
-    <router-view v-else />
+    <AppLayout v-if="route.meta.layout !== false" />
+    <router-view v-else v-slot="{ Component }">
+      <Transition name="page" mode="out-in">
+        <component :is="Component" />
+      </Transition>
+    </router-view>
   </FrappeUIProvider>
 </template>
 

@@ -2,7 +2,7 @@
   <div class="p-6 bg-gray-50 dark:bg-gray-900 min-h-full">
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">Projects</h1>
-      <Button variant="solid" theme="gray" @click="showNewProject = true">
+      <Button variant="solid" theme="blue" @click="showNewProject = true">
         <template #prefix>
           <FeatherIcon name="plus" class="h-4 w-4" />
         </template>

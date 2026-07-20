@@ -4,7 +4,7 @@
       <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border dark:border-gray-700 p-8">
         <div class="text-center mb-8">
           <FeatherIcon name="map" class="h-10 w-10 text-blue-600 dark:text-blue-400 mx-auto mb-3" />
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">WebODM</h1>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">G20 Tech</h1>
           <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Sign in to your account</p>
         </div>
         <form @submit.prevent="login" class="space-y-4">
@@ -67,7 +67,7 @@ async function login() {
           window.csrf_token = token
         }
       } catch {}
-      const redirect = route.query.redirect || '/'
+      const redirect = route.query.redirect || '/dashboard'
       router.push(redirect)
     } else {
       error.value = data.message || 'Invalid credentials'

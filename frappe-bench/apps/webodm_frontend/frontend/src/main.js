@@ -6,13 +6,19 @@ import './index.css'
 
 const routes = [
   {
+    path: '/',
+    name: 'Landing',
+    component: () => import('./pages/Landing.vue'),
+    meta: { layout: false },
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('./pages/Login.vue'),
     meta: { layout: false },
   },
   {
-    path: '/',
+    path: '/dashboard',
     name: 'Dashboard',
     component: () => import('./pages/Dashboard.vue'),
     meta: { requiresAuth: true, title: 'Dashboard' },
@@ -22,6 +28,30 @@ const routes = [
     name: 'Projects',
     component: () => import('./pages/Projects.vue'),
     meta: { requiresAuth: true, title: 'Projects' },
+  },
+  {
+    path: '/presets',
+    name: 'Presets',
+    component: () => import('./pages/Presets.vue'),
+    meta: { requiresAuth: true, title: 'Presets' },
+  },
+  {
+    path: '/invoices',
+    name: 'Invoices',
+    component: () => import('./pages/Invoices.vue'),
+    meta: { requiresAuth: true, title: 'Invoices' },
+  },
+  {
+    path: '/settings',
+    name: 'Settings',
+    component: () => import('./pages/Settings.vue'),
+    meta: { requiresAuth: true, title: 'Settings' },
+  },
+  {
+    path: '/plugins',
+    name: 'Plugins',
+    component: () => import('./pages/Plugins.vue'),
+    meta: { requiresAuth: true, title: 'Plugins' },
   },
   {
     path: '/project/:id',
