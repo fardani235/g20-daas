@@ -70,7 +70,7 @@
         </div>
         <Button variant="solid" theme="blue" class="w-full mt-4" @click="showUpload = true">
           <template #prefix><FeatherIcon name="upload-cloud" class="h-4 w-4" /></template>
-          Upload Images
+          Add Task
         </Button>
       </div>
     </div>
@@ -100,10 +100,24 @@
           <template #prefix><FeatherIcon name="box" class="h-3.5 w-3.5" /></template>
           Volume
         </Button>
+        <Button
+          v-if="measure.state.drawing"
+          size="sm"
+          variant="solid"
+          theme="green"
+          @click="finishMeasure"
+          title="Finish measurement"
+        >
+          <template #prefix><FeatherIcon name="check" class="h-3.5 w-3.5" /></template>
+          Finish
+        </Button>
         <Button size="sm" variant="ghost" @click="clearMeasure" title="Clear measurement">
           <FeatherIcon name="trash-2" class="h-3.5 w-3.5" />
         </Button>
-        <span v-if="measure.state.formatted" class="text-sm font-medium text-gray-700 dark:text-gray-200 pl-1">
+        <span v-if="measure.state.drawing" class="text-xs text-gray-500 dark:text-gray-400 pl-1">
+          Click points, then Finish (or click the first point).
+        </span>
+        <span v-else-if="measure.state.formatted" class="text-sm font-medium text-gray-700 dark:text-gray-200 pl-1">
           {{ measure.state.formatted }}
         </span>
       </div>
@@ -159,7 +173,7 @@
 
     <div v-if="showUpload" class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50" style="transform: translateZ(0)" @click.self="showUpload = false">
       <div class="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md mx-4 p-6" style="transform: translateZ(0)">
-        <h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Upload Images</h2>
+        <h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Add Task</h2>
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Select images to upload for processing.</p>
         <input
           type="file"
@@ -452,6 +466,10 @@ async function selectTask(task) {
 
 function startMeasure(mode) {
   measure.start(mode)
+}
+
+function finishMeasure() {
+  measure.finish()
 }
 
 function clearMeasure() {
