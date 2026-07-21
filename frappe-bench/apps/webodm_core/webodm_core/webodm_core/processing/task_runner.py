@@ -117,9 +117,7 @@ def process_task(task_name: str):
     if isinstance(options, str):
         options = frappe.parse_json(options)
 
-    node_opts = {}
-    if isinstance(options, dict):
-        node_opts = _build_node_options(options)
+    node_opts = _build_node_options(options) if isinstance(options, (dict, list)) else []
 
     try:
         result = client.create_task(images, node_opts)
@@ -136,7 +134,7 @@ def process_task(task_name: str):
     task.db_set("status", "Running")
 
 
-def _build_node_options(opts: dict) -> list[dict]:
+def _build_node_options(opts: dict | list) -> list[dict]:
     """Translate the frontend's output selection into NodeODM task options.
 
     NodeODM's POST /task/new expects ``options`` as a JSON *array* of
@@ -149,6 +147,11 @@ def _build_node_options(opts: dict) -> list[dict]:
     can only be suppressed with ``--skip-orthophoto``. So an unchecked Orthophoto
     box maps to ``skip-orthophoto: true``, not to omitting an orthophoto flag.
     """
+    # Preset / dynamic path: options already in NodeODM array form — pass through,
+    # keeping only well-formed {name, value} entries.
+    if isinstance(opts, list):
+        return [o for o in opts if isinstance(o, dict) and "name" in o and "value" in o]
+
     result: list[dict] = []
 
     # Boolean output toggles → their real ODM flag names.

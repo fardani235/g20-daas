@@ -55,6 +55,14 @@ class TestBuildNodeOptions(unittest.TestCase):
         m = _as_map(_build_node_options({"orthophoto": True, "orthophotoResolution": None}))
         self.assertNotIn("orthophoto-resolution", m)
 
+    def test_list_input_passes_through_verbatim(self):
+        opts = [{"name": "dsm", "value": True}, {"name": "feature-quality", "value": "ultra"}]
+        self.assertEqual(_build_node_options(opts), opts)
+
+    def test_list_input_drops_malformed_entries(self):
+        opts = [{"name": "dsm", "value": True}, {"bad": "x"}, "nope"]
+        self.assertEqual(_build_node_options(opts), [{"name": "dsm", "value": True}])
+
 
 if __name__ == "__main__":
     unittest.main()
