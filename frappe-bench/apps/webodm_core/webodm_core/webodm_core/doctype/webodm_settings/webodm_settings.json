@@ -9,6 +9,9 @@
   "section_limits",
   "max_file_size_mb",
   "max_project_count",
+  "section_processing",
+  "default_preset",
+  "auto_start_processing",
   "section_notifications",
   "slack_webhook_url",
   "email_notifications"
@@ -42,6 +45,23 @@
    "fieldname": "max_project_count",
    "fieldtype": "Int",
    "label": "Max Projects per User"
+  },
+  {
+   "fieldname": "section_processing",
+   "fieldtype": "Section Break",
+   "label": "Processing"
+  },
+  {
+   "fieldname": "default_preset",
+   "fieldtype": "Link",
+   "label": "Default Preset",
+   "options": "WebODM Preset"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_start_processing",
+   "fieldtype": "Check",
+   "label": "Auto-start processing after upload"
   },
   {
    "fieldname": "section_notifications",
