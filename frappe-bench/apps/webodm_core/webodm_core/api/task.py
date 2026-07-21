@@ -45,20 +45,16 @@ def cancel_task():
     if task.status not in ("Pending", "Running"):
         frappe.throw(f"Task {task_name} cannot be cancelled (status: {task.status})")
 
-    opts = task.processing_options
-    if isinstance(opts, str):
-        opts = frappe.parse_json(opts)
-    if isinstance(opts, dict):
-        node_task_id = opts.get("_node_task_id")
-        if node_task_id:
-            from webodm_core.webodm_core.processing.node_client import NodeODMClient
-            nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
-            if nodes:
-                client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
-                try:
-                    client.task_cancel(node_task_id)
-                except Exception:
-                    pass
+    node_task_id = task.node_task_id
+    if node_task_id:
+        from webodm_core.webodm_core.processing.node_client import NodeODMClient
+        nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
+        if nodes:
+            client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
+            try:
+                client.task_cancel(node_task_id)
+            except Exception:
+                pass
 
     task.db_set("status", "Cancelled")
     task.db_set("progress", 0)
@@ -279,10 +275,7 @@ def get_task_console():
     task = frappe.get_doc("WebODM Task", task_name)
     result = {"lines": [], "next_line": line, "status": task.status}
 
-    opts = task.processing_options
-    if isinstance(opts, str):
-        opts = frappe.parse_json(opts)
-    node_task_id = opts.get("_node_task_id") if isinstance(opts, dict) else None
+    node_task_id = task.node_task_id
     if not node_task_id:
         # Task has not been dispatched to a processing node yet — no console yet.
         return result
@@ -318,50 +311,46 @@ def get_task_progress():
     task = frappe.get_doc("WebODM Task", task_name)
     result = task.as_dict()
 
-    opts = task.processing_options
-    if isinstance(opts, str):
-        opts = frappe.parse_json(opts)
-    if isinstance(opts, dict):
-        node_task_id = opts.get("_node_task_id")
-        if node_task_id:
-            from webodm_core.webodm_core.processing.node_client import NodeODMClient
-            nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
-            if nodes:
-                try:
-                    client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
-                    info = client.task_info(node_task_id)
-                    raw_progress = info.get("progress", 0)
-                    raw_status = info.get("status", 0)
-                    if isinstance(raw_status, dict):
-                        status_code = raw_status.get("code", 0)
-                    else:
-                        status_code = raw_status
+    node_task_id = task.node_task_id
+    if node_task_id:
+        from webodm_core.webodm_core.processing.node_client import NodeODMClient
+        nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
+        if nodes:
+            try:
+                client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
+                info = client.task_info(node_task_id)
+                raw_progress = info.get("progress", 0)
+                raw_status = info.get("status", 0)
+                if isinstance(raw_status, dict):
+                    status_code = raw_status.get("code", 0)
+                else:
+                    status_code = raw_status
 
-                    result["node_progress"] = raw_progress
-                    result["node_status_code"] = status_code
+                result["node_progress"] = raw_progress
+                result["node_status_code"] = status_code
 
-                    # Sync latest progress to Frappe DB
-                    if raw_progress > 0 and status_code < 30:
-                        pct = max(1, int(raw_progress)) if raw_progress > 1 else max(1, int(raw_progress * 100))
-                        if pct != task.progress:
-                            task.db_set("progress", pct)
-                            task.progress = pct
-                            result["progress"] = pct
+                # Sync latest progress to Frappe DB
+                if raw_progress > 0 and status_code < 30:
+                    pct = max(1, int(raw_progress)) if raw_progress > 1 else max(1, int(raw_progress * 100))
+                    if pct != task.progress:
+                        task.db_set("progress", pct)
+                        task.progress = pct
+                        result["progress"] = pct
 
-                    # If node indicates completion, trigger background poll for asset download
-                    if status_code >= 40 or status_code == 30:
-                        if status_code >= 40:
-                            prog_val = raw_progress if isinstance(raw_progress, (int, float)) else 0
-                            if prog_val >= 100:
-                                task.db_set("progress", 100)
-                                result["progress"] = 100
-                        frappe.enqueue(
-                            "webodm_core.webodm_core.processing.task_runner.poll_task",
-                            queue="short",
-                            job_name=f"poll_{task_name}",
-                            task_name=task_name,
-                        )
-                except Exception:
-                    pass
+                # If node indicates completion, trigger background poll for asset download
+                if status_code >= 40 or status_code == 30:
+                    if status_code >= 40:
+                        prog_val = raw_progress if isinstance(raw_progress, (int, float)) else 0
+                        if prog_val >= 100:
+                            task.db_set("progress", 100)
+                            result["progress"] = 100
+                    frappe.enqueue(
+                        "webodm_core.webodm_core.processing.task_runner.poll_task",
+                        queue="short",
+                        job_name=f"poll_{task_name}",
+                        task_name=task_name,
+                    )
+            except Exception:
+                pass
 
     return result

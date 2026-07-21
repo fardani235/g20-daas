@@ -2,8 +2,6 @@ import frappe
 from frappe.model.document import Document
 from webodm_core.webodm_core.processing.node_client import NodeODMClient, NodeODMError
 
-NODE_TASK_ID_KEY = "_node_task_id"
-
 # Which downloaded raster fields carry georeferencing worth extracting, and the
 # Task field that should hold each one's EPSG:4326 extent (GeoJSON Polygon).
 RASTER_EXTENT_FIELDS = {
@@ -134,13 +132,7 @@ def process_task(task_name: str):
         frappe.log_error(f"No uuid in node response: {result}", "WebODM Processing")
         return
 
-    node_opts = task.processing_options or {}
-    if isinstance(node_opts, str):
-        node_opts = frappe.parse_json(node_opts)
-    if not isinstance(node_opts, dict):
-        node_opts = {}
-    node_opts[NODE_TASK_ID_KEY] = node_task_id
-    task.db_set("processing_options", frappe.as_json(node_opts))
+    task.db_set("node_task_id", node_task_id)
     task.db_set("status", "Running")
 
 
@@ -215,13 +207,7 @@ def poll_task(task_name: str):
     if task.status != "Running":
         return
 
-    opts = task.processing_options
-    if isinstance(opts, str):
-        opts = frappe.parse_json(opts)
-    if not isinstance(opts, dict):
-        return
-
-    node_task_id = opts.get(NODE_TASK_ID_KEY)
+    node_task_id = task.node_task_id
     if not node_task_id:
         task.db_set("status", "Failed")
         return

@@ -11,6 +11,7 @@
   "progress",
   "resolution",
   "processing_options",
+  "node_task_id",
   "images_section",
   "images",
   "outputs_section",
@@ -66,6 +67,13 @@
    "fieldname": "processing_options",
    "fieldtype": "JSON",
    "label": "Processing Options"
+  },
+  {
+   "fieldname": "node_task_id",
+   "fieldtype": "Data",
+   "label": "Node Task ID",
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "collapsible": 1,
