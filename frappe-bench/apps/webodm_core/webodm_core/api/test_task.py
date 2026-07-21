@@ -51,5 +51,23 @@ class TestExtractPhotoMeta(unittest.TestCase):
         self.assertIsNone(meta["capture_time"])
 
 
+class TestAutoStart(unittest.TestCase):
+    def test_auto_start_helper_enqueues_when_enabled(self):
+        from unittest.mock import patch
+        from webodm_core.api import task as task_api
+        with patch("frappe.get_single") as gs, patch("frappe.enqueue") as enq:
+            gs.return_value.auto_start_processing = 1
+            task_api._maybe_autostart("SOME-TASK")
+            enq.assert_called_once()
+
+    def test_auto_start_helper_noop_when_disabled(self):
+        from unittest.mock import patch
+        from webodm_core.api import task as task_api
+        with patch("frappe.get_single") as gs, patch("frappe.enqueue") as enq:
+            gs.return_value.auto_start_processing = 0
+            task_api._maybe_autostart("SOME-TASK")
+            enq.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

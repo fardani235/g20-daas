@@ -192,8 +192,21 @@ def _save_task_image_file(content: bytes, file_name: str, task_name: str):
     return file_doc
 
 
+def _maybe_autostart(task_name: str):
+    """Enqueue processing right after upload if WebODM Settings enables it."""
+    settings = frappe.get_single("WebODM Settings")
+    if not settings.auto_start_processing:
+        return
+    frappe.enqueue(
+        "webodm_core.webodm_core.processing.task_runner.process_task",
+        queue="long",
+        job_name=f"process_{task_name}",
+        task_name=task_name,
+    )
+
+
 @frappe.whitelist(allow_guest=False)
-def upload_images():    
+def upload_images():
     files = frappe.request.files.getlist("files")
     project_id = frappe.form_dict.get("project_id")
     options_raw = frappe.form_dict.get("options")
@@ -247,6 +260,8 @@ def upload_images():
 
     task.save()
     frappe.db.commit()
+
+    _maybe_autostart(task.name)
 
     return task.as_dict()
 
