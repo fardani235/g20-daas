@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import frappe
 
@@ -6,6 +7,11 @@ from webodm_core.api import settings
 
 
 class TestSettings(unittest.TestCase):
+    def test_non_admin_cannot_save(self):
+        with patch.object(settings, "_is_admin", return_value=False):
+            with self.assertRaises(frappe.PermissionError):
+                settings.save(max_file_size_mb=999)
+
     def test_get_returns_known_fields(self):
         out = settings.get()
         self.assertIn("default_preset", out)

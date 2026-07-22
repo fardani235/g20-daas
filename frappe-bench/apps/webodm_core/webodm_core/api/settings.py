@@ -15,6 +15,11 @@ _ALLOWED = {
 }
 
 
+def _is_admin() -> bool:
+    roles = set(frappe.get_roles(frappe.session.user))
+    return bool(roles & {"System Manager", "Administrator"})
+
+
 @frappe.whitelist(allow_guest=False)
 def get():
     """Return the WebODM Settings single doc as a plain dict."""
@@ -24,7 +29,13 @@ def get():
 
 @frappe.whitelist(allow_guest=False)
 def save(**fields):
-    """Update the allowed fields on the WebODM Settings single doc."""
+    """Update the allowed fields on the WebODM Settings single doc.
+
+    These are global, site-wide settings, so only administrators may change
+    them. (get() stays readable by any authenticated user.)"""
+    if not _is_admin():
+        frappe.throw("Only administrators can change settings", frappe.PermissionError)
+
     try:
         raw = frappe.request.data
     except RuntimeError:
