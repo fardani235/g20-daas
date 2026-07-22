@@ -1,4 +1,5 @@
 import io
+import json
 import unittest
 
 from PIL import Image
@@ -67,6 +68,47 @@ class TestAutoStart(unittest.TestCase):
             gs.return_value.auto_start_processing = 0
             task_api._maybe_autostart("SOME-TASK")
             enq.assert_not_called()
+
+
+class TestEncodeProcessingOptions(unittest.TestCase):
+    # The dispatch read-path (task_runner.process_task) does: if the stored value
+    # is a str, parse_json it once, then _build_node_options. On PostgreSQL a JSON
+    # column auto-parses one level on read. So the full chain from a double-encoded
+    # scalar back to the original is: parse_json (Postgres read) -> parse_json
+    # (dispatch) -> original. These tests assert that round-trip and delete-safety.
+    def _roundtrip(self, encoded):
+        import frappe
+        pg_read = frappe.parse_json(encoded)   # Postgres auto-parse (1 level)
+        # On Postgres this is already a str; dispatch parse_json's it to the object.
+        return frappe.parse_json(pg_read) if isinstance(pg_read, str) else pg_read
+
+    def test_list_options_roundtrip(self):
+        from webodm_core.api.task import _encode_processing_options
+        opts = [{"name": "dsm", "value": True}, {"name": "feature-quality", "value": "ultra"}]
+        encoded = _encode_processing_options(json.dumps(opts))
+        self.assertIsInstance(encoded, str)
+        self.assertEqual(self._roundtrip(encoded), opts)
+
+    def test_encoded_value_is_a_string_scalar_not_a_list(self):
+        # Delete-safety on Postgres: the column must hold a JSON string, not an
+        # array (an array reloads as a Python list and breaks the delete snapshot).
+        import frappe
+        from webodm_core.api.task import _encode_processing_options
+        encoded = _encode_processing_options(json.dumps([{"name": "dsm", "value": True}]))
+        self.assertIsInstance(frappe.parse_json(encoded), str)
+
+    def test_dict_options_still_supported(self):
+        from webodm_core.api.task import _encode_processing_options
+        opts = {"orthophoto": True, "dsm": False}
+        encoded = _encode_processing_options(json.dumps(opts))
+        self.assertEqual(self._roundtrip(encoded), opts)
+
+    def test_empty_or_invalid_returns_none(self):
+        from webodm_core.api.task import _encode_processing_options
+        self.assertIsNone(_encode_processing_options(None))
+        self.assertIsNone(_encode_processing_options(""))
+        self.assertIsNone(_encode_processing_options("not json"))
+        self.assertIsNone(_encode_processing_options(json.dumps(42)))
 
 
 if __name__ == "__main__":

@@ -205,6 +205,30 @@ def _maybe_autostart(task_name: str):
     )
 
 
+def _encode_processing_options(options_raw):
+    """Encode the upload dialog's ``options`` payload for Task.processing_options.
+
+    Accepts the raw request value (a JSON string, or already-parsed dict/list).
+    Presets/dynamic forms send a NodeODM array ``[{name, value}, ...]``; the
+    legacy path sends a dict. Both are stored **double-encoded** as a JSON string
+    scalar: on PostgreSQL a top-level array left in a JSON column reloads as a
+    Python ``list`` and Frappe's delete snapshot then raises "cannot be a list"
+    (same reason presets store options this way). The dispatch read-path already
+    ``parse_json``'s a string value back to the list/dict, so no remap is needed.
+
+    Returns the encoded string, or ``None`` if there is nothing valid to store.
+    """
+    if not options_raw:
+        return None
+    try:
+        opts = frappe.parse_json(options_raw) if isinstance(options_raw, str) else options_raw
+    except Exception:
+        return None
+    if not isinstance(opts, (dict, list)):
+        return None
+    return frappe.as_json(frappe.as_json(opts))
+
+
 @frappe.whitelist(allow_guest=False)
 def upload_images():
     files = frappe.request.files.getlist("files")
@@ -225,13 +249,9 @@ def upload_images():
         "status": "Pending",
     })
 
-    if options_raw:
-        try:
-            opts = frappe.parse_json(options_raw)
-            if isinstance(opts, dict):
-                task.processing_options = frappe.as_json(opts)
-        except Exception:
-            pass
+    encoded = _encode_processing_options(options_raw)
+    if encoded is not None:
+        task.processing_options = encoded
 
     task.save()
 
