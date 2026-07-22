@@ -68,7 +68,7 @@
 
           </div>
         </div>
-        <Button variant="solid" theme="blue" class="w-full mt-4" @click="showUpload = true">
+        <Button variant="solid" theme="blue" class="w-full mt-4" @click="openUpload">
           <template #prefix><FeatherIcon name="upload-cloud" class="h-4 w-4" /></template>
           Add Task
         </Button>
@@ -183,15 +183,24 @@
           @change="uploadFiles"
         />
         <div class="mt-4 space-y-2">
-          <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Outputs</p>
-          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" v-model="outputOpts.orthophoto" checked class="rounded dark:bg-gray-700" /> Orthophoto</label>
-          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" v-model="outputOpts.dsm" class="rounded dark:bg-gray-700" /> DSM</label>
-          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" v-model="outputOpts.dtm" class="rounded dark:bg-gray-700" /> DTM</label>
-          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" v-model="outputOpts.model" class="rounded dark:bg-gray-700" /> 3D Model</label>
-          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" v-model="outputOpts.pointCloud" class="rounded dark:bg-gray-700" /> Point Cloud</label>
-          <div v-if="outputOpts.orthophoto" class="flex items-center gap-2 mt-1">
-            <label class="text-xs text-gray-500 dark:text-gray-400 w-28">Resolution (cm/px):</label>
-            <input type="number" v-model.number="outputOpts.orthophotoResolution" placeholder="auto" min="0.1" step="0.1" class="w-24 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200" />
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Preset</label>
+          <select v-model="selectedPreset" @change="applyPreset" class="w-full rounded-lg border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm">
+            <option :value="null">None (defaults)</option>
+            <option v-for="p in uploadPresets" :key="p.name" :value="p.name">{{ p.preset_name }}</option>
+          </select>
+
+          <p v-if="uploadOdm.error.value" class="text-xs text-red-600">{{ uploadOdm.error.value }}</p>
+          <p v-else-if="uploadOdm.loading.value" class="text-xs text-gray-500">Loading options…</p>
+          <div v-else class="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+            <div v-for="opt in uploadOdm.catalog.value" :key="opt.name" class="flex items-center gap-2">
+              <label class="text-xs text-gray-600 dark:text-gray-400 w-40 truncate" :title="opt.help">{{ opt.name }}</label>
+              <input v-if="uploadOdm.fieldType(opt) === 'checkbox'" type="checkbox" v-model="uploadValues[opt.name]" class="rounded" />
+              <select v-else-if="uploadOdm.fieldType(opt) === 'select'" v-model="uploadValues[opt.name]" class="flex-1 rounded border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 text-xs">
+                <option v-for="d in opt.domain" :key="d" :value="d">{{ d }}</option>
+              </select>
+              <input v-else-if="uploadOdm.fieldType(opt) === 'number'" type="number" v-model.number="uploadValues[opt.name]" class="flex-1 rounded border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 text-xs" />
+              <input v-else type="text" v-model="uploadValues[opt.name]" class="flex-1 rounded border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 text-xs" />
+            </div>
           </div>
         </div>
         <div v-if="uploading" class="mt-4">
@@ -217,6 +226,8 @@ import { formatVolume } from '@/lib/format'
 import { BASEMAPS, createBasemap } from '@/lib/mapLayers'
 import { sortImagesByCapture } from '@/lib/flightPath'
 import { useMeasure } from '@/composables/useMeasure'
+import { listPresets, getSettings } from '@/lib/presets'
+import { useOdmOptions } from '@/composables/useOdmOptions'
 
 const route = useRoute()
 const router = useRouter()
@@ -226,7 +237,45 @@ const selectedTask = ref(null)
 const showUpload = ref(false)
 const uploading = ref(false)
 const uploadProgress = ref('')
-const outputOpts = ref({ orthophoto: true, dsm: false, dtm: false, model: false, pointCloud: false, orthophotoResolution: null })
+const uploadPresets = ref([])
+const selectedPreset = ref(null)
+const uploadValues = ref({}) // { optionName: value }
+const uploadOdm = useOdmOptions()
+
+async function loadUploadForm() {
+  try {
+    uploadPresets.value = await listPresets()
+  } catch (e) {
+    uploadPresets.value = []
+  }
+  try {
+    const s = await getSettings()
+    selectedPreset.value = s.default_preset || null
+  } catch (e) {
+    selectedPreset.value = null
+  }
+  await uploadOdm.load()
+  applyPreset()
+}
+
+function applyPreset() {
+  const p = uploadPresets.value.find(x => x.name === selectedPreset.value)
+  uploadValues.value = p ? Object.fromEntries((p.options || []).map(o => [o.name, o.value])) : {}
+}
+
+function uploadOptionsArray() {
+  const out = []
+  for (const [name, value] of Object.entries(uploadValues.value)) {
+    if (value === '' || value === null || value === undefined || value === false) continue
+    out.push({ name, value })
+  }
+  return out
+}
+
+function openUpload() {
+  showUpload.value = true
+  loadUploadForm()
+}
 const sidebarWidth = ref(360)
 // Raster overlays available for the selected task: { key, label, visible }.
 const overlays = ref([])
@@ -603,7 +652,7 @@ async function uploadFiles(e) {
       formData.append('files', file)
     }
     formData.append('project_id', route.params.id)
-    formData.append('options', JSON.stringify(outputOpts.value))
+    formData.append('options', JSON.stringify(uploadOptionsArray()))
     const headers = {}
     if (window.csrf_token) headers['X-Frappe-CSRF-Token'] = window.csrf_token
     const res = await fetch('/api/method/webodm_core.api.task.upload_images', {
