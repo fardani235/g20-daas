@@ -612,7 +612,18 @@ async function cancelTask(task) {
       headers,
       body: JSON.stringify({ task_name: task.name }),
     })
-    if (!res.ok) throw new Error('Failed to cancel task')
+    if (!res.ok) {
+      // Backend fails loud when the node won't acknowledge the cancel — surface
+      // its real message rather than a generic one, and do NOT flip status to
+      // Cancelled (the task may still be running on the node).
+      let msg = 'Failed to cancel task'
+      try {
+        const err = await res.json()
+        const server = err?._server_messages ? JSON.parse(JSON.parse(err._server_messages)[0])?.message : null
+        msg = server || err?.message || msg
+      } catch {}
+      throw new Error(msg)
+    }
     const result = await res.json()
     toast.success(result.message || 'Task cancelled')
     const idx = tasks.value.findIndex(t => t.name === task.name)
