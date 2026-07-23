@@ -51,10 +51,14 @@ def cancel_task():
         nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
         if nodes:
             client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
+            # Fail loud: if the node doesn't acknowledge the cancel, do NOT mark the
+            # task Cancelled — otherwise the UI claims "Cancelled" while ODM keeps
+            # running. Surface the error and leave the task in its current state.
             try:
                 client.task_cancel(node_task_id)
-            except Exception:
-                pass
+            except Exception as e:
+                frappe.log_error(f"Cancel failed for {task_name}: {e}", "WebODM Processing")
+                frappe.throw(f"Could not cancel task on the processing node: {e}")
 
     task.db_set("status", "Cancelled")
     task.db_set("progress", 0)
@@ -371,21 +375,35 @@ def get_task_progress():
                 result["node_progress"] = raw_progress
                 result["node_status_code"] = status_code
 
-                # Sync latest progress to Frappe DB
-                if raw_progress > 0 and status_code < 30:
+                from webodm_core.webodm_core.processing.task_runner import _status_action
+
+                action = _status_action(raw_status, raw_progress)
+
+                # Sync latest progress to Frappe DB while still in flight.
+                if action == "running" and raw_progress > 0:
                     pct = max(1, int(raw_progress)) if raw_progress > 1 else max(1, int(raw_progress * 100))
                     if pct != task.progress:
                         task.db_set("progress", pct)
                         task.progress = pct
                         result["progress"] = pct
 
-                # If node indicates completion, trigger background poll for asset download
-                if status_code >= 40 or status_code == 30:
-                    if status_code >= 40:
-                        prog_val = raw_progress if isinstance(raw_progress, (int, float)) else 0
-                        if prog_val >= 100:
-                            task.db_set("progress", 100)
-                            result["progress"] = 100
+                # Surface terminal failure/cancel immediately so the frontend stops
+                # polling and shows the right state instead of a stuck "Running".
+                if action == "failed":
+                    task.db_set("status", "Failed")
+                    result["status"] = "Failed"
+                elif action == "cancelled":
+                    task.db_set("status", "Cancelled")
+                    result["status"] = "Cancelled"
+                elif action == "download":
+                    prog_val = raw_progress if isinstance(raw_progress, (int, float)) else 0
+                    if prog_val >= 100:
+                        task.db_set("progress", 100)
+                        result["progress"] = 100
+
+                # Kick a background poll to download assets / persist the terminal
+                # state, for any non-running node status.
+                if action != "running":
                     frappe.enqueue(
                         "webodm_core.webodm_core.processing.task_runner.poll_task",
                         queue="short",

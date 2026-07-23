@@ -1,6 +1,9 @@
 import unittest
 
-from webodm_core.webodm_core.processing.task_runner import _build_node_options
+from webodm_core.webodm_core.processing.task_runner import (
+    _build_node_options,
+    _status_action,
+)
 
 
 def _as_map(options):
@@ -62,6 +65,39 @@ class TestBuildNodeOptions(unittest.TestCase):
     def test_list_input_drops_malformed_entries(self):
         opts = [{"name": "dsm", "value": True}, {"bad": "x"}, "nope"]
         self.assertEqual(_build_node_options(opts), [{"name": "dsm", "value": True}])
+
+
+class TestStatusAction(unittest.TestCase):
+    """Map NodeODM task status codes to a poll action. NodeODM codes:
+    QUEUED=10, RUNNING=20, FAILED=30, COMPLETED=40, CANCELED=50. The old code
+    conflated these: it called _download_assets on FAILED(30) (treating a failure
+    as a completion) and lumped CANCELED(50) in with COMPLETED via `>= 40`, so a
+    canceled task got marked Failed and a real failure never set Failed at all."""
+
+    def test_queued_keeps_running(self):
+        self.assertEqual(_status_action(10, 0), "running")
+
+    def test_running_keeps_running(self):
+        self.assertEqual(_status_action(20, 42), "running")
+
+    def test_failed_code_30_is_failed(self):
+        # FAILED must NOT download assets.
+        self.assertEqual(_status_action(30, 0), "failed")
+
+    def test_completed_code_40_downloads(self):
+        self.assertEqual(_status_action(40, 100), "download")
+
+    def test_canceled_code_50_is_cancelled(self):
+        # CANCELED is a terminal cancel, not a failure and not a completion.
+        self.assertEqual(_status_action(50, 0), "cancelled")
+
+    def test_dict_status_uses_code(self):
+        self.assertEqual(_status_action({"code": 30}, 0), "failed")
+
+    def test_unknown_high_code_is_failed(self):
+        # Defensive: any unexpected terminal-ish code is a failure, never a silent
+        # completion.
+        self.assertEqual(_status_action(99, 0), "failed")
 
 
 if __name__ == "__main__":

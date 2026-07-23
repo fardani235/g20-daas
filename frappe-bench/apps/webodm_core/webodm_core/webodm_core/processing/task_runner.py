@@ -10,6 +10,38 @@ RASTER_EXTENT_FIELDS = {
     "dtm": "dtm_extent",
 }
 
+# NodeODM task status codes (see its libs/statusCodes.js). These are distinct
+# terminal states and must not be conflated: FAILED is a failure (no assets),
+# CANCELED is a user cancel, only COMPLETED yields downloadable assets.
+NODE_STATUS_QUEUED = 10
+NODE_STATUS_RUNNING = 20
+NODE_STATUS_FAILED = 30
+NODE_STATUS_COMPLETED = 40
+NODE_STATUS_CANCELED = 50
+
+
+def _status_action(status, progress) -> str:
+    """Map a NodeODM status (code int or ``{"code": ...}`` dict) to a poll action.
+
+    Returns one of ``"running"``, ``"download"``, ``"failed"``, ``"cancelled"``.
+    Only COMPLETED(40) downloads assets; FAILED(30) and CANCELED(50) are terminal
+    and never trigger a download; anything below COMPLETED is still in flight.
+    Any unrecognised code is treated as a failure rather than a silent completion.
+    """
+    code = status.get("code", 0) if isinstance(status, dict) else status
+    try:
+        code = int(code)
+    except (TypeError, ValueError):
+        code = 0
+
+    if code == NODE_STATUS_COMPLETED:
+        return "download"
+    if code == NODE_STATUS_CANCELED:
+        return "cancelled"
+    if code < NODE_STATUS_FAILED:
+        return "running"
+    return "failed"
+
 
 def _geospatial_url() -> str:
     """Base URL of the geospatial FastAPI service (configurable via site config)."""
@@ -234,31 +266,30 @@ def poll_task(task_name: str):
     raw_status = info.get("status", 0)
     progress = info.get("progress", 0.0)
 
-    if isinstance(raw_status, dict):
-        status_code = raw_status.get("code", 0)
-    else:
-        status_code = raw_status
+    action = _status_action(raw_status, progress)
 
-    if status_code >= 40:
-        progress_val = progress if isinstance(progress, (int, float)) else 0
-        if progress_val >= 100:
-            task.db_set("progress", 100)
-            _download_assets(client, node_task_id, task)
-            return
+    if action == "download":
+        task.db_set("progress", 100)
+        _download_assets(client, node_task_id, task)
+        return
+
+    if action == "failed":
         task.db_set("status", "Failed")
         task.db_set("progress", 0)
         return
 
+    if action == "cancelled":
+        task.db_set("status", "Cancelled")
+        task.db_set("progress", 0)
+        return
+
+    # Still running/queued — sync the latest progress percentage.
     if progress > 0:
         if progress > 1:
             pct = max(1, int(progress))
         else:
             pct = max(1, int(progress * 100))
         task.db_set("progress", pct)
-
-    if status_code == 30:
-        task.db_set("progress", 100)
-        _download_assets(client, node_task_id, task)
 
 
 def _download_assets(client: NodeODMClient, node_task_id: str, task: Document):

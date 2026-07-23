@@ -64,13 +64,16 @@ class NodeODMClient:
         return r.json()
 
     def task_cancel(self, task_id: str) -> dict:
-        return self._post(f"task/{task_id}/cancel")
+        # NodeODM expects the uuid in the body at a flat path (POST /task/cancel),
+        # NOT a path-style /task/<uuid>/cancel — the latter 404s and the cancel
+        # never reaches the node.
+        return self._post("task/cancel", data={"uuid": task_id})
 
     def task_remove(self, task_id: str) -> dict:
-        return self._post(f"task/{task_id}/remove")
+        return self._post("task/remove", data={"uuid": task_id})
 
     def task_restart(self, task_id: str) -> dict:
-        return self._post(f"task/{task_id}/restart")
+        return self._post("task/restart", data={"uuid": task_id})
 
     def download_asset(self, task_id: str, asset: str) -> bytes:
         try:
