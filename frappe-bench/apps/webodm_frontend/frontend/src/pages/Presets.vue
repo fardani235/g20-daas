@@ -97,6 +97,7 @@ async function openCreate() {
   values.value = {}
   showModal.value = true
   await odm.load()
+  odm.seedEnumDefaults(values.value)
 }
 
 async function openEdit(p) {
@@ -105,6 +106,7 @@ async function openEdit(p) {
   values.value = Object.fromEntries((p.options || []).map(o => [o.name, o.value]))
   showModal.value = true
   await odm.load()
+  odm.seedEnumDefaults(values.value)
 }
 
 // Serialize only the options the user set to a non-empty / non-false value,

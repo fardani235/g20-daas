@@ -261,6 +261,9 @@ async function loadUploadForm() {
 function applyPreset() {
   const p = uploadPresets.value.find(x => x.name === selectedPreset.value)
   uploadValues.value = p ? Object.fromEntries((p.options || []).map(o => [o.name, o.value])) : {}
+  // Re-seed enum defaults after (re)selecting a preset so switching presets
+  // never leaves a shown-but-unsubmitted select value.
+  uploadOdm.seedEnumDefaults(uploadValues.value)
 }
 
 function uploadOptionsArray() {

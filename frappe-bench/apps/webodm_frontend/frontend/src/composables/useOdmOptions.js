@@ -29,5 +29,20 @@ export function useOdmOptions() {
     }
   }
 
-  return { catalog, error, loading, load, fieldType }
+  // Fill in enum/select defaults for any option the caller hasn't already set.
+  // A native <select> renders its first <option> as selected but never syncs
+  // that back to the model, so an untouched enum would be dropped on submit and
+  // the shown value would silently differ from what ODM receives. Seeding the
+  // option's own default (or first domain entry) keeps shown == submitted.
+  // Only fills keys that are still undefined, so preset/user values win.
+  function seedEnumDefaults(values) {
+    for (const opt of catalog.value) {
+      if (fieldType(opt) !== 'select') continue
+      if (values[opt.name] !== undefined) continue
+      const fallback = opt.value ?? (Array.isArray(opt.domain) ? opt.domain[0] : undefined)
+      if (fallback !== undefined) values[opt.name] = fallback
+    }
+  }
+
+  return { catalog, error, loading, load, fieldType, seedEnumDefaults }
 }
