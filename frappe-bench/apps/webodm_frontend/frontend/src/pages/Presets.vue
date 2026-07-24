@@ -47,17 +47,7 @@
         <p v-if="odm.error.value" class="text-sm text-red-600 mb-3">{{ odm.error.value }}</p>
         <p v-else-if="odm.loading.value" class="text-sm text-gray-500 mb-3">Loading options…</p>
 
-        <div v-else class="space-y-2">
-          <div v-for="opt in odm.catalog.value" :key="opt.name" class="flex items-center gap-2">
-            <label class="text-sm text-gray-700 dark:text-gray-300 w-48 truncate" :title="opt.help">{{ opt.name }}</label>
-            <input v-if="odm.fieldType(opt) === 'checkbox'" type="checkbox" v-model="values[opt.name]" class="rounded" />
-            <select v-else-if="odm.fieldType(opt) === 'select'" v-model="values[opt.name]" class="flex-1 rounded border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm">
-              <option v-for="d in opt.domain" :key="d" :value="d">{{ d }}</option>
-            </select>
-            <input v-else-if="odm.fieldType(opt) === 'number'" type="number" v-model.number="values[opt.name]" class="flex-1 rounded border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm" />
-            <input v-else type="text" v-model="values[opt.name]" class="flex-1 rounded border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm" />
-          </div>
-        </div>
+        <OdmOptionsForm v-else :catalog="odm.catalog.value" v-model="values" :field-type="odm.fieldType" />
 
         <div class="flex justify-end gap-2 mt-6">
           <Button variant="ghost" @click="showModal = false">Cancel</Button>
@@ -73,6 +63,7 @@ import { ref, reactive } from 'vue'
 import { Button, FeatherIcon, toast } from 'frappe-ui'
 import { listPresets, savePreset, deletePreset } from '@/lib/presets'
 import { useOdmOptions } from '@/composables/useOdmOptions'
+import OdmOptionsForm from '@/components/OdmOptionsForm.vue'
 
 const presets = ref([])
 const showModal = ref(false)

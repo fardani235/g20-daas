@@ -191,16 +191,8 @@
 
           <p v-if="uploadOdm.error.value" class="text-xs text-red-600">{{ uploadOdm.error.value }}</p>
           <p v-else-if="uploadOdm.loading.value" class="text-xs text-gray-500">Loading options…</p>
-          <div v-else class="max-h-64 overflow-y-auto space-y-1.5 pr-1">
-            <div v-for="opt in uploadOdm.catalog.value" :key="opt.name" class="flex items-center gap-2">
-              <label class="text-xs text-gray-600 dark:text-gray-400 w-40 truncate" :title="opt.help">{{ opt.name }}</label>
-              <input v-if="uploadOdm.fieldType(opt) === 'checkbox'" type="checkbox" v-model="uploadValues[opt.name]" class="rounded" />
-              <select v-else-if="uploadOdm.fieldType(opt) === 'select'" v-model="uploadValues[opt.name]" class="flex-1 rounded border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 text-xs">
-                <option v-for="d in opt.domain" :key="d" :value="d">{{ d }}</option>
-              </select>
-              <input v-else-if="uploadOdm.fieldType(opt) === 'number'" type="number" v-model.number="uploadValues[opt.name]" class="flex-1 rounded border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 text-xs" />
-              <input v-else type="text" v-model="uploadValues[opt.name]" class="flex-1 rounded border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 text-xs" />
-            </div>
+          <div v-else class="max-h-64 overflow-y-auto pr-1">
+            <OdmOptionsForm :catalog="uploadOdm.catalog.value" v-model="uploadValues" :field-type="uploadOdm.fieldType" />
           </div>
         </div>
         <div v-if="uploading" class="mt-4">
@@ -228,6 +220,7 @@ import { sortImagesByCapture } from '@/lib/flightPath'
 import { useMeasure } from '@/composables/useMeasure'
 import { listPresets, getSettings } from '@/lib/presets'
 import { useOdmOptions } from '@/composables/useOdmOptions'
+import OdmOptionsForm from '@/components/OdmOptionsForm.vue'
 
 const route = useRoute()
 const router = useRouter()
