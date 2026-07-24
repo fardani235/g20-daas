@@ -30,8 +30,11 @@ def _resolve_raster_path(task_name: str, dataset: str) -> str:
         frappe.throw(f"Unknown dataset: {dataset}")
 
     field, _kind = _DATASETS[dataset]
-    # get_doc enforces the task's read permission for the session user.
+    # get_doc does NOT check permissions on its own, so enforce read access for
+    # the session user explicitly — otherwise any authenticated user could read
+    # another user's rasters (tiles/info/volume) by supplying their task id.
     task = frappe.get_doc("WebODM Task", task_name)
+    task.check_permission("read")
     file_url = task.get(field)
     if not file_url:
         frappe.throw(f"Task has no {dataset}", frappe.DoesNotExistError)

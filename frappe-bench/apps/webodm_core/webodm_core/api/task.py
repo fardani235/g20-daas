@@ -4,6 +4,20 @@ from PIL import Image
 from PIL.ExifTags import GPSTAGS
 
 
+def _get_task_checked(task_name: str, ptype: str = "read"):
+    """Load a WebODM Task and enforce the session user's permission on it.
+
+    ``frappe.get_doc`` does NOT check permissions on its own, so every custom
+    endpoint must gate access explicitly — otherwise any authenticated user can
+    read/act on another user's task just by knowing its id (the owner-scoping in
+    permissions.py only auto-applies to list queries, not direct get_doc).
+    Raises ``frappe.PermissionError`` if the user is not the owner (or admin).
+    """
+    task = frappe.get_doc("WebODM Task", task_name)
+    task.check_permission(ptype)
+    return task
+
+
 @frappe.whitelist(allow_guest=False)
 def process_task():
     raw = frappe.request.data
@@ -14,7 +28,7 @@ def process_task():
     if not task_name:
         frappe.throw("task_name is required")
 
-    task = frappe.get_doc("WebODM Task", task_name)
+    task = _get_task_checked(task_name, "write")
     if task.status != "Pending":
         frappe.throw(f"Task {task_name} is not in Pending state")
 
@@ -41,7 +55,7 @@ def cancel_task():
     if not task_name:
         frappe.throw("task_name is required")
 
-    task = frappe.get_doc("WebODM Task", task_name)
+    task = _get_task_checked(task_name, "write")
     if task.status not in ("Pending", "Running"):
         frappe.throw(f"Task {task_name} cannot be cancelled (status: {task.status})")
 
@@ -251,7 +265,10 @@ def upload_images():
     if not project_id:
         frappe.throw("project_id is required")
 
+    # Gate write access: without this, any user could upload images into another
+    # user's project by supplying its id (get_doc alone enforces nothing).
     project = frappe.get_doc("WebODM Project", project_id)
+    project.check_permission("write")
     task_count = frappe.db.count("WebODM Task", {"project": project_id})
     task = frappe.get_doc({
         "doctype": "WebODM Task",
@@ -318,7 +335,7 @@ def get_task_console():
     except (TypeError, ValueError):
         line = 0
 
-    task = frappe.get_doc("WebODM Task", task_name)
+    task = _get_task_checked(task_name, "read")
     result = {"lines": [], "next_line": line, "status": task.status}
 
     node_task_id = task.node_task_id
@@ -354,7 +371,7 @@ def get_task_progress():
     if not task_name:
         frappe.throw("task_name is required")
 
-    task = frappe.get_doc("WebODM Task", task_name)
+    task = _get_task_checked(task_name, "read")
     result = task.as_dict()
 
     node_task_id = task.node_task_id
