@@ -8,7 +8,8 @@
   "preset_name",
   "owner",
   "system",
-  "options"
+  "options",
+  "organization"
  ],
  "fields": [
   {

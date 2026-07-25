@@ -9,7 +9,8 @@
   "description",
   "status",
   "tags",
-  "processing_options"
+  "processing_options",
+  "organization"
  ],
  "fields": [
   {
@@ -44,6 +45,15 @@
    "fieldname": "processing_options",
    "fieldtype": "JSON",
    "label": "Default Processing Options"
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "WebODM Organization",
+   "reqd": 1,
+   "read_only": 1,
+   "in_standard_filter": 1
   }
  ],
  "links": [

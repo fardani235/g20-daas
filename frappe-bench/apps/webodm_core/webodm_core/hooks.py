@@ -160,6 +160,12 @@ has_permission = {
     "WebODM Task": "webodm_core.permissions.has_task_permission",
 }
 
+doc_events = {
+    "WebODM Project": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
+    "WebODM Task": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
+    "WebODM Preset": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
+}
+
 # Scheduled Tasks
 # ---------------
 

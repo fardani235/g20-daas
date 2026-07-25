@@ -25,7 +25,8 @@
   "wkt",
   "orthophoto_extent",
   "dsm_extent",
-  "dtm_extent"
+  "dtm_extent",
+  "organization"
  ],
  "fields": [
   {
@@ -156,6 +157,15 @@
    "fieldtype": "JSON",
    "label": "DTM Extent",
    "read_only": 1
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "WebODM Organization",
+   "reqd": 1,
+   "read_only": 1,
+   "in_standard_filter": 1
   }
  ],
  "modified": "2024-01-01 00:00:00.000000",
