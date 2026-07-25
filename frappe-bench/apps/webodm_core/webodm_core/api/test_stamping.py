@@ -49,3 +49,18 @@ class TestStamping(FrappeTestCase):
             frappe.get_doc({"doctype": "WebODM Project", "title": "Orphan P"}).insert()
         frappe.set_user("Administrator")
         self.assertFalse(frappe.db.exists("WebODM Project", {"title": "Orphan P"}))
+
+    def test_preset_stamped_with_actor_org(self):
+        # Presets are created via the save() endpoint with ignore_permissions=True
+        # (access is gated at the API layer); the stamping hook still runs on the
+        # actor, so a member's non-system preset is stamped with the actor's org.
+        frappe.set_user(self.member)
+        p = frappe.get_doc({"doctype": "WebODM Preset", "preset_name": "Stamped Preset",
+                            "options": "[]"}).insert(ignore_permissions=True)
+        self.assertEqual(p.organization, self.org.name)
+
+    def test_system_preset_has_no_org(self):
+        frappe.set_user("Administrator")
+        p = frappe.get_doc({"doctype": "WebODM Preset", "preset_name": "System Preset",
+                            "system": 1, "options": "[]"}).insert(ignore_permissions=True)
+        self.assertFalse(p.organization)

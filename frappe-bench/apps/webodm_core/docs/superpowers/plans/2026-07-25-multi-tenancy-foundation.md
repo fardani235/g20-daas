@@ -507,11 +507,15 @@ Expected: FAIL — `organization` field / stamping hook do not exist.
 
 - [ ] **Step 3: Add the `organization` field to each DocType JSON**
 
-For `webodm_project.json`: add `"organization"` to the end of `field_order`, and add this field object to `fields`:
+For `webodm_project.json` and `webodm_task.json`: add `"organization"` to the end of `field_order`, and add this field object to `fields` (Project/Task are ALWAYS org-owned → `reqd:1`):
 ```json
 {"fieldname": "organization", "fieldtype": "Link", "label": "Organization", "options": "WebODM Organization", "reqd": 1, "read_only": 1, "in_standard_filter": 1}
 ```
-Do the identical edit (same field object, append to `field_order`) in `webodm_task.json` and `webodm_preset.json`.
+For `webodm_preset.json`: add `"organization"` to `field_order` AND add this field object to `fields` — but `reqd:0`, because system presets (`system=1`) are platform-global and carry a NULL organization (the stamping hook sets `organization=None` for them). A `reqd:1` here would make `bench migrate`'s `seed_system_presets` patch fail with MandatoryError. Isolation is still enforced by the Task 5 permission hook (`system=1 OR organization=<org>`), so a non-system preset with NULL org matches no org and is denied by default:
+```json
+{"fieldname": "organization", "fieldtype": "Link", "label": "Organization", "options": "WebODM Organization", "reqd": 0, "read_only": 1, "in_standard_filter": 1}
+```
+**Both edits require adding the field object to the `fields` array, not just `field_order` — a `field_order` entry with no matching `fields` object is silently ignored by Frappe and no column is created.**
 
 - [ ] **Step 4: Create the stamping hook**
 

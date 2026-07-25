@@ -38,6 +38,15 @@
    "fieldtype": "JSON",
    "label": "Processing Options",
    "reqd": 1
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "WebODM Organization",
+   "reqd": 0,
+   "read_only": 1,
+   "in_standard_filter": 1
   }
  ],
  "modified": "2024-01-01 00:00:00.000000",
