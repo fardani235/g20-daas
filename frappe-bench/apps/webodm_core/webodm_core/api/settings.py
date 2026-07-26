@@ -10,6 +10,11 @@ _ALLOWED = {
 }
 
 
+def _platform_cap(field, default):
+    val = frappe.db.get_single_value("WebODM Platform Settings", field)
+    return val if val else default
+
+
 def _get_or_create_org_settings(org):
     name = frappe.db.get_value(_DOCTYPE, {"organization": org})
     if name:
@@ -44,6 +49,10 @@ def save(**fields):
         parsed = frappe.parse_json(raw)
         if isinstance(parsed, dict):
             fields = {**fields, **parsed}
+
+    cap = _platform_cap("max_file_size_mb", 500)
+    if "max_file_size_mb" in fields and fields["max_file_size_mb"] and int(fields["max_file_size_mb"]) > cap:
+        fields["max_file_size_mb"] = cap
 
     doc = _get_or_create_org_settings(org)
     for k, v in fields.items():
