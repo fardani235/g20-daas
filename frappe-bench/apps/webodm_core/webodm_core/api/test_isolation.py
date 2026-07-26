@@ -67,3 +67,29 @@ class TestIsolation(FrappeTestCase):
         names = {p.name for p in frappe.get_list("WebODM Project", limit_page_length=0)}
         self.assertIn(self.proj_a, names)
         self.assertIn(self.proj_b, names)
+
+    def test_owner_b_cannot_read_task_progress_of_a(self):
+        # A owns a task; B must be denied via the custom endpoint.
+        frappe.set_user(self.member_a)
+        frappe.local.webodm_org_cache = {}
+        task_a = frappe.get_doc({"doctype": "WebODM Task", "project": self.proj_a,
+                                 "title": "A Task", "status": "Pending"}).insert().name
+        frappe.set_user("Administrator")
+        from webodm_core.api import task as task_api
+        frappe.set_user(self.owner_b)
+        frappe.local.webodm_org_cache = {}
+        frappe.local.form_dict = frappe._dict(task_name=task_a)
+        frappe.local.request = frappe._dict(data=b"")
+        with self.assertRaises(frappe.PermissionError):
+            task_api.get_task_progress()
+
+    def test_no_org_user_denied_on_endpoint(self):
+        from webodm_core import tenancy
+        no_org = _user("iso_noorg@example.com")
+        frappe.set_user(no_org)
+        frappe.local.webodm_org_cache = {}
+        frappe.local.form_dict = frappe._dict(project_id=self.proj_a)
+        frappe.local.request = frappe._dict(data=b"", files=None)
+        from webodm_core.api import task as task_api
+        with self.assertRaises(tenancy.OrgContextError):
+            task_api.upload_images()

@@ -256,6 +256,9 @@ def _encode_processing_options(options_raw):
 
 @frappe.whitelist(allow_guest=False)
 def upload_images():
+    from webodm_core import tenancy
+    tenancy.require_org()  # deny-by-default: a user with no org cannot upload
+
     files = frappe.request.files.getlist("files")
     project_id = frappe.form_dict.get("project_id")
     options_raw = frappe.form_dict.get("options")
