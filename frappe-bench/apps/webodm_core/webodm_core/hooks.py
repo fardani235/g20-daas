@@ -148,16 +148,19 @@ app_license = "mit"
 
 # Permissions
 # -----------
-# WebODM Project / Task DocTypes are owned by this app; enforce owner-scoped access.
+# WebODM Project / Task / Preset DocTypes are owned by this app; enforce
+# organization-scoped access (deny-by-default). System presets are shared.
 
 permission_query_conditions = {
     "WebODM Project": "webodm_core.permissions.get_project_permission_query_conditions",
     "WebODM Task": "webodm_core.permissions.get_task_permission_query_conditions",
+    "WebODM Preset": "webodm_core.permissions.get_preset_permission_query_conditions",
 }
 
 has_permission = {
     "WebODM Project": "webodm_core.permissions.has_project_permission",
     "WebODM Task": "webodm_core.permissions.has_task_permission",
+    "WebODM Preset": "webodm_core.permissions.has_preset_permission",
 }
 
 doc_events = {
