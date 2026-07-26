@@ -74,3 +74,11 @@ def has_preset_permission(doc, ptype, user=None):
     if getattr(doc, "system", 0) and int(doc.system) == 1 and ptype == "read":
         return True
     return _org_has_permission(doc, user)
+
+
+def get_settings_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Settings", user or frappe.session.user)
+
+
+def has_settings_permission(doc, ptype, user=None):
+    return _org_has_permission(doc, user or frappe.session.user)
