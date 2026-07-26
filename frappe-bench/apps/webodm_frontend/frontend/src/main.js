@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { FrappeUI } from 'frappe-ui'
 import App from './App.vue'
 import './index.css'
+import { getMyOrganization } from './lib/organization.js'
 
 const routes = [
   {
@@ -72,6 +73,12 @@ const routes = [
     meta: { requiresAuth: true, title: 'Task Console' },
   },
   {
+    path: '/onboarding',
+    name: 'Onboarding',
+    component: () => import('./pages/Onboarding.vue'),
+    meta: { requiresAuth: true, layout: false, title: 'Get Started' },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('./pages/NotFound.vue'),
@@ -101,6 +108,18 @@ router.beforeEach(async (to, from, next) => {
     if (!loggedIn) {
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return
+    }
+    if (to.name !== 'Onboarding') {
+      try {
+        const org = await getMyOrganization()
+        if (!org || !org.organization) {
+          next({ name: 'Onboarding' })
+          return
+        }
+      } catch {
+        next({ name: 'Onboarding' })
+        return
+      }
     }
   }
   next()
