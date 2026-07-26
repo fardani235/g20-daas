@@ -21,7 +21,10 @@ class TestOrganizationAPI(FrappeTestCase):
         for email in ("orgapi_a@example.com", "orgapi_none@example.com",
                       "orgapi_member@example.com", "orgapi_inviter@example.com",
                       "orgapi_invitee@example.com", "orgapi_dupe_a@example.com",
-                      "orgapi_dupe_b@example.com"):
+                      "orgapi_dupe_b@example.com", "orgapi_exp_owner@example.com",
+                      "orgapi_exp_invitee@example.com", "orgapi_reuse_owner@example.com",
+                      "orgapi_reuse_a@example.com", "orgapi_reuse_b@example.com",
+                      "orgapi_hp_owner@example.com", "orgapi_hp_invitee@example.com"):
             for m in frappe.get_all("WebODM Org Membership", filters={"user": email}, pluck="name"):
                 frappe.delete_doc("WebODM Org Membership", m, ignore_permissions=True, force=True)
             for i in frappe.get_all("WebODM Org Invitation", filters={"email": email}, pluck="name"):
@@ -99,3 +102,52 @@ class TestOrganizationAPI(FrappeTestCase):
         frappe.local.webodm_org_cache = {}
         with self.assertRaises(frappe.ValidationError):
             org_api.accept_invitation(token)
+
+    def test_accept_expired_invitation_fails(self):
+        from webodm_core.api import organization as org_api
+        owner = _user("orgapi_exp_owner@example.com")
+        frappe.set_user(owner); frappe.local.webodm_org_cache = {}
+        org_api.create_organization("Expired Invite Org")
+        invitee = _user("orgapi_exp_invitee@example.com")
+        token = org_api.invite_member("orgapi_exp_invitee@example.com")["token"]
+        # Force the invitation into the past so the expiry guard trips.
+        inv_name = frappe.db.get_value("WebODM Org Invitation", {"token": token})
+        frappe.db.set_value("WebODM Org Invitation", inv_name, "expires_on", "2020-01-01 00:00:00")
+        frappe.set_user(invitee); frappe.local.webodm_org_cache = {}
+        with self.assertRaises(frappe.exceptions.ValidationError):
+            org_api.accept_invitation(token)
+
+    def test_token_cannot_be_reused_after_accept(self):
+        from webodm_core.api import organization as org_api
+        owner = _user("orgapi_reuse_owner@example.com")
+        frappe.set_user(owner); frappe.local.webodm_org_cache = {}
+        org_api.create_organization("Reuse Token Org")
+        a = _user("orgapi_reuse_a@example.com")
+        token = org_api.invite_member("orgapi_reuse_a@example.com")["token"]
+        # First orgless invitee accepts successfully.
+        frappe.set_user(a); frappe.local.webodm_org_cache = {}
+        accepted = org_api.accept_invitation(token)
+        self.assertEqual(accepted["role"], "Member")
+        # A second orgless user replaying the same token must be rejected
+        # because the invitation status is now Accepted, not Pending.
+        b = _user("orgapi_reuse_b@example.com")
+        frappe.set_user(b); frappe.local.webodm_org_cache = {}
+        with self.assertRaises(frappe.exceptions.ValidationError):
+            org_api.accept_invitation(token)
+
+    def test_accept_creates_membership_in_inviter_org(self):
+        from webodm_core.api import organization as org_api
+        owner = _user("orgapi_hp_owner@example.com")
+        frappe.set_user(owner); frappe.local.webodm_org_cache = {}
+        org = org_api.create_organization("Happy Path Org")["organization"]
+        invitee = _user("orgapi_hp_invitee@example.com")
+        token = org_api.invite_member("orgapi_hp_invitee@example.com")["token"]
+        frappe.set_user(invitee); frappe.local.webodm_org_cache = {}
+        accepted = org_api.accept_invitation(token)
+        # Invitee joins the inviter's org, not some other org.
+        self.assertEqual(accepted["organization"], org)
+        row = frappe.db.get_value("WebODM Org Membership",
+                                  {"user": "orgapi_hp_invitee@example.com", "organization": org},
+                                  ["role"], as_dict=True)
+        self.assertIsNotNone(row)
+        self.assertEqual(row.role, "Member")
