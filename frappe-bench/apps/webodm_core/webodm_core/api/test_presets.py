@@ -81,8 +81,9 @@ class TestPresets(unittest.TestCase):
         self.assertEqual(listed["Test User Preset"]["options"], opts)
 
     def test_non_admin_cannot_create_system_preset(self):
-        # Administrator is admin; simulate a non-admin by role check patch.
-        with patch.object(presets, "_is_admin", return_value=False):
+        # Administrator is admin; simulate a non-admin by patching the platform
+        # admin check the API now uses (tenancy.is_platform_admin).
+        with patch.object(presets.tenancy, "is_platform_admin", return_value=False):
             with self.assertRaises(frappe.PermissionError):
                 presets.save(preset_name="Test System Preset", options="[]", system=1)
 
@@ -143,6 +144,76 @@ class TestPresetOrgIsolation(FrappeTestCase):
         frappe.local.webodm_org_cache = {}
         names = {x.name for x in frappe.get_list("WebODM Preset", limit_page_length=0)}
         self.assertIn(sys_name, names)
+
+
+class TestPresetOrgSharingAPI(FrappeTestCase):
+    """API-level (presets.save / list_presets / delete) org-scoping behavior.
+
+    Org A has two members who must SHARE presets through the API; org C's member
+    is fully isolated. FrappeTestCase rolls the whole class transaction back at
+    teardown, so fixtures are inserted without committing.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        frappe.local.webodm_org_cache = {}
+        cls.org_a = frappe.get_doc({"doctype": "WebODM Organization", "organization_name": "Preset Share A"}).insert(ignore_permissions=True).name
+        cls.org_c = frappe.get_doc({"doctype": "WebODM Organization", "organization_name": "Preset Share C"}).insert(ignore_permissions=True).name
+        cls.m1 = _puser("preset_share_m1@example.com")
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.m1, "organization": cls.org_a, "role": "Owner"}).insert(ignore_permissions=True)
+        cls.m2 = _puser("preset_share_m2@example.com")
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.m2, "organization": cls.org_a, "role": "Member"}).insert(ignore_permissions=True)
+        cls.m3 = _puser("preset_share_m3@example.com")
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.m3, "organization": cls.org_c, "role": "Owner"}).insert(ignore_permissions=True)
+
+    def setUp(self):
+        frappe.local.webodm_org_cache = {}
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+
+    def _act(self, user):
+        frappe.set_user(user)
+        frappe.local.webodm_org_cache = {}
+
+    def test_org_members_share_presets_via_api(self):
+        # m1 creates a preset; m2 (same org) must see it through the API.
+        self._act(self.m1)
+        saved = presets.save(preset_name="Shared By M1", options=json.dumps([{"name": "dsm", "value": True}]))
+        self._act(self.m2)
+        listed = {p["preset_name"]: p for p in presets.list_presets()}
+        self.assertIn("Shared By M1", listed)
+        self.assertEqual(listed["Shared By M1"]["name"], saved["name"])
+
+    def test_different_org_cannot_see_edit_or_delete(self):
+        # m1 (org A) creates; m3 (org C) must not see it and cannot edit/delete it.
+        self._act(self.m1)
+        saved = presets.save(preset_name="Org A Only", options="[]")
+        target = saved["name"]
+        self._act(self.m3)
+        names = {p["preset_name"] for p in presets.list_presets()}
+        self.assertNotIn("Org A Only", names)
+        with self.assertRaises(frappe.PermissionError):
+            presets.save(preset_name="Hijack", options="[]", name=target)
+        with self.assertRaises(frappe.PermissionError):
+            presets.delete(target)
+        # The preset must survive the rejected cross-org delete/edit.
+        self.assertTrue(frappe.db.exists("WebODM Preset", target))
+
+    def test_system_presets_appear_in_every_org_list(self):
+        sys_name = frappe.get_doc({"doctype": "WebODM Preset", "preset_name": "Sys For All",
+                                   "system": 1, "options": "[]"}).insert(ignore_permissions=True).name
+        for member in (self.m1, self.m3):
+            self._act(member)
+            names = {p["name"] for p in presets.list_presets()}
+            self.assertIn(sys_name, names)
+
+    def test_non_admin_cannot_save_system_preset(self):
+        self._act(self.m1)
+        with self.assertRaises(frappe.PermissionError):
+            presets.save(preset_name="Illicit System", options="[]", system=1)
 
 
 if __name__ == "__main__":

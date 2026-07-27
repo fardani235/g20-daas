@@ -74,6 +74,8 @@ def accept_invitation(token):
         frappe.throw("Invitation is no longer valid", frappe.ValidationError)
     if inv.expires_on and get_datetime(inv.expires_on) < now_datetime():
         frappe.throw("Invitation has expired", frappe.ValidationError)
+    if (inv.email or "").strip().lower() != (user or "").strip().lower():
+        frappe.throw("This invitation was issued to a different email address", frappe.ValidationError)
     frappe.get_doc({"doctype": "WebODM Org Membership", "user": user,
                     "organization": inv.organization, "role": "Member"}).insert(ignore_permissions=True)
     inv.status = "Accepted"

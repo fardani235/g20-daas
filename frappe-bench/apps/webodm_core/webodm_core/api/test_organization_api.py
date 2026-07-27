@@ -24,7 +24,9 @@ class TestOrganizationAPI(FrappeTestCase):
                       "orgapi_dupe_b@example.com", "orgapi_exp_owner@example.com",
                       "orgapi_exp_invitee@example.com", "orgapi_reuse_owner@example.com",
                       "orgapi_reuse_a@example.com", "orgapi_reuse_b@example.com",
-                      "orgapi_hp_owner@example.com", "orgapi_hp_invitee@example.com"):
+                      "orgapi_hp_owner@example.com", "orgapi_hp_invitee@example.com",
+                      "orgapi_mm_owner@example.com", "orgapi_mm_invited@example.com",
+                      "orgapi_mm_wrong@example.com"):
             for m in frappe.get_all("WebODM Org Membership", filters={"user": email}, pluck="name"):
                 frappe.delete_doc("WebODM Org Membership", m, ignore_permissions=True, force=True)
             for i in frappe.get_all("WebODM Org Invitation", filters={"email": email}, pluck="name"):
@@ -151,3 +153,23 @@ class TestOrganizationAPI(FrappeTestCase):
                                   ["role"], as_dict=True)
         self.assertIsNotNone(row)
         self.assertEqual(row.role, "Member")
+
+    def test_accept_rejected_for_wrong_email(self):
+        # An invitation is bound to a specific email; a different (orgless) user
+        # replaying the token must be rejected, with no side effects.
+        from webodm_core.api import organization as org_api
+        owner = _user("orgapi_mm_owner@example.com")
+        frappe.set_user(owner); frappe.local.webodm_org_cache = {}
+        org_api.create_organization("Mismatch Guard Org")
+        # Invite X, but a different orgless user Y attempts to accept.
+        _user("orgapi_mm_invited@example.com")
+        token = org_api.invite_member("orgapi_mm_invited@example.com")["token"]
+        inv_name = frappe.db.get_value("WebODM Org Invitation", {"token": token})
+        wrong = _user("orgapi_mm_wrong@example.com")
+        frappe.set_user(wrong); frappe.local.webodm_org_cache = {}
+        with self.assertRaises(frappe.exceptions.ValidationError):
+            org_api.accept_invitation(token)
+        # (a) No membership created for the mismatched user.
+        self.assertFalse(frappe.db.exists("WebODM Org Membership", {"user": wrong}))
+        # (b) Invitation must still be Pending (not flipped to Accepted).
+        self.assertEqual(frappe.db.get_value("WebODM Org Invitation", inv_name, "status"), "Pending")
