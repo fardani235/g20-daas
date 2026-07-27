@@ -31,13 +31,30 @@ def _make_user(email):
     return email
 
 
+def _org(name):
+    return frappe.get_doc({"doctype": "WebODM Organization", "organization_name": name}).insert(ignore_permissions=True).name
+
+
+def _join(user, org, role="Owner"):
+    frappe.get_doc({"doctype": "WebODM Org Membership", "user": user,
+                    "organization": org, "role": role}).insert(ignore_permissions=True)
+
+
 class TestTaskAccessControl(FrappeTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.owner = _make_user("owner_a@example.com")
         cls.other = _make_user("intruder_b@example.com")
+        # Org-scoping: put owner and intruder in SEPARATE orgs so the intruder is
+        # a genuine cross-tenant outsider. This preserves the original IDOR intent
+        # (a non-owner in a different org must be denied) under the new tenancy model.
+        cls.org_owner = _org("TaskPerm Owner Org")
+        cls.org_other = _org("TaskPerm Other Org")
+        _join(cls.owner, cls.org_owner, "Owner")
+        _join(cls.other, cls.org_other, "Owner")
 
+        frappe.local.webodm_org_cache = {}
         frappe.set_user(cls.owner)
         project = frappe.get_doc({
             "doctype": "WebODM Project",
@@ -52,6 +69,7 @@ class TestTaskAccessControl(FrappeTestCase):
         }).insert()
         cls.task_name = task.name
         frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
 
     @classmethod
     def tearDownClass(cls):
@@ -60,8 +78,12 @@ class TestTaskAccessControl(FrappeTestCase):
         frappe.delete_doc("WebODM Project", cls.project_name, force=True, ignore_permissions=True)
         super().tearDownClass()
 
+    def setUp(self):
+        frappe.local.webodm_org_cache = {}
+
     def tearDown(self):
         frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
 
     def _post(self, **data):
         frappe.local.form_dict = frappe._dict(data)
