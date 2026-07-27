@@ -123,7 +123,13 @@ class TestPresetOrgIsolation(FrappeTestCase):
         # Use frappe.get_list (applies permission_query_conditions), NOT get_all
         # which hardcodes ignore_permissions and would bypass the org scope.
         frappe.set_user(self.a)
+        frappe.local.webodm_org_cache = {}
         p = frappe.get_doc({"doctype": "WebODM Preset", "preset_name": "A Secret Preset", "options": "[]"}).insert()
+        # Positive control: org A's OWN user must see the preset via the same
+        # get_list query. This anchors the negative assertion below so it can't
+        # pass trivially (e.g. an empty result set for an unrelated reason).
+        own_names = {x.name for x in frappe.get_list("WebODM Preset", limit_page_length=0)}
+        self.assertIn(p.name, own_names)
         frappe.set_user(self.b)
         frappe.local.webodm_org_cache = {}
         names = {x.name for x in frappe.get_list("WebODM Preset", limit_page_length=0)}
