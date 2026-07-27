@@ -217,8 +217,8 @@ def _maybe_autostart(task_name: str):
     upload — the task and its images are already saved and can be started
     manually. Log and degrade instead of raising."""
     try:
-        settings = frappe.get_single("WebODM Settings")
-        if not settings.auto_start_processing:
+        from webodm_core.api import settings as settings_api
+        if not settings_api.get().get("auto_start_processing"):
             return
         frappe.enqueue(
             "webodm_core.webodm_core.processing.task_runner.process_task",
@@ -256,6 +256,9 @@ def _encode_processing_options(options_raw):
 
 @frappe.whitelist(allow_guest=False)
 def upload_images():
+    from webodm_core import tenancy
+    tenancy.require_org()  # deny-by-default: a user with no org cannot upload
+
     files = frappe.request.files.getlist("files")
     project_id = frappe.form_dict.get("project_id")
     options_raw = frappe.form_dict.get("options")

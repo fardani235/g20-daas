@@ -1,11 +1,7 @@
 import frappe
+from webodm_core import tenancy
 
 _DOCTYPE = "WebODM Preset"
-
-
-def _is_admin() -> bool:
-    roles = set(frappe.get_roles(frappe.session.user))
-    return bool(roles & {"System Manager", "Administrator"})
 
 
 def _node_client():
@@ -66,17 +62,19 @@ def _encode_options(options) -> str:
 
 @frappe.whitelist(allow_guest=False)
 def list_presets():
-    """Presets visible to the session user: their own + system presets."""
-    user = frappe.session.user
+    """Presets visible to the caller: their organization's presets + system presets."""
+    org = tenancy.get_current_org()
+    filters_system = [["system", "=", 1]]
     rows = frappe.get_all(
-        _DOCTYPE,
-        filters=[["system", "=", 1]],
-        fields=["name", "preset_name", "options", "system", "owner"],
-    ) + frappe.get_all(
-        _DOCTYPE,
-        filters=[["owner", "=", user], ["system", "=", 0]],
-        fields=["name", "preset_name", "options", "system", "owner"],
+        _DOCTYPE, filters=filters_system,
+        fields=["name", "preset_name", "options", "system", "owner", "organization"],
     )
+    if org:
+        rows += frappe.get_all(
+            _DOCTYPE,
+            filters=[["organization", "=", org], ["system", "=", 0]],
+            fields=["name", "preset_name", "options", "system", "owner", "organization"],
+        )
     for r in rows:
         r["options"] = _decode_options(r.get("options"))
     return rows
@@ -88,15 +86,17 @@ def save(preset_name, options, system=0, name=None):
     system = int(system or 0)
     user = frappe.session.user
 
-    if system and not _is_admin():
+    if system and not tenancy.is_platform_admin():
         frappe.throw("Only administrators can manage system presets", frappe.PermissionError)
+    if not system:
+        org = tenancy.require_org()  # deny-by-default for orgless
 
     if name and frappe.db.exists(_DOCTYPE, name):
         doc = frappe.get_doc(_DOCTYPE, name)
-        if doc.system and not _is_admin():
+        if doc.system and not tenancy.is_platform_admin():
             frappe.throw("Only administrators can edit system presets", frappe.PermissionError)
-        if not doc.system and doc.owner != user and not _is_admin():
-            frappe.throw("You can only edit your own presets", frappe.PermissionError)
+        if not doc.system and not tenancy.is_platform_admin() and doc.organization != tenancy.get_current_org():
+            frappe.throw("You can only edit your organization's presets", frappe.PermissionError)
         doc.preset_name = preset_name
         doc.options = _encode_options(options)
         doc.system = system
@@ -109,21 +109,20 @@ def save(preset_name, options, system=0, name=None):
             "system": system,
             "options": _encode_options(options),
         })
-        doc.insert(ignore_permissions=True)
+        doc.insert(ignore_permissions=True)  # stamping hook sets organization (None for system)
 
     return {"name": doc.name, "preset_name": doc.preset_name}
 
 
 @frappe.whitelist(allow_guest=False)
 def delete(name):
-    """Delete a preset the user owns; admins may delete any."""
+    """Delete a preset in the caller's organization; admins may delete any; system presets admin-only."""
     if not frappe.db.exists(_DOCTYPE, name):
         return {"ok": True}
     doc = frappe.get_doc(_DOCTYPE, name)
-    user = frappe.session.user
-    if doc.system and not _is_admin():
+    if doc.system and not tenancy.is_platform_admin():
         frappe.throw("Only administrators can delete system presets", frappe.PermissionError)
-    if not doc.system and doc.owner != user and not _is_admin():
-        frappe.throw("You can only delete your own presets", frappe.PermissionError)
+    if not doc.system and not tenancy.is_platform_admin() and doc.organization != tenancy.get_current_org():
+        frappe.throw("You can only delete your organization's presets", frappe.PermissionError)
     frappe.delete_doc(_DOCTYPE, name, ignore_permissions=True)
     return {"ok": True}

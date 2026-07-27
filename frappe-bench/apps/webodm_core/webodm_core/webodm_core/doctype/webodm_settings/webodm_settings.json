@@ -1,9 +1,11 @@
 {
  "actions": [],
+ "autoname": "field:organization",
  "creation": "2024-01-01 00:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "organization",
   "default_basemap",
   "enable_public_sharing",
   "section_limits",
@@ -17,6 +19,15 @@
   "email_notifications"
  ],
  "fields": [
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "WebODM Organization",
+   "reqd": 1,
+   "read_only": 1,
+   "unique": 1
+  },
   {
    "fieldname": "default_basemap",
    "fieldtype": "Link",
@@ -80,7 +91,7 @@
    "label": "Email Notifications"
   }
  ],
- "issingle": 1,
+ "issingle": 0,
  "modified": "2024-01-01 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "WebODM Core",
@@ -109,6 +120,12 @@
    "report": 1,
    "role": "Administrator",
    "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "WebODM User",
    "write": 1
   }
  ],
