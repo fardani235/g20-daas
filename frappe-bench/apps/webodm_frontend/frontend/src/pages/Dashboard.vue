@@ -1,109 +1,59 @@
 <template>
-  <div class="p-6 space-y-6 bg-gray-50 dark:bg-gray-900 min-h-full">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">Dashboard</h1>
-    </div>
+  <div class="space-y-6">
+    <PageHeader title="Dashboard" description="Processing activity across your organization." />
 
-    <div v-if="loading" class="text-center py-12">
-      <p class="text-gray-500 dark:text-gray-400">Loading stats...</p>
-    </div>
+    <p v-if="loading" class="py-12 text-center text-muted-foreground">Loading stats…</p>
 
-    <div v-else-if="error" class="text-center py-12">
-      <p class="text-red-600 dark:text-red-400">{{ error }}</p>
-    </div>
+    <Alert v-else-if="error" variant="destructive" :title="error" />
 
     <template v-else>
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700 shadow-sm">
+      <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <div
+          v-for="card in statCards"
+          :key="card.label"
+          class="rounded-lg border border-border bg-card p-4"
+        >
           <div class="flex items-center gap-3">
-            <div class="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-              <FeatherIcon name="folder" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <div class="rounded-md bg-muted p-2">
+              <component :is="card.icon" class="size-5" :class="card.tone" />
             </div>
-            <div>
-              <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ stats.totalProjects }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Projects</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700 shadow-sm">
-          <div class="flex items-center gap-3">
-            <div class="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
-              <FeatherIcon name="layers" class="h-5 w-5 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ stats.totalTasks }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Total Tasks</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700 shadow-sm">
-          <div class="flex items-center gap-3">
-            <div class="p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
-              <FeatherIcon name="check-circle" class="h-5 w-5 text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{ stats.completed }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Completed</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700 shadow-sm">
-          <div class="flex items-center gap-3">
-            <div class="p-2 rounded-lg bg-red-100 dark:bg-red-900/50">
-              <FeatherIcon name="x-circle" class="h-5 w-5 text-red-600 dark:text-red-400" />
-            </div>
-            <div>
-              <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{ stats.failed }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Failed</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700 shadow-sm">
-          <div class="flex items-center gap-3">
-            <div class="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-              <FeatherIcon name="loader" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{ stats.running }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Running</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700 shadow-sm">
-          <div class="flex items-center gap-3">
-            <div class="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/50">
-              <FeatherIcon name="clock" class="h-5 w-5 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div>
-              <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">{{ stats.pending }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Pending</p>
+            <div class="min-w-0">
+              <p class="text-2xl font-semibold tracking-tight text-card-foreground">
+                {{ card.value }}
+              </p>
+              <p class="text-xs text-muted-foreground">{{ card.label }}</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div v-if="recentProjects.length > 0">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Recent Projects</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div v-for="project in recentProjects" :key="project.name" class="p-3 bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700 shadow-sm cursor-pointer hover:shadow-md transition-shadow" @click="openProject(project.name)">
+      <section v-if="recentProjects.length">
+        <h2 class="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          Recent projects
+        </h2>
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <button
+            v-for="project in recentProjects"
+            :key="project.name"
+            type="button"
+            class="rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            @click="openProject(project.name)"
+          >
             <div class="flex items-center gap-3">
-              <div class="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-700">
-                <FeatherIcon name="folder" class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+              <div class="rounded-md bg-muted p-1.5">
+                <Folder class="size-4 text-muted-foreground" />
               </div>
               <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ project.title || project.name }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ formatDate(project.creation) }}</p>
+                <p class="truncate text-sm font-medium text-card-foreground">
+                  {{ project.title || project.name }}
+                </p>
+                <p class="text-xs text-muted-foreground">{{ formatDate(project.creation) }}</p>
               </div>
-              <Badge :theme="statusTheme(project.status)" size="sm">{{ project.status }}</Badge>
+              <Badge :variant="statusVariant(project.status)">{{ project.status }}</Badge>
             </div>
-          </div>
+          </button>
         </div>
-      </div>
+      </section>
     </template>
   </div>
 </template>
@@ -111,7 +61,17 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Badge, FeatherIcon } from 'frappe-ui'
+import {
+  CircleCheck,
+  CircleX,
+  Clock,
+  Folder,
+  Layers,
+  Loader,
+} from 'lucide-vue-next'
+import { Alert, Badge } from '@/components/ui'
+import PageHeader from '@/components/PageHeader.vue'
+import { statusVariant } from '@/lib/status'
 
 const router = useRouter()
 const loading = ref(true)
@@ -132,10 +92,14 @@ const recentProjects = computed(() =>
   [...projects.value].sort((a, b) => new Date(b.modified || b.creation) - new Date(a.modified || a.creation)).slice(0, 5)
 )
 
-const statusTheme = (status) => {
-  const themes = { 'Planned': 'blue', 'In Progress': 'orange', 'Completed': 'green', 'Failed': 'red', 'Cancelled': 'gray' }
-  return themes[status] || 'gray'
-}
+const statCards = computed(() => [
+  { label: 'Projects', value: stats.totalProjects, icon: Folder, tone: 'text-primary' },
+  { label: 'Total Tasks', value: stats.totalTasks, icon: Layers, tone: 'text-muted-foreground' },
+  { label: 'Completed', value: stats.completed, icon: CircleCheck, tone: 'text-success' },
+  { label: 'Failed', value: stats.failed, icon: CircleX, tone: 'text-destructive' },
+  { label: 'Running', value: stats.running, icon: Loader, tone: 'text-primary' },
+  { label: 'Pending', value: stats.pending, icon: Clock, tone: 'text-warning' },
+])
 
 const formatDate = (d) => {
   if (!d) return ''
