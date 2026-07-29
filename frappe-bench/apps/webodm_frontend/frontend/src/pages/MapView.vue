@@ -1,143 +1,166 @@
 <template>
-  <div class="h-screen flex" @mousemove="onResize" @mouseup="stopResize">
-    <div class="bg-white dark:bg-gray-900 border-r dark:border-gray-700 overflow-y-auto flex-shrink-0" :style="{ width: sidebarWidth + 'px' }">
-      <div class="p-4 border-b dark:border-gray-700">
-        <Button variant="outline" size="sm" @click="$router.push('/projects')">
-          &larr; Back
-        </Button>
-        <h2 class="text-lg font-semibold mt-2 text-gray-900 dark:text-gray-100">{{ project?.title || project?.name }}</h2>
+  <div class="flex h-full" @mousemove="onResize" @mouseup="stopResize">
+    <div class="bg-card border-r border-border overflow-y-auto flex-shrink-0" :style="{ width: sidebarWidth + 'px' }">
+      <div class="border-b border-border p-4">
+        <h2 class="text-base font-medium text-foreground">
+          {{ project?.title || project?.name }}
+        </h2>
       </div>
       <div class="p-4 space-y-2">
-        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tasks</h3>
-        <div v-if="tasks.length === 0" class="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
+        <h3 class="text-sm font-medium text-muted-foreground uppercase tracking-wide">Tasks</h3>
+        <div v-if="tasks.length === 0" class="text-sm text-muted-foreground py-4 text-center">
           No tasks yet. Upload images to start processing.
         </div>
         <div v-for="task in tasks" :key="task.name"
-          class="p-3 rounded-lg border dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-900 dark:text-gray-100"
-          :class="{ 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30': selectedTask === task.name }"
+          class="p-3 rounded-lg border border-border cursor-pointer hover:bg-accent text-foreground"
+          :class="{ 'border-primary bg-primary/10': selectedTask === task.name }"
           @click="selectTask(task)"
         >
           <div class="flex items-start justify-between">
             <div class="font-medium text-sm">{{ task.title || task.name }}</div>
-            <button
-              class="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors p-0.5 flex-shrink-0 ml-2"
-              @click.stop="confirmDeleteTask(task)"
+            <Button
+              variant="ghost"
+              size="icon"
+              class="size-7 flex-shrink-0 text-muted-foreground hover:text-destructive"
               title="Delete task"
+              @click.stop="confirmDeleteTask(task)"
             >
-              <FeatherIcon name="trash-2" class="h-3.5 w-3.5" />
-            </button>
+              <Trash2 />
+              <span class="sr-only">Delete task</span>
+            </Button>
           </div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-2">
-            <Badge :theme="statusTheme(task.status)" size="sm">{{ task.status }}</Badge>
+          <div class="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+            <Badge :variant="statusVariant(task.status)">{{ task.status }}</Badge>
             <span v-if="task.images?.length">📷 {{ task.images.length }}</span>
             <span v-if="task.progress > 0">{{ task.progress }}%</span>
           </div>
-          <div v-if="task.progress > 0 && task.status !== 'Completed'" class="mt-2 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div class="h-full bg-blue-500 rounded-full transition-all" :style="{ width: task.progress + '%' }"></div>
+          <div v-if="task.progress > 0 && task.status !== 'Completed'" class="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+            <div class="h-full bg-primary rounded-full transition-all" :style="{ width: task.progress + '%' }"></div>
           </div>
           <div v-if="selectedTask === task.name">
-            <div v-if="task.images?.length" class="mt-2 pt-2 border-t dark:border-gray-700">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{{ task.images.length }} image(s)</p>
+            <div v-if="task.images?.length" class="mt-2 pt-2 border-t border-border">
+              <p class="text-xs font-medium text-muted-foreground mb-2">{{ task.images.length }} image(s)</p>
               <div class="flex flex-wrap gap-1">
-                <div v-for="img in task.images.slice(0, 9)" :key="img.name" class="w-[72px] h-[72px] rounded overflow-hidden bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+                <div v-for="img in task.images.slice(0, 9)" :key="img.name" class="w-[72px] h-[72px] rounded overflow-hidden bg-muted flex-shrink-0">
                   <img :src="img.image" :alt="img.filename" class="w-full h-full object-cover" @error="e => e.target.style.display = 'none'" />
                 </div>
-                <div v-if="task.images.length > 9" class="w-[72px] h-[72px] rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 font-medium flex-shrink-0">
+                <div v-if="task.images.length > 9" class="w-[72px] h-[72px] rounded bg-muted flex items-center justify-center text-xs text-muted-foreground font-medium flex-shrink-0">
                   +{{ task.images.length - 9 }}
                 </div>
               </div>
             </div>
-            <div class="flex flex-wrap gap-1.5 mt-2 pt-2 border-t dark:border-gray-700">
-              <Button v-if="task.status === 'Pending'" variant="solid" size="sm" theme="green" @click.stop="startProcessing(task)">
-                <template #prefix><FeatherIcon name="play" class="h-3.5 w-3.5" /></template>
+            <div class="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border">
+              <Button
+                v-if="task.status === 'Pending'"
+                variant="success"
+                size="sm"
+                @click.stop="startProcessing(task)"
+              >
+                <Play />
                 Start
               </Button>
-              <Button v-if="task.status === 'Running' || task.status === 'Pending'" variant="outline" size="sm" theme="red" @click.stop="cancelTask(task)">
-                <template #prefix><FeatherIcon name="x-circle" class="h-3.5 w-3.5" /></template>
+              <Button
+                v-if="task.status === 'Running' || task.status === 'Pending'"
+                variant="outline"
+                size="sm"
+                class="text-destructive"
+                @click.stop="cancelTask(task)"
+              >
+                <CircleX />
                 Cancel
               </Button>
-              <Button variant="outline" size="sm" theme="gray" @click.stop="openTaskConsole(task)">
-                <template #prefix><FeatherIcon name="terminal" class="h-3.5 w-3.5" /></template>
+              <Button variant="outline" size="sm" @click.stop="openTaskConsole(task)">
+                <Terminal />
                 Console
               </Button>
-              <Button variant="outline" size="sm" theme="gray" @click.stop="openTaskModel(task)">
-                <template #prefix><FeatherIcon name="box" class="h-3.5 w-3.5" /></template>
+              <Button variant="outline" size="sm" @click.stop="openTaskModel(task)">
+                <Box />
                 3D
               </Button>
             </div>
 
           </div>
         </div>
-        <Button variant="solid" theme="blue" class="w-full mt-4" @click="openUpload">
-          <template #prefix><FeatherIcon name="upload-cloud" class="h-4 w-4" /></template>
+        <Button class="mt-4 w-full" @click="openUpload">
+          <CloudUpload />
           Add Task
         </Button>
       </div>
     </div>
 
     <div
-      class="w-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors"
+      class="w-1.5 bg-border hover:bg-primary/60 cursor-col-resize flex-shrink-0 transition-colors"
       @mousedown.prevent="startResize"
     ></div>
-    <div class="flex-1 relative bg-gray-50 dark:bg-gray-900">
+    <div class="flex-1 relative bg-background">
       <div id="map" class="h-full w-full"></div>
-      <div class="absolute top-4 left-4 z-[1000] bg-white dark:bg-gray-800 rounded-lg shadow-md border dark:border-gray-700 p-2 flex items-center gap-2">
-        <Button size="sm" :variant="measure.state.mode === 'distance' ? 'solid' : 'outline'" @click="startMeasure('distance')" title="Measure distance">
-          <template #prefix><FeatherIcon name="minus" class="h-3.5 w-3.5" /></template>
+      <div class="absolute top-4 left-4 z-[1000] bg-card rounded-lg shadow-md border border-border p-2 flex items-center gap-2">
+        <Button
+          size="sm"
+          :variant="measure.state.mode === 'distance' ? 'default' : 'outline'"
+          title="Measure distance"
+          @click="startMeasure('distance')"
+        >
+          <Minus />
           Distance
         </Button>
-        <Button size="sm" :variant="measure.state.mode === 'area' ? 'solid' : 'outline'" @click="startMeasure('area')" title="Measure area">
-          <template #prefix><FeatherIcon name="square" class="h-3.5 w-3.5" /></template>
+        <Button
+          size="sm"
+          :variant="measure.state.mode === 'area' ? 'default' : 'outline'"
+          title="Measure area"
+          @click="startMeasure('area')"
+        >
+          <Square />
           Area
         </Button>
         <Button
           size="sm"
-          :variant="measure.state.mode === 'volume' ? 'solid' : 'outline'"
+          :variant="measure.state.mode === 'volume' ? 'default' : 'outline'"
           :disabled="!hasDsm"
-          @click="startMeasure('volume')"
           :title="hasDsm ? 'Measure volume (needs DSM)' : 'Volume requires a DSM'"
+          @click="startMeasure('volume')"
         >
-          <template #prefix><FeatherIcon name="box" class="h-3.5 w-3.5" /></template>
+          <Box />
           Volume
         </Button>
         <Button
           v-if="measure.state.drawing"
           size="sm"
-          variant="solid"
-          theme="green"
-          @click="finishMeasure"
+          variant="success"
           title="Finish measurement"
+          @click="finishMeasure"
         >
-          <template #prefix><FeatherIcon name="check" class="h-3.5 w-3.5" /></template>
+          <Check />
           Finish
         </Button>
-        <Button size="sm" variant="ghost" @click="clearMeasure" title="Clear measurement">
-          <FeatherIcon name="trash-2" class="h-3.5 w-3.5" />
+        <Button size="sm" variant="ghost" title="Clear measurement" @click="clearMeasure">
+          <Trash2 />
+          <span class="sr-only">Clear measurement</span>
         </Button>
-        <span v-if="measure.state.drawing" class="text-xs text-gray-500 dark:text-gray-400 pl-1">
+        <span v-if="measure.state.drawing" class="text-xs text-muted-foreground pl-1">
           Click points, then Finish (or click the first point).
         </span>
-        <span v-else-if="measure.state.formatted" class="text-sm font-medium text-gray-700 dark:text-gray-200 pl-1">
+        <span v-else-if="measure.state.formatted" class="text-sm font-medium text-foreground pl-1">
           {{ measure.state.formatted }}
         </span>
       </div>
       <div class="absolute top-4 right-4 z-[1000] space-y-2 flex flex-col items-end">
         <Button variant="outline" size="sm" @click="zoomToFit">Zoom To Fit</Button>
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md border dark:border-gray-700 w-[200px] text-sm">
+        <div class="bg-card rounded-lg shadow-md border border-border w-[200px] text-sm">
           <!-- Basemap -->
-          <div class="p-3 border-b dark:border-gray-700">
-            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Basemap</p>
-            <label v-for="b in BASEMAPS" :key="b.id" class="flex items-center gap-2 text-gray-700 dark:text-gray-300 py-0.5 cursor-pointer">
+          <div class="p-3 border-b border-border">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Basemap</p>
+            <label v-for="b in BASEMAPS" :key="b.id" class="flex items-center gap-2 text-foreground py-0.5 cursor-pointer">
               <input type="radio" name="basemap" :value="b.id" :checked="currentBasemap === b.id" @change="setBasemap(b.id)" />
               {{ b.label }}
             </label>
           </div>
           <!-- Layers + opacity -->
-          <div v-if="overlays.length" class="p-3 border-b dark:border-gray-700">
-            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Layers</p>
+          <div v-if="overlays.length" class="p-3 border-b border-border">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Layers</p>
             <div v-for="o in overlays" :key="o.key" class="py-1">
-              <label class="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer">
-                <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded dark:bg-gray-700" />
+              <label class="flex items-center gap-2 text-foreground cursor-pointer">
+                <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded" />
                 {{ o.label }}
               </label>
               <input
@@ -151,19 +174,19 @@
           </div>
           <!-- Show toggles -->
           <div class="p-3">
-            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Show</p>
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Show</p>
             <label
               class="flex items-center gap-2 py-0.5"
-              :class="hasGps ? 'text-gray-700 dark:text-gray-300 cursor-pointer' : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'"
+              :class="hasGps ? 'text-foreground cursor-pointer' : 'text-muted-foreground cursor-not-allowed'"
             >
-              <input type="checkbox" :checked="showMarkers" :disabled="!hasGps" @change="toggleMarkers" class="rounded dark:bg-gray-700" />
+              <input type="checkbox" :checked="showMarkers" :disabled="!hasGps" @change="toggleMarkers" class="rounded" />
               Image markers
             </label>
             <label
               class="flex items-center gap-2 py-0.5"
-              :class="hasGps ? 'text-gray-700 dark:text-gray-300 cursor-pointer' : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'"
+              :class="hasGps ? 'text-foreground cursor-pointer' : 'text-muted-foreground cursor-not-allowed'"
             >
-              <input type="checkbox" :checked="showFlightPath" :disabled="!hasGps" @change="toggleFlightPath" class="rounded dark:bg-gray-700" />
+              <input type="checkbox" :checked="showFlightPath" :disabled="!hasGps" @change="toggleFlightPath" class="rounded" />
               Flight path
             </label>
           </div>
@@ -171,49 +194,69 @@
       </div>
     </div>
 
-    <div v-if="showUpload" class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50" style="transform: translateZ(0)" @click.self="showUpload = false">
-      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md mx-4 p-6" style="transform: translateZ(0)">
-        <h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Add Task</h2>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Select images to upload for processing.</p>
+    <Dialog v-model:open="showUpload" title="Add task" description="Select images to upload for processing.">
+      <div class="space-y-4">
         <input
           type="file"
           multiple
           accept="image/*"
-          class="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 dark:file:bg-blue-900 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800"
+          class="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
           @change="uploadFiles"
         />
-        <div class="mt-4 space-y-2">
-          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Preset</label>
-          <select v-model="selectedPreset" @change="applyPreset" class="w-full rounded-lg border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm">
-            <option :value="null">None (defaults)</option>
-            <option v-for="p in uploadPresets" :key="p.name" :value="p.name">{{ p.preset_name }}</option>
-          </select>
 
-          <p v-if="uploadOdm.error.value" class="text-xs text-red-600">{{ uploadOdm.error.value }}</p>
-          <p v-else-if="uploadOdm.loading.value" class="text-xs text-gray-500">Loading options…</p>
-          <div v-else class="max-h-64 overflow-y-auto pr-1">
-            <OdmOptionsForm :catalog="uploadOdm.catalog.value" v-model="uploadValues" :field-type="uploadOdm.fieldType" />
-          </div>
+        <div class="space-y-1.5">
+          <Label for="upload-preset">Preset</Label>
+          <Select id="upload-preset" v-model="selectedPreset" @change="applyPreset">
+            <option :value="null">None (defaults)</option>
+            <option v-for="p in uploadPresets" :key="p.name" :value="p.name">
+              {{ p.preset_name }}
+            </option>
+          </Select>
         </div>
-        <div v-if="uploading" class="mt-4">
-          <div class="bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-sm px-4 py-3 rounded-lg">
-            {{ uploadProgress }}
-          </div>
+
+        <p v-if="uploadOdm.error.value" class="text-xs text-destructive">
+          {{ uploadOdm.error.value }}
+        </p>
+        <p v-else-if="uploadOdm.loading.value" class="text-xs text-muted-foreground">
+          Loading options…
+        </p>
+        <div v-else class="max-h-64 overflow-y-auto pr-1">
+          <OdmOptionsForm
+            :catalog="uploadOdm.catalog.value"
+            v-model="uploadValues"
+            :field-type="uploadOdm.fieldType"
+          />
         </div>
-        <div class="flex justify-end gap-2 mt-6">
-          <Button variant="ghost" @click="showUpload = false">Cancel</Button>
+
+        <div v-if="uploading" class="rounded-md bg-primary/10 px-4 py-3 text-sm text-primary">
+          {{ uploadProgress }}
         </div>
       </div>
-    </div>
+      <template #footer>
+        <Button variant="ghost" @click="showUpload = false">Cancel</Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Button, Badge, FeatherIcon } from 'frappe-ui'
+import {
+  Box,
+  Check,
+  CircleX,
+  CloudUpload,
+  Minus,
+  Play,
+  Square,
+  Terminal,
+  Trash2,
+} from 'lucide-vue-next'
+import { Badge, Button, Dialog, Label, Select } from '@/components/ui'
+import { statusVariant } from '@/lib/status'
+import { toast } from '@/lib/toast'
 import L from 'leaflet'
-import { toast } from 'frappe-ui'
 import { formatVolume } from '@/lib/format'
 import { BASEMAPS, createBasemap } from '@/lib/mapLayers'
 import { sortImagesByCapture } from '@/lib/flightPath'
@@ -301,11 +344,6 @@ const DATASET_EXTENT_FIELD = {
   orthophoto: 'orthophoto_extent',
   dsm: 'dsm_extent',
   dtm: 'dtm_extent',
-}
-
-function statusTheme(status) {
-  const themes = { completed: 'green', running: 'blue', failed: 'red', queued: 'orange', canceled: 'gray' }
-  return themes[status?.toLowerCase()] || 'gray'
 }
 
 function plotImageMarkers(images) {

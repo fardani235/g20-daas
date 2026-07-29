@@ -59,7 +59,7 @@ const routes = [
     path: '/project/:id',
     name: 'MapView',
     component: () => import('./pages/MapView.vue'),
-    meta: { requiresAuth: true, title: 'Project' },
+    meta: { requiresAuth: true, title: 'Project', fullBleed: true },
   },
   {
     path: '/project/:id/task/:taskId/model',
