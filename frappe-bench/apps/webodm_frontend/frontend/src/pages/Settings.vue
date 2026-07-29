@@ -1,49 +1,65 @@
 <template>
-  <div class="p-6 space-y-6 max-w-2xl">
-    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Settings</h2>
+  <div class="max-w-2xl space-y-6">
+    <PageHeader
+      title="Settings"
+      description="Defaults and limits for your organization's processing."
+    />
 
-    <!-- Processing -->
-    <div class="bg-white dark:bg-gray-900 rounded-xl border dark:border-gray-700 p-6 space-y-4">
-      <h3 class="font-medium text-gray-900 dark:text-gray-100">Processing</h3>
-      <div class="space-y-3">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Default Preset</label>
-          <select v-model="form.default_preset" class="w-full rounded-lg border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm">
-            <option :value="null">None</option>
-            <option v-for="p in presets" :key="p.name" :value="p.name">{{ p.preset_name }}</option>
-          </select>
-        </div>
-        <div class="flex items-center gap-2">
-          <input type="checkbox" id="auto-process" v-model="form.auto_start_processing" class="rounded border-gray-300 dark:border-gray-600" />
-          <label for="auto-process" class="text-sm text-gray-700 dark:text-gray-300">Auto-start processing after upload</label>
-        </div>
+    <section class="space-y-4 rounded-lg border border-border bg-card p-6">
+      <h2 class="font-medium text-card-foreground">Processing</h2>
+      <div class="space-y-1.5">
+        <Label for="default-preset">Default preset</Label>
+        <Select id="default-preset" v-model="form.default_preset">
+          <option :value="null">None</option>
+          <option v-for="p in presets" :key="p.name" :value="p.name">
+            {{ p.preset_name }}
+          </option>
+        </Select>
+        <p class="text-xs text-muted-foreground">
+          Applied to new tasks when no preset is chosen at upload.
+        </p>
       </div>
-    </div>
-
-    <!-- Limits -->
-    <div class="bg-white dark:bg-gray-900 rounded-xl border dark:border-gray-700 p-6 space-y-4">
-      <h3 class="font-medium text-gray-900 dark:text-gray-100">Limits</h3>
-      <div class="space-y-3">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max Upload Size (MB)</label>
-          <input type="number" v-model.number="form.max_file_size_mb" class="w-full rounded-lg border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Notifications -->
-    <div class="bg-white dark:bg-gray-900 rounded-xl border dark:border-gray-700 p-6 space-y-4">
-      <h3 class="font-medium text-gray-900 dark:text-gray-100">Notifications</h3>
       <div class="flex items-center gap-2">
-        <input type="checkbox" id="email-done" v-model="form.email_notifications" class="rounded border-gray-300 dark:border-gray-600" />
-        <label for="email-done" class="text-sm text-gray-700 dark:text-gray-300">Email notifications</label>
+        <input
+          id="auto-process"
+          v-model="form.auto_start_processing"
+          type="checkbox"
+          class="size-4 rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <Label for="auto-process" class="font-normal">
+          Auto-start processing after upload
+        </Label>
       </div>
-    </div>
+    </section>
+
+    <section class="space-y-4 rounded-lg border border-border bg-card p-6">
+      <h2 class="font-medium text-card-foreground">Limits</h2>
+      <div class="space-y-1.5">
+        <Label for="max-size">Max upload size (MB)</Label>
+        <Input id="max-size" v-model.number="form.max_file_size_mb" type="number" />
+        <p class="text-xs text-muted-foreground">
+          Capped by the platform limit set by the operator.
+        </p>
+      </div>
+    </section>
+
+    <section class="space-y-4 rounded-lg border border-border bg-card p-6">
+      <h2 class="font-medium text-card-foreground">Notifications</h2>
+      <div class="flex items-center gap-2">
+        <input
+          id="email-done"
+          v-model="form.email_notifications"
+          type="checkbox"
+          class="size-4 rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <Label for="email-done" class="font-normal">Email notifications</Label>
+      </div>
+    </section>
 
     <div class="flex justify-end">
-      <Button variant="solid" theme="blue" :loading="saving" @click="onSave">
-        <template #prefix><FeatherIcon name="check" class="h-4 w-4" /></template>
-        Save Settings
+      <Button :loading="saving" @click="onSave">
+        <Check />
+        Save settings
       </Button>
     </div>
   </div>
@@ -51,7 +67,10 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Button, FeatherIcon, toast } from 'frappe-ui'
+import { Check } from 'lucide-vue-next'
+import { Button, Input, Label, Select } from '@/components/ui'
+import PageHeader from '@/components/PageHeader.vue'
+import { toast } from '@/lib/toast'
 import { getSettings, saveSettings, listPresets } from '@/lib/presets'
 
 const presets = ref([])
