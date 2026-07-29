@@ -1,115 +1,179 @@
 <template>
-  <div class="p-6 bg-gray-50 dark:bg-gray-900 min-h-full">
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">Projects</h1>
-      <Button variant="solid" theme="blue" @click="showNewProject = true">
-        <template #prefix>
-          <FeatherIcon name="plus" class="h-4 w-4" />
-        </template>
-        New Project
+  <div class="space-y-6">
+    <PageHeader title="Projects" description="Every mapping project in your organization.">
+      <template #actions>
+        <Button @click="showNewProject = true">
+          <Plus />
+          New project
+        </Button>
+      </template>
+    </PageHeader>
+
+    <p v-if="loading" class="py-12 text-center text-muted-foreground">Loading projects…</p>
+
+    <p v-else-if="error" class="py-12 text-center text-destructive">{{ error }}</p>
+
+    <div
+      v-else-if="projects.length === 0"
+      class="rounded-lg border border-dashed border-border py-16 text-center"
+    >
+      <Folder class="mx-auto mb-4 size-12 text-muted-foreground/40" />
+      <p class="text-lg text-foreground">No projects yet</p>
+      <p class="mt-1 text-sm text-muted-foreground">
+        Create your first project to get started.
+      </p>
+      <Button class="mt-6" @click="showNewProject = true">
+        <Plus />
+        New project
       </Button>
     </div>
 
-    <div v-if="loading" class="text-center py-12">
-      <p class="text-gray-500 dark:text-gray-400">Loading projects...</p>
-    </div>
-
-    <div v-else-if="error" class="text-center py-12">
-      <p class="text-red-600 dark:text-red-400">{{ error }}</p>
-    </div>
-
-    <div v-else-if="projects.length === 0" class="text-center py-12">
-      <FeatherIcon name="folder" class="h-12 w-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-      <p class="text-gray-500 dark:text-gray-400 text-lg">No projects yet</p>
-      <p class="text-gray-400 dark:text-gray-500 text-sm mt-1">Create your first project to get started</p>
-    </div>
-
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div v-for="project in projects" :key="project.name" class="p-4 bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700 shadow-sm cursor-pointer hover:shadow-md transition-shadow" @click="openProject(project.name)">
-        <div class="flex items-start justify-between mb-3">
-          <h3 class="font-medium text-gray-900 dark:text-gray-100 truncate">{{ project.title || project.name }}</h3>
-          <div class="flex items-center gap-1 flex-shrink-0">
-            <Badge :theme="statusTheme(project.status)" size="sm">{{ project.status }}</Badge>
-            <button
-              class="text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors p-1"
-              @click.stop="openEdit(project)"
+    <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div
+        v-for="project in projects"
+        :key="project.name"
+        class="cursor-pointer rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40"
+        @click="openProject(project.name)"
+      >
+        <div class="mb-3 flex items-start justify-between gap-2">
+          <h3 class="truncate font-medium text-card-foreground">
+            {{ project.title || project.name }}
+          </h3>
+          <div class="flex flex-shrink-0 items-center gap-1">
+            <Badge :variant="statusVariant(project.status)">{{ project.status }}</Badge>
+            <Button
+              variant="ghost"
+              size="icon"
+              class="size-7"
               title="Edit project"
+              @click.stop="openEdit(project)"
             >
-              <FeatherIcon name="edit-3" class="h-3.5 w-3.5" />
-            </button>
-            <button
-              class="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors p-1"
-              @click.stop="confirmDelete(project)"
+              <Pencil />
+              <span class="sr-only">Edit {{ project.title || project.name }}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              class="size-7 text-muted-foreground hover:text-destructive"
               title="Delete project"
+              @click.stop="confirmDelete(project)"
             >
-              <FeatherIcon name="trash-2" class="h-3.5 w-3.5" />
-            </button>
+              <Trash2 />
+              <span class="sr-only">Delete {{ project.title || project.name }}</span>
+            </Button>
           </div>
         </div>
-        <p v-if="project.description" class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-3">{{ project.description }}</p>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center text-xs text-gray-400 dark:text-gray-500">
-            <FeatherIcon name="calendar" class="h-3 w-3 mr-1" />
+        <p v-if="project.description" class="mb-3 line-clamp-2 text-sm text-muted-foreground">
+          {{ project.description }}
+        </p>
+        <div class="flex items-center justify-between text-xs">
+          <span class="flex items-center gap-1 text-muted-foreground">
+            <Calendar class="size-3" />
             {{ formatDate(project.creation) }}
-          </div>
-          <div v-if="project._taskStatus" class="flex items-center gap-2 text-xs">
-            <span v-if="project._taskStatus.Pending > 0" class="text-orange-500 dark:text-orange-400">{{ project._taskStatus.Pending }} pending</span>
-            <span v-if="project._taskStatus.Running > 0" class="text-blue-500 dark:text-blue-400">{{ project._taskStatus.Running }} running</span>
-            <span v-if="project._taskStatus.Completed > 0" class="text-green-500 dark:text-green-400">{{ project._taskStatus.Completed }} done</span>
-            <span v-if="project._taskStatus.Failed > 0" class="text-red-500 dark:text-red-400">{{ project._taskStatus.Failed }} failed</span>
-          </div>
+          </span>
+          <span v-if="project._taskStatus" class="flex items-center gap-2">
+            <span v-if="project._taskStatus.Pending > 0" class="text-warning">
+              {{ project._taskStatus.Pending }} pending
+            </span>
+            <span v-if="project._taskStatus.Running > 0" class="text-primary">
+              {{ project._taskStatus.Running }} running
+            </span>
+            <span v-if="project._taskStatus.Completed > 0" class="text-success">
+              {{ project._taskStatus.Completed }} done
+            </span>
+            <span v-if="project._taskStatus.Failed > 0" class="text-destructive">
+              {{ project._taskStatus.Failed }} failed
+            </span>
+          </span>
         </div>
       </div>
     </div>
 
-    <div v-if="deleteTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="deleteTarget = null">
-      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
-        <h2 class="text-lg font-semibold mb-2 text-gray-900 dark:text-gray-100">Delete Project</h2>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Are you sure you want to delete <strong>{{ deleteTarget.title || deleteTarget.name }}</strong>? This action cannot be undone.</p>
-        <div class="flex justify-end gap-2">
-          <Button variant="ghost" @click="deleteTarget = null">Cancel</Button>
-          <Button variant="solid" theme="red" :loading="deleting" @click="deleteProject">Delete</Button>
-        </div>
-      </div>
-    </div>
+    <Dialog
+      :open="!!deleteTarget"
+      title="Delete project"
+      class="sm:max-w-sm"
+      @update:open="value => { if (!value) deleteTarget = null }"
+    >
+      <p class="text-sm text-muted-foreground">
+        Are you sure you want to delete
+        <strong class="text-foreground">{{ deleteTarget?.title || deleteTarget?.name }}</strong>?
+        This also deletes its tasks and cannot be undone.
+      </p>
+      <template #footer>
+        <Button variant="ghost" @click="deleteTarget = null">Cancel</Button>
+        <Button variant="destructive" :loading="deleting" @click="deleteProject">Delete</Button>
+      </template>
+    </Dialog>
 
-    <div v-if="editTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="editTarget = null">
-      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Edit Project</h2>
-        <div class="space-y-4">
-          <FormControl label="Title" type="text" v-model="editForm.title" :required="true" />
-          <FormControl label="Description" type="textarea" v-model="editForm.description" />
-          <FormControl label="Status" type="select" v-model="editForm.status" :options="['Planned', 'In Progress', 'Completed', 'Cancelled']" />
+    <Dialog
+      :open="!!editTarget"
+      title="Edit project"
+      @update:open="value => { if (!value) editTarget = null }"
+    >
+      <div class="space-y-4">
+        <div class="space-y-1.5">
+          <Label for="edit-title">Title</Label>
+          <Input id="edit-title" v-model="editForm.title" required />
         </div>
-        <div class="flex justify-end gap-2 mt-6">
-          <Button variant="ghost" @click="editTarget = null">Cancel</Button>
-          <Button variant="solid" :loading="editing" @click="updateProject">Save</Button>
+        <div class="space-y-1.5">
+          <Label for="edit-description">Description</Label>
+          <Textarea id="edit-description" v-model="editForm.description" />
+        </div>
+        <div class="space-y-1.5">
+          <Label for="edit-status">Status</Label>
+          <Select id="edit-status" v-model="editForm.status">
+            <option v-for="s in EDIT_STATUSES" :key="s" :value="s">{{ s }}</option>
+          </Select>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <Button variant="ghost" @click="editTarget = null">Cancel</Button>
+        <Button :loading="editing" @click="updateProject">Save</Button>
+      </template>
+    </Dialog>
 
-    <div v-if="showNewProject" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showNewProject = false">
-      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">New Project</h2>
-        <div class="space-y-4">
-          <FormControl label="Title" type="text" v-model="form.title" :required="true" />
-          <FormControl label="Description" type="textarea" v-model="form.description" />
-          <FormControl label="Status" type="select" v-model="form.status" :options="['Planned', 'In Progress']" />
+    <Dialog v-model:open="showNewProject" title="New project">
+      <div class="space-y-4">
+        <div class="space-y-1.5">
+          <Label for="new-title">Title</Label>
+          <Input id="new-title" v-model="form.title" required />
         </div>
-        <div class="flex justify-end gap-2 mt-6">
-          <Button variant="ghost" @click="showNewProject = false">Cancel</Button>
-          <Button variant="solid" :loading="saving" @click="createProject">Create</Button>
+        <div class="space-y-1.5">
+          <Label for="new-description">Description</Label>
+          <Textarea id="new-description" v-model="form.description" />
+        </div>
+        <div class="space-y-1.5">
+          <Label for="new-status">Status</Label>
+          <Select id="new-status" v-model="form.status">
+            <option v-for="s in NEW_STATUSES" :key="s" :value="s">{{ s }}</option>
+          </Select>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <Button variant="ghost" @click="showNewProject = false">Cancel</Button>
+        <Button :loading="saving" @click="createProject">Create</Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { Badge, Button, FeatherIcon, FormControl } from 'frappe-ui'
-import { toast } from 'frappe-ui'
+import { Calendar, Folder, Pencil, Plus, Trash2 } from 'lucide-vue-next'
+import {
+  Badge,
+  Button,
+  Dialog,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from '@/components/ui'
+import PageHeader from '@/components/PageHeader.vue'
+import { statusVariant } from '@/lib/status'
+import { toast } from '@/lib/toast'
 
 const router = useRouter()
 const projects = ref([])
@@ -125,10 +189,9 @@ const editTarget = ref(null)
 const editing = ref(false)
 const editForm = reactive({ title: '', description: '', status: 'Planned' })
 
-const statusTheme = (status) => {
-  const themes = { 'Planned': 'blue', 'In Progress': 'orange', 'Completed': 'green', 'Failed': 'red', 'Cancelled': 'gray' }
-  return themes[status] || 'gray'
-}
+// A new project cannot start out Completed or Cancelled.
+const EDIT_STATUSES = ['Planned', 'In Progress', 'Completed', 'Cancelled']
+const NEW_STATUSES = ['Planned', 'In Progress']
 
 const formatDate = (d) => {
   if (!d) return ''
