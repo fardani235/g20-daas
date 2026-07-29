@@ -1,0 +1,7 @@
+export { default as Alert } from './alert/Alert.vue'
+export { default as Badge } from './badge/Badge.vue'
+export { default as Button } from './button/Button.vue'
+export { default as Input } from './input/Input.vue'
+export { default as Label } from './label/Label.vue'
+export { default as Select } from './select/Select.vue'
+export { default as Textarea } from './textarea/Textarea.vue'
