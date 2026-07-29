@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { FrappeUI } from 'frappe-ui'
 import App from './App.vue'
 import './index.css'
+import 'vue-sonner/style.css'
 import { getMyOrganization } from './lib/organization.js'
 
 const routes = [
