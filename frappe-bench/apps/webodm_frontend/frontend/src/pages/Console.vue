@@ -1,66 +1,69 @@
 <template>
-  <div class="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
-    <div class="bg-white dark:bg-gray-900 border-b dark:border-gray-700 px-4 py-2 flex items-center justify-between flex-shrink-0">
-      <Button variant="outline" size="sm" @click="$router.back()">&larr; Back</Button>
-      <div class="flex items-center gap-3">
-        <Badge v-if="task" :theme="statusTheme(task.status)" size="sm">{{ task.status }}</Badge>
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ task?.title || task?.name || 'Task Console' }}</h2>
-      </div>
-      <div class="flex items-center gap-2">
-        <span v-if="task?.node_progress != null || task?.progress != null" class="text-sm text-gray-500 dark:text-gray-400">{{ Math.round(task?.node_progress ?? task?.progress) }}%</span>
-        <Button variant="ghost" size="sm" @click="refreshLogs">
-          <template #prefix><FeatherIcon name="refresh-cw" class="h-3 w-3" /></template>
-          Refresh
-        </Button>
-      </div>
+  <div class="flex h-full flex-col">
+    <div class="flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+      <h2 class="text-base font-medium text-foreground">
+        {{ task?.title || task?.name || 'Task console' }}
+      </h2>
+      <Badge v-if="task" :variant="statusVariant(task.status)">{{ task.status }}</Badge>
+      <span
+        v-if="task?.node_progress != null || task?.progress != null"
+        class="text-sm text-muted-foreground"
+      >
+        {{ Math.round(task?.node_progress ?? task?.progress) }}%
+      </span>
+      <span class="text-xs text-muted-foreground">
+        Resolution: {{ task?.resolution || 'N/A' }} · Images: {{ task?.images?.length || 0 }}
+      </span>
+      <Button variant="outline" size="sm" class="ml-auto" @click="refreshLogs">
+        <RefreshCw />
+        Refresh
+      </Button>
     </div>
-    <div class="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 px-4 py-2 flex gap-6 text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
-      <span>Resolution: {{ task?.resolution || 'N/A' }}</span>
-      <span>Images: {{ task?.images?.length || 0 }}</span>
-    </div>
-    <div class="border-b dark:border-gray-700 px-4 py-3 flex gap-3 flex-wrap flex-shrink-0"
-         :class="task?.status === 'Completed' ? 'bg-green-50 dark:bg-green-900/30' : 'bg-gray-50 dark:bg-gray-800'">
-      <template v-if="task?.status === 'Completed'">
-        <a v-if="task.orthophoto" :href="task.orthophoto" download
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white border border-green-700 rounded text-xs font-medium hover:bg-green-700">
-          <FeatherIcon name="download" class="h-3.5 w-3.5" /> Orthophoto
+
+    <div class="flex flex-shrink-0 flex-wrap gap-2 border-b border-border px-4 py-3">
+      <template v-if="artifacts.length">
+        <a
+          v-for="artifact in artifacts"
+          :key="artifact.label"
+          :href="artifact.href"
+          download
+          class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+        >
+          <component :is="artifact.icon" class="size-3.5" />
+          {{ artifact.label }}
         </a>
-        <a v-if="task.dsm" :href="task.dsm" download
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white border border-green-700 rounded text-xs font-medium hover:bg-green-700">
-          <FeatherIcon name="download" class="h-3.5 w-3.5" /> DSM
-        </a>
-        <a v-if="task.dtm" :href="task.dtm" download
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white border border-green-700 rounded text-xs font-medium hover:bg-green-700">
-          <FeatherIcon name="download" class="h-3.5 w-3.5" /> DTM
-        </a>
-        <a v-if="task.point_cloud" :href="task.point_cloud" download
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white border border-green-700 rounded text-xs font-medium hover:bg-green-700">
-          <FeatherIcon name="download" class="h-3.5 w-3.5" /> Point Cloud
-        </a>
-        <a v-if="task.model" :href="task.model" download
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white border border-purple-700 rounded text-xs font-medium hover:bg-purple-700">
-          <FeatherIcon name="box" class="h-3.5 w-3.5" /> 3D Model
-        </a>
-        <span v-if="!task.orthophoto && !task.dsm && !task.dtm && !task.point_cloud && !task.model" class="text-sm text-text-gray-500 dark:text-gray-400">No artifacts available</span>
       </template>
-      <span v-else class="text-sm text-gray-400 dark:text-gray-500">Artifacts appear when processing completes</span>
+      <span v-else-if="task?.status === 'Completed'" class="text-sm text-muted-foreground">
+        No artifacts available
+      </span>
+      <span v-else class="text-sm text-muted-foreground">
+        Artifacts appear when processing completes
+      </span>
     </div>
-    <div v-if="loading" class="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500">
-      Loading task...
-    </div>
-    <div v-else ref="logEl" class="flex-1 bg-black text-green-400 font-mono text-sm p-4 overflow-y-auto" @scroll="onScroll">
+
+    <p v-if="loading" class="flex flex-1 items-center justify-center text-muted-foreground">
+      Loading task…
+    </p>
+    <div
+      v-else
+      ref="logEl"
+      class="flex-1 overflow-y-auto bg-slate-950 p-4 font-mono text-sm text-emerald-400"
+      @scroll="onScroll"
+    >
       <div v-for="(line, i) in logs" :key="i" class="whitespace-pre-wrap">{{ line }}</div>
-      <div v-if="logs.length === 0" class="text-gray-500 dark:text-gray-400">
-        {{ RUNNING_STATUSES.includes(task?.status) ? 'Waiting for processing output...' : 'No console output for this task.' }}
-      </div>
+      <p v-if="logs.length === 0" class="text-slate-500">
+        {{ RUNNING_STATUSES.includes(task?.status) ? 'Waiting for processing output…' : 'No console output for this task.' }}
+      </p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { Badge, Button, FeatherIcon } from 'frappe-ui'
+import { Box, Download, RefreshCw } from 'lucide-vue-next'
+import { Badge, Button } from '@/components/ui'
+import { statusVariant } from '@/lib/status'
 
 const route = useRoute()
 const task = ref(null)
@@ -73,15 +76,24 @@ let stickToBottom = true
 
 const RUNNING_STATUSES = ['Pending', 'Running', 'Queued']
 
+// The five artifact links were five near-identical markup blocks; this drives
+// them from data instead.
+const artifacts = computed(() => {
+  const t = task.value
+  if (!t || t.status !== 'Completed') return []
+  return [
+    { label: 'Orthophoto', href: t.orthophoto, icon: Download },
+    { label: 'DSM', href: t.dsm, icon: Download },
+    { label: 'DTM', href: t.dtm, icon: Download },
+    { label: 'Point Cloud', href: t.point_cloud, icon: Download },
+    { label: '3D Model', href: t.model, icon: Box },
+  ].filter(a => a.href)
+})
+
 function csrfHeaders() {
   const headers = { 'Content-Type': 'application/json' }
   if (window.csrf_token) headers['X-Frappe-CSRF-Token'] = window.csrf_token
   return headers
-}
-
-function statusTheme(status) {
-  const themes = { completed: 'green', running: 'blue', failed: 'red', queued: 'orange', canceled: 'gray' }
-  return themes[status?.toLowerCase()] || 'gray'
 }
 
 // Keep the view pinned to the newest line unless the user has scrolled up.
