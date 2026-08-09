@@ -1,6 +1,5 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
-import { FrappeUI } from 'frappe-ui'
 import App from './App.vue'
 import './index.css'
 import 'vue-sonner/style.css'
@@ -128,5 +127,4 @@ router.beforeEach(async (to, from, next) => {
 
 const app = createApp(App)
 app.use(router)
-app.use(FrappeUI, { socketio: false })
 app.mount('#app')
