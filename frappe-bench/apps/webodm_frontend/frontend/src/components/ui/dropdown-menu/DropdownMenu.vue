@@ -15,7 +15,7 @@ const props = defineProps({
 
 const contentClasses = computed(() =>
   cn(
-    'z-50 min-w-[10rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md',
+    'z-[1001] min-w-[10rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md',
     props.class,
   ),
 )

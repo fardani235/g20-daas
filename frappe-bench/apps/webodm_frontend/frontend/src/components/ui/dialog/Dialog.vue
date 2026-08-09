@@ -21,7 +21,7 @@ const emit = defineEmits(['update:open'])
 
 const contentClasses = computed(() =>
   cn(
-    'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg max-h-[85vh] overflow-y-auto focus:outline-none',
+    'fixed left-1/2 top-1/2 z-[1101] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg max-h-[85vh] overflow-y-auto focus:outline-none',
     props.class,
   ),
 )
@@ -30,7 +30,7 @@ const contentClasses = computed(() =>
 <template>
   <DialogRoot :open="open" @update:open="emit('update:open', $event)">
     <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-50 bg-black/50" />
+      <DialogOverlay class="fixed inset-0 z-[1100] bg-black/50" />
       <DialogContent :class="contentClasses">
         <DialogTitle v-if="title" class="text-lg font-semibold text-foreground">
           {{ title }}

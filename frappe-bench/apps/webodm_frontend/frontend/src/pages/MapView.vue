@@ -92,7 +92,7 @@
       class="w-1.5 bg-border hover:bg-primary/60 cursor-col-resize flex-shrink-0 transition-colors"
       @mousedown.prevent="startResize"
     ></div>
-    <div class="flex-1 relative bg-background">
+    <div class="flex-1 relative z-0 bg-background">
       <div id="map" class="h-full w-full"></div>
       <div class="absolute top-4 left-4 z-[1000] bg-card rounded-lg shadow-md border border-border p-2 flex items-center gap-2">
         <Button
