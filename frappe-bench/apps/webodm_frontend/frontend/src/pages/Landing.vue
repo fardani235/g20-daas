@@ -1,148 +1,74 @@
-<template>
-  <div class="min-h-screen bg-white dark:bg-gray-900">
-    <!-- Navbar -->
-    <nav class="fixed top-0 w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b dark:border-gray-800 z-50">
-      <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-        <router-link to="/" class="flex items-center gap-2">
-          <FeatherIcon name="map" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
-          <span class="font-semibold text-gray-900 dark:text-gray-100">G20 Tech</span>
-        </router-link>
-        <div class="flex items-center gap-6">
-          <a href="#features" class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">Features</a>
-          <a href="#pricing" class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">Pricing</a>
-          <router-link
-            to="/login"
-            class="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors"
-          >
-            Sign In
-          </router-link>
-        </div>
-      </div>
-    </nav>
-
-    <!-- Hero -->
-    <section class="relative min-h-screen flex items-center px-6 overflow-hidden">
-      <div class="absolute inset-0 bg-cover bg-center bg-no-repeat" style="background-image: url('/assets/webodm_frontend/frontend/images/background.png')"></div>
-      <div class="absolute inset-0 bg-black/50 dark:bg-black/70"></div>
-      <div class="relative max-w-4xl mx-auto text-center">
-        <h1 class="text-5xl sm:text-7xl font-bold text-white leading-tight">
-          Drone Mapping<br />Made Simple
-        </h1>
-        <p class="mt-6 text-xl sm:text-2xl text-gray-200 max-w-3xl mx-auto">
-          Upload drone images and generate orthophotos, 3D models, and point clouds.
-          Powered by OpenDroneMap with a modern, easy-to-use interface.
-        </p>
-        <div class="mt-10 flex items-center justify-center gap-4">
-          <router-link
-            to="/login"
-            class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
-          >
-            Get Started
-            <FeatherIcon name="arrow-right" class="h-4 w-4" />
-          </router-link>
-        </div>
-      </div>
-    </section>
-
-    <!-- Features -->
-    <section id="features" class="py-20 px-6 bg-gray-50 dark:bg-gray-800/50">
-      <div class="max-w-6xl mx-auto">
-        <h2 class="text-2xl font-bold text-center text-gray-900 dark:text-gray-100 mb-12">
-          Everything you need
-        </h2>
-        <div class="grid sm:grid-cols-3 gap-8">
-          <div
-            v-for="feature in features"
-            :key="feature.title"
-            class="bg-white dark:bg-gray-900 rounded-xl p-6 border dark:border-gray-700"
-          >
-            <FeatherIcon :name="feature.icon" class="h-8 w-8 text-blue-600 dark:text-blue-400 mb-4" />
-            <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">{{ feature.title }}</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">{{ feature.description }}</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Pricing -->
-    <section id="pricing" class="py-20 px-6">
-      <div class="max-w-6xl mx-auto">
-        <h2 class="text-2xl font-bold text-center text-gray-900 dark:text-gray-100 mb-4">
-          Simple, transparent pricing
-        </h2>
-        <p class="text-center text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto">
-          Choose the plan that fits your mapping needs. All plans include core processing features.
-        </p>
-        <div class="grid sm:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          <div
-            v-for="plan in plans"
-            :key="plan.name"
-            class="relative bg-white dark:bg-gray-900 rounded-xl border dark:border-gray-700 p-8 flex flex-col"
-            :class="plan.featured ? 'border-blue-600 dark:border-blue-400 ring-1 ring-blue-600 dark:ring-blue-400' : ''"
-          >
-            <span
-              v-if="plan.featured"
-              class="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-xs font-medium px-3 py-0.5 rounded-full"
-            >
-              Most Popular
-            </span>
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ plan.name }}</h3>
-            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ plan.description }}</p>
-            <div class="mt-6 mb-8">
-              <span class="text-3xl font-bold text-gray-900 dark:text-gray-100">{{ plan.price }}</span>
-              <span class="text-sm text-gray-500 dark:text-gray-400">/{{ plan.period }}</span>
-            </div>
-            <ul class="space-y-3 mb-8 flex-1">
-              <li
-                v-for="feature in plan.features"
-                :key="feature"
-                class="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <FeatherIcon name="check" class="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                {{ feature }}
-              </li>
-            </ul>
-            <router-link
-              to="/login"
-              class="block text-center py-2.5 px-4 rounded-lg font-medium text-sm transition-colors"
-              :class="plan.featured
-                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100'"
-            >
-              Get Started
-            </router-link>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="py-8 px-6 border-t dark:border-gray-800">
-      <div class="max-w-6xl mx-auto text-center text-sm text-gray-500 dark:text-gray-400">
-        &copy; {{ new Date().getFullYear() }} G20 Tech. All rights reserved.
-      </div>
-    </footer>
-  </div>
-</template>
-
 <script setup>
-import { FeatherIcon } from 'frappe-ui'
+import { Badge, Button } from '@/components/ui'
+import {
+  ArrowRight,
+  Box,
+  Camera,
+  Check,
+  Cpu,
+  Layers,
+  Map as MapIcon,
+  Mountain,
+  Ruler,
+  Share2,
+  Users,
+} from 'lucide-vue-next'
 
-const features = [
+// The four-step arc from raw imagery to a shareable, measurable result. This is
+// the technical-credibility beat: it mirrors the real pipeline, not a metaphor.
+const pipeline = [
   {
-    icon: 'image',
-    title: 'Orthophoto Maps',
-    description: 'Generate georectified orthomosaics from overlapping drone imagery.',
+    icon: Camera,
+    step: 'Capture',
+    body: 'Fly your mission and upload the raw images. GPS EXIF is preserved end to end, so outputs land in real-world coordinates.',
   },
   {
-    icon: 'box',
-    title: '3D Models',
-    description: 'Create textured 3D reconstructions viewable directly in your browser.',
+    icon: Cpu,
+    step: 'Process',
+    body: 'An OpenDroneMap pipeline reconstructs the scene — structure from motion, dense point cloud, mesh, texture.',
   },
   {
-    icon: 'layers',
-    title: 'Point Clouds & DSM',
-    description: 'Export dense point clouds, digital surface models, and terrain models.',
+    icon: Ruler,
+    step: 'Measure',
+    body: 'Draw on the map to get distance, area, and DSM-backed volume. Answers, not just pictures.',
+  },
+  {
+    icon: Share2,
+    step: 'Share',
+    body: 'Give your team one workspace with per-organization projects, presets, and access.',
+  },
+]
+
+const capabilities = [
+  {
+    icon: MapIcon,
+    title: 'Georeferenced orthophotos',
+    body: 'Cloud-optimized GeoTIFFs served as map tiles, aligned to real coordinates.',
+  },
+  {
+    icon: Mountain,
+    title: 'DSM & DTM',
+    body: 'Digital surface and terrain models — the elevation basis for volume math.',
+  },
+  {
+    icon: Box,
+    title: 'Textured 3D models',
+    body: 'Browser-viewable reconstructions. No plugin, no desktop install.',
+  },
+  {
+    icon: Layers,
+    title: 'Dense point clouds',
+    body: 'Export the full reconstruction for downstream CAD and GIS work.',
+  },
+  {
+    icon: Ruler,
+    title: 'Volume, area, distance',
+    body: 'Stockpile and cut/fill volumes computed against the DSM, not estimated.',
+  },
+  {
+    icon: Users,
+    title: 'Team workspaces',
+    body: 'Organizations, invitations, and shared presets — isolated per tenant.',
   },
 ]
 
@@ -193,4 +119,236 @@ const plans = [
     ],
   },
 ]
+
+const year = new Date().getFullYear()
 </script>
+
+<template>
+  <div class="min-h-screen bg-background">
+    <!-- Nav -->
+    <nav class="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
+      <div class="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
+        <router-link to="/" class="flex items-center gap-2">
+          <MapIcon class="size-5 text-primary" />
+          <span class="font-semibold tracking-tight text-foreground">G20 Tech</span>
+        </router-link>
+        <div class="flex items-center gap-6">
+          <a href="#pipeline" class="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:block">How it works</a>
+          <a href="#capabilities" class="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:block">Capabilities</a>
+          <a href="#pricing" class="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:block">Pricing</a>
+          <router-link to="/login">
+            <Button size="sm">Sign in</Button>
+          </router-link>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Hero: dark, high-contrast, split. Leads with the product, not a photo. -->
+    <section class="relative overflow-hidden bg-slate-950 pt-14 text-slate-100">
+      <div
+        class="pointer-events-none absolute inset-0 opacity-30"
+        style="background-image: radial-gradient(circle at 20% 20%, rgb(37 99 235 / 0.5), transparent 55%), radial-gradient(circle at 80% 60%, rgb(37 99 235 / 0.25), transparent 50%)"
+      />
+      <div class="relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-2 lg:py-28">
+        <div class="animate-slide-up">
+          <Badge variant="outline" class="border-slate-700 text-slate-300">
+            Drone data as a service
+          </Badge>
+          <h1 class="mt-5 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+            From flight to
+            <span class="text-primary">measurable answers</span>
+          </h1>
+          <p class="mt-5 max-w-xl text-lg text-slate-300">
+            Upload raw drone imagery and get georeferenced orthophotos, elevation
+            models, point clouds, and 3D reconstructions — then measure volumes
+            and areas directly on the result.
+          </p>
+          <div class="mt-8 flex flex-wrap items-center gap-3">
+            <router-link to="/login">
+              <Button size="lg">
+                Get started
+                <ArrowRight />
+              </Button>
+            </router-link>
+            <a href="#pipeline">
+              <Button size="lg" variant="outline" class="border-slate-700 bg-transparent text-slate-100 hover:bg-slate-900">
+                See how it works
+              </Button>
+            </a>
+          </div>
+        </div>
+
+        <!-- Product panel: a mock of the actual map view, with a slow tile-load
+             reveal. Deliberately not a stock aerial photo. -->
+        <div class="animate-fade-in">
+          <div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900 shadow-2xl">
+            <div class="flex items-center gap-2 border-b border-slate-800 px-4 py-2.5">
+              <span class="size-2.5 rounded-full bg-slate-700" />
+              <span class="size-2.5 rounded-full bg-slate-700" />
+              <span class="size-2.5 rounded-full bg-slate-700" />
+              <span class="ml-2 text-xs text-slate-500">orthophoto · EPSG:32615</span>
+            </div>
+            <div class="relative aspect-[4/3]">
+              <img
+                src="/images/background.png"
+                alt="Georeferenced orthophoto rendered as map tiles"
+                class="size-full object-cover"
+              />
+              <div class="absolute inset-x-4 bottom-4 rounded-lg border border-slate-700 bg-slate-950/80 px-4 py-3 backdrop-blur">
+                <p class="text-xs uppercase tracking-wide text-slate-500">Measured area</p>
+                <p class="mt-0.5 font-mono text-lg text-primary">2,539 × 2,444 px</p>
+                <p class="text-xs text-slate-400">georeferenced output resolution</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pipeline strip -->
+    <section id="pipeline" class="border-b border-border py-20">
+      <div class="mx-auto max-w-6xl px-6">
+        <h2 class="text-center text-3xl font-semibold tracking-tight text-foreground">
+          From flight to insight
+        </h2>
+        <p class="mx-auto mt-3 max-w-2xl text-center text-muted-foreground">
+          Four steps, fully automated between them. You upload; the pipeline does
+          the reconstruction; you measure the result.
+        </p>
+        <ol class="mt-14 grid gap-6 md:grid-cols-4">
+          <li
+            v-for="(stage, i) in pipeline"
+            :key="stage.step"
+            class="relative rounded-lg border border-border bg-card p-6"
+          >
+            <span class="font-mono text-xs text-muted-foreground">0{{ i + 1 }}</span>
+            <component :is="stage.icon" class="mt-3 size-6 text-primary" />
+            <h3 class="mt-4 font-medium text-card-foreground">{{ stage.step }}</h3>
+            <p class="mt-2 text-sm text-muted-foreground">{{ stage.body }}</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Capabilities -->
+    <section id="capabilities" class="bg-muted/40 py-20">
+      <div class="mx-auto max-w-6xl px-6">
+        <h2 class="text-center text-3xl font-semibold tracking-tight text-foreground">
+          Every output the pipeline produces
+        </h2>
+        <div class="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="cap in capabilities"
+            :key="cap.title"
+            class="rounded-lg border border-border bg-card p-6 transition-transform hover:-translate-y-0.5"
+          >
+            <component :is="cap.icon" class="size-6 text-primary" />
+            <h3 class="mt-4 font-medium text-card-foreground">{{ cap.title }}</h3>
+            <p class="mt-2 text-sm text-muted-foreground">{{ cap.body }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Outcome band.
+         GLOBAL CONSTRAINT 7: only the orthophoto resolution is verifiable from
+         this codebase. The other two figures are placeholders the user must fill
+         in with real numbers — do NOT invent values for them. -->
+    <section class="border-y border-border py-16">
+      <div class="mx-auto grid max-w-5xl gap-8 px-6 text-center sm:grid-cols-3">
+        <div>
+          <p class="font-mono text-3xl font-semibold text-foreground">2,539 × 2,444</p>
+          <p class="mt-1 text-sm text-muted-foreground">
+            px georeferenced orthophoto, from 18 source images
+          </p>
+        </div>
+        <div>
+          <p class="font-mono text-3xl font-semibold text-foreground">TODO(user)</p>
+          <p class="mt-1 text-sm text-muted-foreground">
+            typical turnaround per mission — fill in a real measured figure
+          </p>
+        </div>
+        <div>
+          <p class="font-mono text-3xl font-semibold text-foreground">TODO(user)</p>
+          <p class="mt-1 text-sm text-muted-foreground">
+            hectares processed to date — fill in a real figure
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pricing -->
+    <section id="pricing" class="py-20">
+      <div class="mx-auto max-w-6xl px-6">
+        <h2 class="text-center text-3xl font-semibold tracking-tight text-foreground">
+          Simple, transparent pricing
+        </h2>
+        <p class="mx-auto mt-3 max-w-2xl text-center text-muted-foreground">
+          Every plan includes the full processing pipeline. Scale storage and
+          credits as your operation grows.
+        </p>
+        <div class="mx-auto mt-14 grid max-w-5xl gap-6 lg:grid-cols-3">
+          <div
+            v-for="plan in plans"
+            :key="plan.name"
+            class="relative flex flex-col rounded-lg border bg-card p-8"
+            :class="plan.featured ? 'border-primary ring-1 ring-primary' : 'border-border'"
+          >
+            <Badge
+              v-if="plan.featured"
+              variant="default"
+              class="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground"
+            >
+              Most popular
+            </Badge>
+            <h3 class="text-lg font-medium text-card-foreground">{{ plan.name }}</h3>
+            <p class="mt-2 text-sm text-muted-foreground">{{ plan.description }}</p>
+            <div class="mt-6 mb-8">
+              <span class="text-3xl font-semibold tracking-tight text-card-foreground">
+                {{ plan.price }}
+              </span>
+              <span class="text-sm text-muted-foreground">/{{ plan.period }}</span>
+            </div>
+            <ul class="mb-8 flex-1 space-y-3">
+              <li
+                v-for="feature in plan.features"
+                :key="feature"
+                class="flex items-start gap-2 text-sm text-muted-foreground"
+              >
+                <Check class="mt-0.5 size-4 flex-shrink-0 text-primary" />
+                {{ feature }}
+              </li>
+            </ul>
+            <router-link to="/login" class="block">
+              <Button class="w-full" :variant="plan.featured ? 'default' : 'secondary'">
+                Get started
+              </Button>
+            </router-link>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="bg-slate-950 py-20 text-slate-100">
+      <div class="mx-auto max-w-3xl px-6 text-center">
+        <h2 class="text-3xl font-semibold tracking-tight">Put your imagery to work</h2>
+        <p class="mt-4 text-slate-300">
+          Create an organization, upload a mission, and measure the result.
+        </p>
+        <router-link to="/login" class="mt-8 inline-block">
+          <Button size="lg">
+            Get started
+            <ArrowRight />
+          </Button>
+        </router-link>
+      </div>
+    </section>
+
+    <footer class="border-t border-border py-8">
+      <div class="mx-auto max-w-6xl px-6 text-center text-sm text-muted-foreground">
+        &copy; {{ year }} G20 Tech. All rights reserved.
+      </div>
+    </footer>
+  </div>
+</template>
