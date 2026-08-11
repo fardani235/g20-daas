@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { listPresets, savePreset, fetchOptions } from '@/lib/presets'
+import { listPresets, savePreset, fetchOptions, whoami } from '@/lib/presets'
 
 describe('presets lib', () => {
   beforeEach(() => {
@@ -32,6 +32,14 @@ describe('presets lib', () => {
     await fetchOptions()
     expect(global.fetch).toHaveBeenCalledWith(
       '/api/method/webodm_core.api.presets.options',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('whoami calls the session endpoint with GET', async () => {
+    await whoami()
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/method/webodm_core.api.session.whoami',
       expect.objectContaining({ method: 'GET' }),
     )
   })
