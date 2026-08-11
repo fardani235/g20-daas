@@ -130,7 +130,9 @@ const showModal = ref(false)
 const editing = ref(null)
 const saving = ref(false)
 const isAdmin = ref(false)
-const draft = reactive({ preset_name: '', system: 0 })
+// system is a boolean here: Vue's checkbox v-model compares with looseEqual(v, true),
+// so a numeric 1 would render unchecked. onSave normalizes back to 0/1 for the API.
+const draft = reactive({ preset_name: '', system: false })
 const values = ref({})
 const odm = useOdmOptions()
 
@@ -156,7 +158,7 @@ loadAdmin()
 async function openCreate() {
   editing.value = null
   draft.preset_name = ''
-  draft.system = 0
+  draft.system = false
   values.value = {}
   showModal.value = true
   await odm.load()
@@ -166,7 +168,7 @@ async function openCreate() {
 async function openEdit(p) {
   editing.value = p
   draft.preset_name = p.preset_name
-  draft.system = p.system ? 1 : 0
+  draft.system = !!p.system
   values.value = Object.fromEntries((p.options || []).map(o => [o.name, o.value]))
   showModal.value = true
   await odm.load()
@@ -179,7 +181,7 @@ async function openEdit(p) {
 async function openCopy(p) {
   editing.value = null
   draft.preset_name = `${p.preset_name} (copy)`
-  draft.system = 0
+  draft.system = false
   values.value = Object.fromEntries((p.options || []).map(o => [o.name, o.value]))
   showModal.value = true
   await odm.load()

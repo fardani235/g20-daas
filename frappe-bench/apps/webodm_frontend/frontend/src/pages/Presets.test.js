@@ -126,4 +126,37 @@ describe('Presets page', () => {
     await nextTick(); await nextTick()
     expect(document.body.querySelector('#preset-system')).not.toBeNull()
   })
+
+  it('checks the System toggle when an admin edits a system preset', async () => {
+    rows.value = [{ ...systemRow, can_write: true, can_delete: true }]
+    whoamiPayload.value = { is_platform_admin: true }
+    const el = await mount()
+    el.querySelector('button[title="Edit preset"]').click()
+    await nextTick(); await nextTick()
+    const box = document.body.querySelector('#preset-system')
+    expect(box).not.toBeNull()
+    expect(box.checked).toBe(true)
+  })
+
+  it('demotes a system preset to org scope when an admin unchecks System', async () => {
+    rows.value = [{ ...systemRow, can_write: true, can_delete: true }]
+    whoamiPayload.value = { is_platform_admin: true }
+    const el = await mount()
+    el.querySelector('button[title="Edit preset"]').click()
+    await nextTick(); await nextTick()
+
+    const box = document.body.querySelector('#preset-system')
+    box.click()  // toggles .checked and fires change, driving v-model
+    await nextTick()
+    expect(box.checked).toBe(false)
+
+    const save = [...document.body.querySelectorAll('button')]
+      .find(b => b.textContent.trim() === 'Save')
+    save.click()
+    await nextTick()
+    expect(savePreset).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Sys',
+      system: 0,
+    }))
+  })
 })
