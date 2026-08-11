@@ -122,7 +122,13 @@ class TestPresets(unittest.TestCase):
         self.assertTrue(row["can_delete"])
 
     def test_flags_do_not_replace_enforcement(self):
-        """A false flag is advisory; save() must still raise for a non-admin."""
+        """A false can_write flag is advisory: save() must still refuse the edit.
+
+        Sending system=0 keeps save()'s *requested scope* guard
+        ("Only administrators can manage system presets") out of the way, so the
+        raise below can only come from the refactored _can_modify() check on the
+        *existing* row, which is system=1.
+        """
         frappe.set_user("Administrator")
         frappe.local.webodm_org_cache = {}
         presets.save(preset_name="Test System Preset", options="[]", system=1)
@@ -130,9 +136,14 @@ class TestPresets(unittest.TestCase):
         frappe.set_user(self.member)
         frappe.local.webodm_org_cache = {}
         with patch.object(presets.tenancy, "is_platform_admin", return_value=False):
-            with self.assertRaises(frappe.PermissionError):
+            with self.assertRaisesRegex(frappe.PermissionError,
+                                        "Only administrators can edit system presets"):
                 presets.save(preset_name="Test System Preset", options="[]",
-                             system=1, name="Test System Preset")
+                             system=0, name="Test System Preset")
+            # The stored system preset has organization=None, so the org clause
+            # alone would also deny it — pin the system branch directly with an
+            # org that *does* match, where only that branch can produce False.
+            self.assertFalse(presets._can_modify(1, presets.tenancy.get_current_org()))
 
 
 class TestPresetOrgIsolation(FrappeTestCase):
