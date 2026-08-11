@@ -94,6 +94,46 @@ class TestPresets(unittest.TestCase):
         frappe.db.commit()
         self.assertFalse(frappe.db.exists("WebODM Preset", "Test User Preset"))
 
+    def test_flags_true_for_admin_on_system_preset(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        presets.save(preset_name="Test System Preset", options="[]", system=1)
+        frappe.db.commit()
+        row = {p["preset_name"]: p for p in presets.list_presets()}["Test System Preset"]
+        self.assertTrue(row["can_write"])
+        self.assertTrue(row["can_delete"])
+
+    def test_flags_false_for_member_on_system_preset(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        presets.save(preset_name="Test System Preset", options="[]", system=1)
+        frappe.db.commit()
+        frappe.set_user(self.member)
+        frappe.local.webodm_org_cache = {}
+        row = {p["preset_name"]: p for p in presets.list_presets()}["Test System Preset"]
+        self.assertFalse(row["can_write"])
+        self.assertFalse(row["can_delete"])
+
+    def test_flags_true_for_member_on_own_org_preset(self):
+        presets.save(preset_name="Test User Preset", options="[]")
+        frappe.db.commit()
+        row = {p["preset_name"]: p for p in presets.list_presets()}["Test User Preset"]
+        self.assertTrue(row["can_write"])
+        self.assertTrue(row["can_delete"])
+
+    def test_flags_do_not_replace_enforcement(self):
+        """A false flag is advisory; save() must still raise for a non-admin."""
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        presets.save(preset_name="Test System Preset", options="[]", system=1)
+        frappe.db.commit()
+        frappe.set_user(self.member)
+        frappe.local.webodm_org_cache = {}
+        with patch.object(presets.tenancy, "is_platform_admin", return_value=False):
+            with self.assertRaises(frappe.PermissionError):
+                presets.save(preset_name="Test System Preset", options="[]",
+                             system=1, name="Test System Preset")
+
 
 class TestPresetOrgIsolation(FrappeTestCase):
     @classmethod
@@ -144,6 +184,17 @@ class TestPresetOrgIsolation(FrappeTestCase):
         frappe.local.webodm_org_cache = {}
         names = {x.name for x in frappe.get_list("WebODM Preset", limit_page_length=0)}
         self.assertIn(sys_name, names)
+
+    def test_flags_false_on_another_orgs_preset(self):
+        frappe.set_user(self.a)
+        frappe.local.webodm_org_cache = {}
+        presets.save(preset_name="Iso A Preset", options="[]")
+        # B cannot even see A's preset (org query conditions), so assert via the
+        # helper directly — this is the rule the flags are derived from.
+        frappe.set_user(self.b)
+        frappe.local.webodm_org_cache = {}
+        self.assertFalse(presets._can_modify(0, self.org_a))
+        self.assertTrue(presets._can_modify(0, self.org_b))
 
 
 class TestPresetOrgSharingAPI(FrappeTestCase):
