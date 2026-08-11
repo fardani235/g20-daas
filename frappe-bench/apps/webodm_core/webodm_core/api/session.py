@@ -18,12 +18,15 @@ def whoami():
     to enumerate other accounts.
     """
     user = frappe.session.user
+    # Membership row supplies the role only. The org itself MUST come from
+    # tenancy.get_current_org() so whoami agrees with every permission path
+    # (e.g. a suspended org resolves to None there, so it must here too).
     row = frappe.db.get_value("WebODM Org Membership", {"user": user},
-                              ["organization", "role"], as_dict=True)
+                              ["role"], as_dict=True)
     return {
         "user": user,
         "full_name": get_fullname(user),
         "is_platform_admin": tenancy.is_platform_admin(),
-        "organization": row.organization if row else None,
+        "organization": tenancy.get_current_org(),
         "org_role": row.role if row else None,
     }

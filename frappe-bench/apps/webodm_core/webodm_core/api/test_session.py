@@ -44,6 +44,26 @@ class TestWhoami(FrappeTestCase):
         out = session_api.whoami()
         self.assertTrue(out["is_platform_admin"])
 
+    def test_suspended_org_reports_no_organization(self):
+        # whoami must agree with tenancy.get_current_org(): a suspended org is
+        # no org at all, so reporting the membership row would contradict every
+        # permission path (see api/test_tenancy.test_suspended_org_denies).
+        org = frappe.get_doc("WebODM Organization", self.org)
+        org.status = "Suspended"
+        org.save(ignore_permissions=True)
+        frappe.local.webodm_org_cache = {}
+        try:
+            frappe.set_user(self.member)
+            out = session_api.whoami()
+            self.assertIsNone(out["organization"])
+            self.assertEqual(out["org_role"], "Member")
+        finally:
+            frappe.set_user("Administrator")
+            org.reload()
+            org.status = "Active"
+            org.save(ignore_permissions=True)
+            frappe.local.webodm_org_cache = {}
+
     def test_orgless_user_gets_nulls(self):
         orgless = _user("whoami_orgless@example.com")
         frappe.set_user(orgless)
