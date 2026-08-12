@@ -119,7 +119,13 @@ def save(preset_name, options, system=0, name=None):
             frappe.throw("You can only edit your organization's presets", frappe.PermissionError)
         doc.preset_name = preset_name
         doc.options = _encode_options(options)
+        was_system = int(doc.system or 0)
         doc.system = system
+        if was_system and not system and not doc.organization:
+            # Org stamping is before_insert only, so a demoted preset would keep
+            # organization=None and match neither list_presets() filter, making it
+            # invisible to everyone. Adopt the acting admin's org.
+            doc.organization = tenancy.require_org()
         doc.save(ignore_permissions=True)
     else:
         doc = frappe.get_doc({

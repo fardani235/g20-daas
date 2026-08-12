@@ -278,5 +278,60 @@ class TestPresetOrgSharingAPI(FrappeTestCase):
             presets.save(preset_name="Illicit System", options="[]", system=1)
 
 
+class TestPresetSystemDemotion(FrappeTestCase):
+    """Demoting a system preset to org scope must not orphan it.
+
+    Org stamping runs on before_insert ONLY, so an update that flips system 1->0
+    would leave organization=None: list_presets()'s system query (system=1) no
+    longer matches and its org query (organization=<org> AND system=0) can't match
+    a NULL organization, making the preset invisible to every user via the API.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        frappe.local.webodm_org_cache = {}
+        cls.org = frappe.get_doc({"doctype": "WebODM Organization",
+                                  "organization_name": "Preset Demote Org"}).insert(ignore_permissions=True).name
+        # The actor must be BOTH a platform admin (to touch system presets) and an
+        # org member (so require_org() can resolve an org to adopt). No existing
+        # fixture is both, so grant System Manager on top of the org membership.
+        cls.admin = _puser("preset_demote_admin@example.com")
+        u = frappe.get_doc("User", cls.admin)
+        u.append("roles", {"role": "System Manager"})
+        u.save(ignore_permissions=True)
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.admin,
+                        "organization": cls.org, "role": "Owner"}).insert(ignore_permissions=True)
+
+    def setUp(self):
+        frappe.local.webodm_org_cache = {}
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+
+    def test_demoted_system_preset_stays_visible(self):
+        frappe.set_user(self.admin)
+        frappe.local.webodm_org_cache = {}
+        self.assertTrue(presets.tenancy.is_platform_admin())
+        self.assertEqual(presets.tenancy.get_current_org(), self.org)
+
+        saved = presets.save(preset_name="Demote Me", options="[]", system=1)
+        target = saved["name"]
+        # Positive control: as a system preset it is visible before the demotion,
+        # so a post-demotion disappearance can only come from the scope flip.
+        self.assertIn(target, {p["name"] for p in presets.list_presets()})
+        self.assertIsNone(frappe.db.get_value("WebODM Preset", target, "organization"))
+
+        presets.save(preset_name="Demote Me", options="[]", system=0, name=target)
+
+        listed = {p["name"]: p for p in presets.list_presets()}
+        self.assertIn(target, listed, "demoted preset vanished from list_presets()")
+        self.assertEqual(int(listed[target]["system"]), 0)
+        self.assertIsNotNone(listed[target]["organization"],
+                             "demoted preset kept organization=None and is orphaned")
+        self.assertEqual(listed[target]["organization"], self.org)
+
+
 if __name__ == "__main__":
     unittest.main()
