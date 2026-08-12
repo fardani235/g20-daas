@@ -70,9 +70,11 @@ def has_preset_permission(doc, ptype, user=None):
         return True
     if _is_create(ptype):
         return True
-    # A system preset is readable by anyone; writes still fall to org scoping.
-    if getattr(doc, "system", 0) and int(doc.system) == 1 and ptype == "read":
-        return True
+    # System presets: readable by every org, writable only by platform admins
+    # (checked above). Never fall through to org scoping for a system preset --
+    # a stale `organization` would otherwise grant that org's members write.
+    if getattr(doc, "system", 0) and int(doc.system) == 1:
+        return ptype == "read"
     return _org_has_permission(doc, user)
 
 

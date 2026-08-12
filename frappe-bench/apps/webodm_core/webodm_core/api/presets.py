@@ -121,7 +121,13 @@ def save(preset_name, options, system=0, name=None):
         doc.options = _encode_options(options)
         was_system = int(doc.system or 0)
         doc.system = system
-        if was_system and not system and not doc.organization:
+        if system:
+            # System presets are platform-global. A promoted row that kept its
+            # organization would let that org's members write it via the generic
+            # REST API (permissions.has_preset_permission falls through to org
+            # scoping for non-read ptypes).
+            doc.organization = None
+        elif was_system and not doc.organization:
             # Org stamping is before_insert only, so a demoted preset would keep
             # organization=None and match neither list_presets() filter, making it
             # invisible to everyone. Adopt the acting admin's org.
