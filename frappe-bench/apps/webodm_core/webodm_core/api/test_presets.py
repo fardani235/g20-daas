@@ -408,6 +408,110 @@ class TestPresetSystemPromotion(FrappeTestCase):
         self.assertTrue(permissions.has_preset_permission(doc, "read", self.member))
 
 
+class TestPresetControllerInvariant(FrappeTestCase):
+    """The "system preset => no organization" invariant is enforced by the
+    controller, not just by api.presets.save().
+
+    save() nulls the org on promotion and permissions.has_preset_permission
+    returns read-only for any system preset, but two writers bypass save()
+    entirely and can still produce the odd state: the Desk UI / generic REST
+    (frappe.get_doc(...).save() fires no before_insert) and the
+    seed_system_presets patch's upsert branch, which sets system = 1 without
+    touching organization. WebODMPreset.validate() closes that gap because
+    validate() runs for every writer.
+
+    The update path is the load-bearing case: on a fresh insert the
+    before_insert stamping hook already nulls organization for system=1, so
+    only a system flip on an ALREADY org-stamped row can distinguish the
+    controller from the existing hook.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        frappe.local.webodm_org_cache = {}
+        cls.org = frappe.get_doc({"doctype": "WebODM Organization",
+                                  "organization_name": "Preset Invariant Org"}).insert(ignore_permissions=True).name
+        cls.member = _puser("preset_invariant_member@example.com")
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.member,
+                        "organization": cls.org, "role": "Owner"}).insert(ignore_permissions=True)
+
+    def setUp(self):
+        frappe.local.webodm_org_cache = {}
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+
+    def _org_preset(self, preset_name):
+        """Insert an org-scoped (system=0) preset as the member, via the ORM only.
+
+        Each test method passes a distinct name: this Frappe version rolls the
+        transaction back only at class teardown, so a shared name would collide.
+        """
+        frappe.set_user(self.member)
+        frappe.local.webodm_org_cache = {}
+        # Encode via the production helper: `options` is mandatory, and a raw
+        # "[]" reloads as a falsy parsed list on backends that auto-parse JSON
+        # columns, so the re-save below would die in _validate_mandatory before
+        # ever reaching validate(). _encode_options keeps it a truthy string.
+        target = frappe.get_doc({"doctype": "WebODM Preset", "preset_name": preset_name,
+                                 "options": presets._encode_options([{"name": "dsm", "value": True}]),
+                                 }).insert().name
+        # Positive control: it really is org-stamped, so a later NULL can only
+        # come from the controller reacting to the system flip.
+        self.assertEqual(frappe.db.get_value("WebODM Preset", target, "organization"), self.org)
+        return target
+
+    def test_system_flip_via_orm_clears_organization(self):
+        # Reproduces the Desk / generic-REST / seed-patch writer exactly: flip
+        # system to 1 and save WITHOUT nulling organization. Deliberately does
+        # NOT go through api.presets.save, which nulls the org itself -- so a
+        # pass here can only be the controller's validate().
+        target = self._org_preset("Invariant Flip Me")
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        doc = frappe.get_doc("WebODM Preset", target)
+        doc.system = 1
+        doc.save(ignore_permissions=True)
+
+        self.assertEqual(int(frappe.db.get_value("WebODM Preset", target, "system")), 1)
+        self.assertIsNone(frappe.db.get_value("WebODM Preset", target, "organization"),
+                          "system preset kept its organization -- that org's members can still write it")
+
+    def test_system_insert_with_explicit_organization_is_normalized(self):
+        # A direct ORM insert that names an organization alongside system=1.
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        target = frappe.get_doc({"doctype": "WebODM Preset", "preset_name": "Invariant Insert Me",
+                                 "system": 1, "organization": self.org,
+                                 "options": "[]"}).insert(ignore_permissions=True).name
+        self.assertIsNone(frappe.db.get_value("WebODM Preset", target, "organization"))
+
+    def test_demotion_still_adopts_an_organization(self):
+        # Guard rail: validate() must only null the org when system is truthy,
+        # so api.presets.save()'s demotion branch (which assigns
+        # tenancy.require_org()) keeps working.
+        target = self._org_preset("Invariant Demote Me")
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        doc = frappe.get_doc("WebODM Preset", target)
+        doc.system = 1
+        doc.save(ignore_permissions=True)
+        self.assertIsNone(frappe.db.get_value("WebODM Preset", target, "organization"))
+
+        doc = frappe.get_doc("WebODM Preset", target)
+        doc.system = 0
+        doc.organization = self.org
+        # Re-encode as api.presets.save() does on every write: the stored JSON
+        # string scalar reloads as a parsed list here, which _validate_mandatory
+        # would reject on the second consecutive save.
+        doc.options = presets._encode_options(doc.options)
+        doc.save(ignore_permissions=True)
+        self.assertEqual(frappe.db.get_value("WebODM Preset", target, "organization"), self.org,
+                         "validate() clobbered the organization on a non-system preset")
+
+
 class TestPresetSystemDeleteMessage(FrappeTestCase):
     """delete() must reject a non-admin on a system preset with its own message.
 
