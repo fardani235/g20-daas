@@ -94,6 +94,57 @@ class TestPresets(unittest.TestCase):
         frappe.db.commit()
         self.assertFalse(frappe.db.exists("WebODM Preset", "Test User Preset"))
 
+    def test_flags_true_for_admin_on_system_preset(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        presets.save(preset_name="Test System Preset", options="[]", system=1)
+        frappe.db.commit()
+        row = {p["preset_name"]: p for p in presets.list_presets()}["Test System Preset"]
+        self.assertTrue(row["can_write"])
+        self.assertTrue(row["can_delete"])
+
+    def test_flags_false_for_member_on_system_preset(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        presets.save(preset_name="Test System Preset", options="[]", system=1)
+        frappe.db.commit()
+        frappe.set_user(self.member)
+        frappe.local.webodm_org_cache = {}
+        row = {p["preset_name"]: p for p in presets.list_presets()}["Test System Preset"]
+        self.assertFalse(row["can_write"])
+        self.assertFalse(row["can_delete"])
+
+    def test_flags_true_for_member_on_own_org_preset(self):
+        presets.save(preset_name="Test User Preset", options="[]")
+        frappe.db.commit()
+        row = {p["preset_name"]: p for p in presets.list_presets()}["Test User Preset"]
+        self.assertTrue(row["can_write"])
+        self.assertTrue(row["can_delete"])
+
+    def test_flags_do_not_replace_enforcement(self):
+        """A false can_write flag is advisory: save() must still refuse the edit.
+
+        Sending system=0 keeps save()'s *requested scope* guard
+        ("Only administrators can manage system presets") out of the way, so the
+        raise below can only come from the refactored _can_modify() check on the
+        *existing* row, which is system=1.
+        """
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        presets.save(preset_name="Test System Preset", options="[]", system=1)
+        frappe.db.commit()
+        frappe.set_user(self.member)
+        frappe.local.webodm_org_cache = {}
+        with patch.object(presets.tenancy, "is_platform_admin", return_value=False):
+            with self.assertRaisesRegex(frappe.PermissionError,
+                                        "Only administrators can edit system presets"):
+                presets.save(preset_name="Test System Preset", options="[]",
+                             system=0, name="Test System Preset")
+            # The stored system preset has organization=None, so the org clause
+            # alone would also deny it — pin the system branch directly with an
+            # org that *does* match, where only that branch can produce False.
+            self.assertFalse(presets._can_modify(1, presets.tenancy.get_current_org()))
+
 
 class TestPresetOrgIsolation(FrappeTestCase):
     @classmethod
@@ -144,6 +195,14 @@ class TestPresetOrgIsolation(FrappeTestCase):
         frappe.local.webodm_org_cache = {}
         names = {x.name for x in frappe.get_list("WebODM Preset", limit_page_length=0)}
         self.assertIn(sys_name, names)
+
+    def test_flags_false_on_another_orgs_preset(self):
+        # B cannot even see A's preset (org query conditions), so assert via the
+        # helper directly — this is the rule the flags are derived from.
+        frappe.set_user(self.b)
+        frappe.local.webodm_org_cache = {}
+        self.assertFalse(presets._can_modify(0, self.org_a))
+        self.assertTrue(presets._can_modify(0, self.org_b))
 
 
 class TestPresetOrgSharingAPI(FrappeTestCase):
@@ -214,6 +273,279 @@ class TestPresetOrgSharingAPI(FrappeTestCase):
         self._act(self.m1)
         with self.assertRaises(frappe.PermissionError):
             presets.save(preset_name="Illicit System", options="[]", system=1)
+
+
+class TestPresetSystemDemotion(FrappeTestCase):
+    """Demoting a system preset to org scope must not orphan it.
+
+    Org stamping runs on before_insert ONLY, so an update that flips system 1->0
+    would leave organization=None: list_presets()'s system query (system=1) no
+    longer matches and its org query (organization=<org> AND system=0) can't match
+    a NULL organization, making the preset invisible to every user via the API.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        frappe.local.webodm_org_cache = {}
+        cls.org = frappe.get_doc({"doctype": "WebODM Organization",
+                                  "organization_name": "Preset Demote Org"}).insert(ignore_permissions=True).name
+        # The actor must be BOTH a platform admin (to touch system presets) and an
+        # org member (so require_org() can resolve an org to adopt). No existing
+        # fixture is both, so grant System Manager on top of the org membership.
+        cls.admin = _puser("preset_demote_admin@example.com")
+        u = frappe.get_doc("User", cls.admin)
+        u.append("roles", {"role": "System Manager"})
+        u.save(ignore_permissions=True)
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.admin,
+                        "organization": cls.org, "role": "Owner"}).insert(ignore_permissions=True)
+
+    def setUp(self):
+        frappe.local.webodm_org_cache = {}
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+
+    def test_demoted_system_preset_stays_visible(self):
+        frappe.set_user(self.admin)
+        frappe.local.webodm_org_cache = {}
+        self.assertTrue(presets.tenancy.is_platform_admin())
+        self.assertEqual(presets.tenancy.get_current_org(), self.org)
+
+        saved = presets.save(preset_name="Demote Me", options="[]", system=1)
+        target = saved["name"]
+        # Positive control: as a system preset it is visible before the demotion,
+        # so a post-demotion disappearance can only come from the scope flip.
+        self.assertIn(target, {p["name"] for p in presets.list_presets()})
+        self.assertIsNone(frappe.db.get_value("WebODM Preset", target, "organization"))
+
+        presets.save(preset_name="Demote Me", options="[]", system=0, name=target)
+
+        listed = {p["name"]: p for p in presets.list_presets()}
+        self.assertIn(target, listed, "demoted preset vanished from list_presets()")
+        self.assertEqual(int(listed[target]["system"]), 0)
+        self.assertIsNotNone(listed[target]["organization"],
+                             "demoted preset kept organization=None and is orphaned")
+        self.assertEqual(listed[target]["organization"], self.org)
+
+
+class TestPresetSystemPromotion(FrappeTestCase):
+    """Promoting an org preset to system scope must clear its organization.
+
+    The rest of the codebase (tenancy stamping, permissions.py's preset query
+    conditions) encodes the invariant "system preset => no organization". A
+    promoted row that kept `organization` set would leave that org's ordinary
+    members with write/delete through Frappe's generic REST stack, whose only
+    gate is permissions.has_preset_permission -- it falls through to org scoping
+    for every non-read ptype. That is a privilege escalation, so assert both the
+    stored invariant and the permission outcome.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        frappe.local.webodm_org_cache = {}
+        cls.org = frappe.get_doc({"doctype": "WebODM Organization",
+                                  "organization_name": "Preset Promote Org"}).insert(ignore_permissions=True).name
+        # The actor must be BOTH a platform admin (to touch system presets) and an
+        # org member (so the pre-promotion org preset can be created at all).
+        cls.admin = _puser("preset_promote_admin@example.com")
+        u = frappe.get_doc("User", cls.admin)
+        u.append("roles", {"role": "System Manager"})
+        u.save(ignore_permissions=True)
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.admin,
+                        "organization": cls.org, "role": "Owner"}).insert(ignore_permissions=True)
+        # An ordinary member of the SAME org: the user who would gain write on a
+        # promoted-but-still-stamped preset.
+        cls.member = _puser("preset_promote_member@example.com")
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.member,
+                        "organization": cls.org, "role": "Member"}).insert(ignore_permissions=True)
+
+    def setUp(self):
+        frappe.local.webodm_org_cache = {}
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+
+    def _promote(self, preset_name):
+        """Create an org preset as the admin, then flip it to system=1.
+
+        Each test method passes a distinct name: this Frappe version rolls the
+        transaction back only at class teardown, so rows created by one method
+        are still present for the next and a shared name would collide on the PK.
+        """
+        frappe.set_user(self.admin)
+        frappe.local.webodm_org_cache = {}
+        self.assertTrue(presets.tenancy.is_platform_admin())
+        saved = presets.save(preset_name=preset_name, options="[]")
+        target = saved["name"]
+        # Positive control: it really is org-stamped before the promotion, so a
+        # post-promotion NULL can only come from the scope flip.
+        self.assertEqual(frappe.db.get_value("WebODM Preset", target, "organization"), self.org)
+        presets.save(preset_name=preset_name, options="[]", system=1, name=target)
+        return target
+
+    def test_promoted_preset_clears_organization(self):
+        target = self._promote("Promote Me Invariant")
+        self.assertEqual(int(frappe.db.get_value("WebODM Preset", target, "system")), 1)
+        self.assertIsNone(frappe.db.get_value("WebODM Preset", target, "organization"),
+                          "promoted preset kept its organization -- org members can still write it")
+
+    def test_promoted_preset_denies_original_org_member_writes(self):
+        from webodm_core import permissions
+
+        target = self._promote("Promote Me Escalation")
+        doc = frappe.get_doc("WebODM Preset", target)
+        frappe.set_user(self.member)
+        frappe.local.webodm_org_cache = {}
+        # The generic REST stack's ONLY gate is this hook, and WebODM User holds
+        # write:1/delete:1 on the doctype -- so False here is the whole defense.
+        self.assertFalse(permissions.has_preset_permission(doc, "write", self.member))
+        self.assertFalse(permissions.has_preset_permission(doc, "delete", self.member))
+        # ...while the cross-org readability that list_presets() relies on stands.
+        self.assertTrue(permissions.has_preset_permission(doc, "read", self.member))
+
+
+class TestPresetControllerInvariant(FrappeTestCase):
+    """The "system preset => no organization" invariant is enforced by the
+    controller, not just by api.presets.save().
+
+    save() nulls the org on promotion and permissions.has_preset_permission
+    returns read-only for any system preset, but two writers bypass save()
+    entirely and can still produce the odd state: the Desk UI / generic REST
+    (frappe.get_doc(...).save() fires no before_insert) and the
+    seed_system_presets patch's upsert branch, which sets system = 1 without
+    touching organization. WebODMPreset.validate() closes that gap because
+    validate() runs for every writer.
+
+    The update path is the load-bearing case: on a fresh insert the
+    before_insert stamping hook already nulls organization for system=1, so
+    only a system flip on an ALREADY org-stamped row can distinguish the
+    controller from the existing hook.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        frappe.local.webodm_org_cache = {}
+        cls.org = frappe.get_doc({"doctype": "WebODM Organization",
+                                  "organization_name": "Preset Invariant Org"}).insert(ignore_permissions=True).name
+        cls.member = _puser("preset_invariant_member@example.com")
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.member,
+                        "organization": cls.org, "role": "Owner"}).insert(ignore_permissions=True)
+
+    def setUp(self):
+        frappe.local.webodm_org_cache = {}
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+
+    def _org_preset(self, preset_name):
+        """Insert an org-scoped (system=0) preset as the member, via the ORM only.
+
+        Each test method passes a distinct name: this Frappe version rolls the
+        transaction back only at class teardown, so a shared name would collide.
+        """
+        frappe.set_user(self.member)
+        frappe.local.webodm_org_cache = {}
+        # Encode via the production helper: `options` is mandatory, and a raw
+        # "[]" reloads as a falsy parsed list on backends that auto-parse JSON
+        # columns, so the re-save below would die in _validate_mandatory before
+        # ever reaching validate(). _encode_options keeps it a truthy string.
+        target = frappe.get_doc({"doctype": "WebODM Preset", "preset_name": preset_name,
+                                 "options": presets._encode_options([{"name": "dsm", "value": True}]),
+                                 }).insert().name
+        # Positive control: it really is org-stamped, so a later NULL can only
+        # come from the controller reacting to the system flip.
+        self.assertEqual(frappe.db.get_value("WebODM Preset", target, "organization"), self.org)
+        return target
+
+    def test_system_flip_via_orm_clears_organization(self):
+        # Reproduces the Desk / generic-REST / seed-patch writer exactly: flip
+        # system to 1 and save WITHOUT nulling organization. Deliberately does
+        # NOT go through api.presets.save, which nulls the org itself -- so a
+        # pass here can only be the controller's validate().
+        target = self._org_preset("Invariant Flip Me")
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        doc = frappe.get_doc("WebODM Preset", target)
+        doc.system = 1
+        doc.save(ignore_permissions=True)
+
+        self.assertEqual(int(frappe.db.get_value("WebODM Preset", target, "system")), 1)
+        self.assertIsNone(frappe.db.get_value("WebODM Preset", target, "organization"),
+                          "system preset kept its organization -- that org's members can still write it")
+
+    def test_system_insert_with_explicit_organization_is_normalized(self):
+        # A direct ORM insert that names an organization alongside system=1.
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        target = frappe.get_doc({"doctype": "WebODM Preset", "preset_name": "Invariant Insert Me",
+                                 "system": 1, "organization": self.org,
+                                 "options": "[]"}).insert(ignore_permissions=True).name
+        self.assertIsNone(frappe.db.get_value("WebODM Preset", target, "organization"))
+
+    def test_demotion_still_adopts_an_organization(self):
+        # Guard rail: validate() must only null the org when system is truthy,
+        # so api.presets.save()'s demotion branch (which assigns
+        # tenancy.require_org()) keeps working.
+        target = self._org_preset("Invariant Demote Me")
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        doc = frappe.get_doc("WebODM Preset", target)
+        doc.system = 1
+        doc.save(ignore_permissions=True)
+        self.assertIsNone(frappe.db.get_value("WebODM Preset", target, "organization"))
+
+        doc = frappe.get_doc("WebODM Preset", target)
+        doc.system = 0
+        doc.organization = self.org
+        # Re-encode as api.presets.save() does on every write: the stored JSON
+        # string scalar reloads as a parsed list here, which _validate_mandatory
+        # would reject on the second consecutive save.
+        doc.options = presets._encode_options(doc.options)
+        doc.save(ignore_permissions=True)
+        self.assertEqual(frappe.db.get_value("WebODM Preset", target, "organization"), self.org,
+                         "validate() clobbered the organization on a non-system preset")
+
+
+class TestPresetSystemDeleteMessage(FrappeTestCase):
+    """delete() must reject a non-admin on a system preset with its own message.
+
+    Pinned with assertRaisesRegex: OrgContextError subclasses PermissionError, so
+    a bare assertRaises would also pass if the call died in require_org() instead
+    of the system-preset branch under test.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        frappe.local.webodm_org_cache = {}
+        cls.org = frappe.get_doc({"doctype": "WebODM Organization",
+                                  "organization_name": "Preset Sys Delete Org"}).insert(ignore_permissions=True).name
+        cls.member = _puser("preset_sysdel_member@example.com")
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.member,
+                        "organization": cls.org, "role": "Member"}).insert(ignore_permissions=True)
+
+    def setUp(self):
+        frappe.local.webodm_org_cache = {}
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+
+    def test_non_admin_delete_of_system_preset_is_refused(self):
+        target = frappe.get_doc({"doctype": "WebODM Preset", "preset_name": "Sys Undeletable",
+                                 "system": 1, "options": "[]"}).insert(ignore_permissions=True).name
+        frappe.set_user(self.member)
+        frappe.local.webodm_org_cache = {}
+        with self.assertRaisesRegex(frappe.PermissionError,
+                                    "Only administrators can delete system presets"):
+            presets.delete(target)
+        self.assertTrue(frappe.db.exists("WebODM Preset", target))
 
 
 if __name__ == "__main__":

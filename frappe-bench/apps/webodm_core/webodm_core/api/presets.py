@@ -60,6 +60,21 @@ def _encode_options(options) -> str:
     return frappe.as_json(canonical)
 
 
+def _can_modify(system, organization, user=None):
+    """True when `user` may write or delete a preset with this scope.
+
+    Single source of truth: list_presets() surfaces this as UI hints and
+    save()/delete() enforce it, so the buttons a user sees cannot drift from
+    what the server actually permits. Takes loose fields rather than a doc so
+    it works for both a frappe.get_all row (dict) and a loaded Document.
+    """
+    if tenancy.is_platform_admin(user):
+        return True
+    if int(system or 0):
+        return False
+    return bool(organization) and organization == tenancy.get_current_org(user)
+
+
 @frappe.whitelist(allow_guest=False)
 def list_presets():
     """Presets visible to the caller: their organization's presets + system presets."""
@@ -77,6 +92,11 @@ def list_presets():
         )
     for r in rows:
         r["options"] = _decode_options(r.get("options"))
+        writable = _can_modify(r.get("system"), r.get("organization"))
+        # Separate fields even though they agree today: delete may later gain
+        # its own rule (e.g. a preset in use by a running task).
+        r["can_write"] = writable
+        r["can_delete"] = writable
     return rows
 
 
@@ -93,13 +113,25 @@ def save(preset_name, options, system=0, name=None):
 
     if name and frappe.db.exists(_DOCTYPE, name):
         doc = frappe.get_doc(_DOCTYPE, name)
-        if doc.system and not tenancy.is_platform_admin():
-            frappe.throw("Only administrators can edit system presets", frappe.PermissionError)
-        if not doc.system and not tenancy.is_platform_admin() and doc.organization != tenancy.get_current_org():
+        if not _can_modify(doc.system, doc.organization):
+            if doc.system:
+                frappe.throw("Only administrators can edit system presets", frappe.PermissionError)
             frappe.throw("You can only edit your organization's presets", frappe.PermissionError)
         doc.preset_name = preset_name
         doc.options = _encode_options(options)
+        was_system = int(doc.system or 0)
         doc.system = system
+        if system:
+            # System presets are platform-global. A promoted row that kept its
+            # organization would let that org's members write it via the generic
+            # REST API (permissions.has_preset_permission falls through to org
+            # scoping for non-read ptypes).
+            doc.organization = None
+        elif was_system and not doc.organization:
+            # Org stamping is before_insert only, so a demoted preset would keep
+            # organization=None and match neither list_presets() filter, making it
+            # invisible to everyone. Adopt the acting admin's org.
+            doc.organization = tenancy.require_org()
         doc.save(ignore_permissions=True)
     else:
         doc = frappe.get_doc({
@@ -120,9 +152,9 @@ def delete(name):
     if not frappe.db.exists(_DOCTYPE, name):
         return {"ok": True}
     doc = frappe.get_doc(_DOCTYPE, name)
-    if doc.system and not tenancy.is_platform_admin():
-        frappe.throw("Only administrators can delete system presets", frappe.PermissionError)
-    if not doc.system and not tenancy.is_platform_admin() and doc.organization != tenancy.get_current_org():
+    if not _can_modify(doc.system, doc.organization):
+        if doc.system:
+            frappe.throw("Only administrators can delete system presets", frappe.PermissionError)
         frappe.throw("You can only delete your organization's presets", frappe.PermissionError)
     frappe.delete_doc(_DOCTYPE, name, ignore_permissions=True)
     return {"ok": True}
