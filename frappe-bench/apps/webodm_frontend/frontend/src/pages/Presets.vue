@@ -36,11 +36,23 @@
               </Badge>
             </td>
             <td class="px-4 py-3 text-right">
-              <Button variant="ghost" size="icon" class="size-8" title="Edit preset" @click="openEdit(p)">
+              <Button variant="ghost" size="icon" class="size-8" title="Copy preset" @click="openCopy(p)">
+                <Copy />
+                <span class="sr-only">Copy {{ p.preset_name }}</span>
+              </Button>
+              <Button
+                v-if="p.can_write"
+                variant="ghost"
+                size="icon"
+                class="size-8"
+                title="Edit preset"
+                @click="openEdit(p)"
+              >
                 <Pencil />
                 <span class="sr-only">Edit {{ p.preset_name }}</span>
               </Button>
               <Button
+                v-if="p.can_delete"
                 variant="ghost"
                 size="icon"
                 class="size-8 text-muted-foreground hover:text-destructive"
@@ -72,6 +84,18 @@
           <Input id="preset-name" v-model="draft.preset_name" />
         </div>
 
+        <div v-if="isAdmin" class="flex items-center gap-2">
+          <input
+            id="preset-system"
+            type="checkbox"
+            v-model="draft.system"
+            class="rounded"
+          />
+          <Label for="preset-system" class="font-normal">
+            System preset (visible to every organization)
+          </Label>
+        </div>
+
         <p v-if="odm.error.value" class="text-sm text-destructive">{{ odm.error.value }}</p>
         <p v-else-if="odm.loading.value" class="text-sm text-muted-foreground">
           Loading options…
@@ -93,11 +117,11 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
-import { Pencil, Plus, Trash2 } from 'lucide-vue-next'
+import { Copy, Pencil, Plus, Trash2 } from 'lucide-vue-next'
 import { Badge, Button, Dialog, Input, Label } from '@/components/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import { toast } from '@/lib/toast'
-import { listPresets, savePreset, deletePreset } from '@/lib/presets'
+import { listPresets, savePreset, deletePreset, whoami } from '@/lib/presets'
 import { useOdmOptions } from '@/composables/useOdmOptions'
 import OdmOptionsForm from '@/components/OdmOptionsForm.vue'
 
@@ -105,7 +129,10 @@ const presets = ref([])
 const showModal = ref(false)
 const editing = ref(null)
 const saving = ref(false)
-const draft = reactive({ preset_name: '' })
+const isAdmin = ref(false)
+// system is a boolean here: Vue's checkbox v-model compares with looseEqual(v, true),
+// so a numeric 1 would render unchecked. onSave normalizes back to 0/1 for the API.
+const draft = reactive({ preset_name: '', system: false })
 const values = ref({})
 const odm = useOdmOptions()
 
@@ -116,11 +143,22 @@ async function refresh() {
     toast.error(e.message || 'Failed to load presets')
   }
 }
+
+async function loadAdmin() {
+  try {
+    isAdmin.value = !!(await whoami()).is_platform_admin
+  } catch {
+    isAdmin.value = false  // no admin affordances if identity is unknown
+  }
+}
+
 refresh()
+loadAdmin()
 
 async function openCreate() {
   editing.value = null
   draft.preset_name = ''
+  draft.system = false
   values.value = {}
   showModal.value = true
   await odm.load()
@@ -130,6 +168,20 @@ async function openCreate() {
 async function openEdit(p) {
   editing.value = p
   draft.preset_name = p.preset_name
+  draft.system = !!p.system
+  values.value = Object.fromEntries((p.options || []).map(o => [o.name, o.value]))
+  showModal.value = true
+  await odm.load()
+  odm.seedEnumDefaults(values.value)
+}
+
+// Copy = open the create dialog pre-filled. editing stays null, so onSave
+// posts name:null and creates a new record. Always org-scoped unless an
+// admin flips the System toggle before saving.
+async function openCopy(p) {
+  editing.value = null
+  draft.preset_name = `${p.preset_name} (copy)`
+  draft.system = false
   values.value = Object.fromEntries((p.options || []).map(o => [o.name, o.value]))
   showModal.value = true
   await odm.load()
@@ -155,7 +207,7 @@ async function onSave() {
       name: editing.value?.name || null,
       preset_name: draft.preset_name,
       options: toOptionsArray(),
-      system: editing.value?.system || 0,
+      system: draft.system ? 1 : 0,
     })
     toast.success('Preset saved')
     showModal.value = false
