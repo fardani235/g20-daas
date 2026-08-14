@@ -36,7 +36,8 @@ def test_flat_surface_volume_near_zero(tmp_path):
     path, tr = _write_dsm(tmp_path, elev)
     poly = _utm_square_to_4326(tr, 30, 70, 30, 70)
     res = compute_volume(path, poly)
-    assert res["base_plane"] == "best_fit"
+    # Default base method is "triangulate", matching WebODM's measure plugin.
+    assert res["base_plane"] == "triangulate"
     assert abs(res["volume"]) < 1.0
     assert res["area"] > 1400
 
