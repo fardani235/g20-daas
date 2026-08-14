@@ -42,3 +42,37 @@ def test_volume_endpoint_missing_file_is_404():
     with pytest.raises(HTTPException) as excinfo:
         asyncio.run(volume(req))
     assert excinfo.value.status_code == 404
+
+
+def _square_poly():
+    geom_utm = {"type": "Polygon", "coordinates": [[
+        [500010, 4499990], [500040, 4499990],
+        [500040, 4499960], [500010, 4499960], [500010, 4499990],
+    ]]}
+    return transform_geom("EPSG:32615", "EPSG:4326", geom_utm)
+
+
+def test_volume_endpoint_defaults_to_triangulate(tmp_path):
+    res = asyncio.run(volume(VolumeRequest(path=_dsm(tmp_path), polygon=_square_poly())))
+    assert res["base_plane"] == "triangulate"
+
+
+def test_volume_endpoint_honours_requested_method(tmp_path):
+    req = VolumeRequest(path=_dsm(tmp_path), polygon=_square_poly(), method="plane")
+    res = asyncio.run(volume(req))
+    assert res["base_plane"] == "plane"
+
+
+def test_volume_endpoint_rejects_unknown_method_with_422(tmp_path):
+    req = VolumeRequest(path=_dsm(tmp_path), polygon=_square_poly(), method="bogus")
+    with pytest.raises(HTTPException) as excinfo:
+        asyncio.run(volume(req))
+    assert excinfo.value.status_code == 422
+    assert "base method" in str(excinfo.value.detail)
+
+
+def test_volume_endpoint_treats_blank_method_as_default(tmp_path):
+    """WebODM's serializer allows a blank method; treat it as the default."""
+    req = VolumeRequest(path=_dsm(tmp_path), polygon=_square_poly(), method="")
+    res = asyncio.run(volume(req))
+    assert res["base_plane"] == "triangulate"
