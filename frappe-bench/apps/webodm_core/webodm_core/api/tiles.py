@@ -109,19 +109,33 @@ def serve(task_name: str, dataset: str, z: int, x: int, y: int):
     return _png_response(resp.content)
 
 
+VOLUME_BASE_METHODS = ("triangulate", "plane", "average", "highest", "lowest")
+DEFAULT_VOLUME_BASE_METHOD = "triangulate"
+
+
 @frappe.whitelist(allow_guest=False)
-def volume(task_name, polygon):
+def volume(task_name, polygon, method=None):
     """Compute stockpile/earthwork volume for a polygon over the task's DSM.
 
-    ``polygon`` is a GeoJSON Polygon (EPSG:4326), sent as a JSON string. Resolves
-    the task's DSM (throws if absent) and forwards to the geospatial service.
+    ``polygon`` is a GeoJSON Polygon (EPSG:4326), sent as a JSON string. ``method``
+    selects the base surface (see ``VOLUME_BASE_METHODS``); it defaults to
+    ``triangulate``, matching WebODM's measure plugin. Resolves the task's DSM
+    (throws if absent) and forwards to the geospatial service.
     """
     path = _resolve_raster_path(task_name, "dsm")
     poly = frappe.parse_json(polygon) if isinstance(polygon, str) else polygon
+
+    base_method = (method or DEFAULT_VOLUME_BASE_METHOD).strip()
+    if base_method not in VOLUME_BASE_METHODS:
+        frappe.throw(
+            f"Invalid volume base method: {base_method}. "
+            f"Expected one of {', '.join(VOLUME_BASE_METHODS)}."
+        )
+
     try:
         resp = requests.post(
             f"{_geospatial_url().rstrip('/')}/volume",
-            json={"path": path, "polygon": poly},
+            json={"path": path, "polygon": poly, "method": base_method},
             timeout=120,
         )
         resp.raise_for_status()
