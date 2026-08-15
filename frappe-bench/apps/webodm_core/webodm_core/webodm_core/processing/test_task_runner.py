@@ -100,5 +100,43 @@ class TestStatusAction(unittest.TestCase):
         self.assertEqual(_status_action(99, 0), "failed")
 
 
+class TestPendingTasksAreNotAutoStarted(unittest.TestCase):
+    """The scheduler sweep must never start a task the user did not start.
+
+    Regression: the every-minute cron filtered on status="Pending", so any
+    freshly uploaded task went Pending -> Running within 60s without anyone
+    pressing Start, and the auto_start_processing setting was meaningless
+    because processing began whether it was on or off."""
+
+    def test_sweep_queries_queued_not_pending(self):
+        from unittest.mock import patch
+        from webodm_core.webodm_core.processing import task_runner
+
+        with patch("frappe.get_all") as get_all, patch("frappe.enqueue"):
+            get_all.return_value = []
+            task_runner.process_pending_tasks()
+
+        filters = get_all.call_args.kwargs["filters"]
+        self.assertEqual(filters, {"status": "Queued"})
+        self.assertNotEqual(
+            filters.get("status"), "Pending",
+            "sweeping Pending auto-starts tasks nobody asked to run",
+        )
+
+    def test_worker_refuses_a_merely_pending_task(self):
+        # Defence in depth: even if something enqueues a Pending task, the
+        # worker must bail before it can reach the node and set Running.
+        from unittest.mock import MagicMock, patch
+        from webodm_core.webodm_core.processing import task_runner
+
+        task = MagicMock()
+        task.status = "Pending"
+        with patch("frappe.get_doc", return_value=task), patch("frappe.get_all") as get_all:
+            task_runner.process_task("TASK-PENDING")
+
+        get_all.assert_not_called()      # never looked for a node
+        task.db_set.assert_not_called()  # never wrote a status
+
+
 if __name__ == "__main__":
     unittest.main()

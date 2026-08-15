@@ -69,6 +69,29 @@ class TestAutoStart(unittest.TestCase):
             task_api._maybe_autostart("SOME-TASK")
             enq.assert_not_called()
 
+    def test_auto_start_queues_the_task(self):
+        # The scheduler sweep only picks up Queued, and the enqueued worker
+        # re-checks status, so auto-start must perform the Pending -> Queued
+        # handoff or it is a silent no-op.
+        from unittest.mock import patch
+        from webodm_core.api import task as task_api
+        with patch("webodm_core.api.settings.get") as gs, patch("frappe.enqueue"), \
+                patch("frappe.db.set_value") as sv, patch("frappe.db.commit"):
+            gs.return_value = {"auto_start_processing": 1}
+            task_api._maybe_autostart("SOME-TASK")
+            sv.assert_called_once_with("WebODM Task", "SOME-TASK", "status", "Queued")
+
+    def test_auto_start_disabled_leaves_status_untouched(self):
+        # With the setting off the task must stay parked in Pending — this is
+        # the guarantee the old Pending-sweeping cron silently broke.
+        from unittest.mock import patch
+        from webodm_core.api import task as task_api
+        with patch("webodm_core.api.settings.get") as gs, patch("frappe.enqueue"), \
+                patch("frappe.db.set_value") as sv:
+            gs.return_value = {"auto_start_processing": 0}
+            task_api._maybe_autostart("SOME-TASK")
+            sv.assert_not_called()
+
 
 class TestEncodeProcessingOptions(unittest.TestCase):
     # The dispatch read-path (task_runner.process_task) does: if the stored value
