@@ -100,9 +100,17 @@ def _get_node_tasks_key(task: Document):
 
 
 def process_pending_tasks():
+    """Sweep tasks the user has actually asked to run.
+
+    Deliberately filters on ``Queued``, not ``Pending``. ``Pending`` means
+    "uploaded, parked, awaiting a human" — sweeping it would start every task
+    within a minute of upload and make the Start button and the
+    ``auto_start_processing`` setting meaningless. Only an explicit start
+    (api.task.process_task or _maybe_autostart) moves Pending -> Queued.
+    """
     tasks = frappe.get_all(
         "WebODM Task",
-        filters={"status": "Pending"},
+        filters={"status": "Queued"},
         pluck="name",
     )
     for task_name in tasks:
@@ -116,7 +124,7 @@ def process_pending_tasks():
 
 def process_task(task_name: str):
     task = frappe.get_doc("WebODM Task", task_name)
-    if task.status != "Pending":
+    if task.status != "Queued":
         return
 
     nodes = frappe.get_all(
@@ -137,7 +145,7 @@ def process_task(task_name: str):
         return
 
     task.reload()
-    if task.status != "Pending":
+    if task.status != "Queued":
         return
 
     images = _get_task_images(task)

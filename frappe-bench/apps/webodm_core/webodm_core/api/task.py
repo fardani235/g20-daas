@@ -32,7 +32,10 @@ def process_task():
     if task.status != "Pending":
         frappe.throw(f"Task {task_name} is not in Pending state")
 
-    task.db_set("status", "Pending")
+    # Pending -> Queued is the explicit user handoff. The scheduler sweep only
+    # picks up Queued, so this assignment is what actually starts the task;
+    # without it the task sits parked forever.
+    task.db_set("status", "Queued")
     task.db_set("progress", 1)
 
     frappe.enqueue(
@@ -56,7 +59,10 @@ def cancel_task():
         frappe.throw("task_name is required")
 
     task = _get_task_checked(task_name, "write")
-    if task.status not in ("Pending", "Running"):
+    # Queued is cancellable too: it is the window between the user pressing
+    # Start and the node accepting the task, and it would otherwise be the one
+    # state the user cannot back out of.
+    if task.status not in ("Pending", "Queued", "Running"):
         frappe.throw(f"Task {task_name} cannot be cancelled (status: {task.status})")
 
     node_task_id = task.node_task_id
@@ -220,6 +226,11 @@ def _maybe_autostart(task_name: str):
         from webodm_core.api import settings as settings_api
         if not settings_api.get().get("auto_start_processing"):
             return
+        # Same Pending -> Queued handoff the Start button performs: the sweep in
+        # task_runner only picks up Queued, and the enqueued job re-checks the
+        # status, so skipping this would make auto-start a silent no-op.
+        frappe.db.set_value("WebODM Task", task_name, "status", "Queued")
+        frappe.db.commit()
         frappe.enqueue(
             "webodm_core.webodm_core.processing.task_runner.process_task",
             queue="long",
