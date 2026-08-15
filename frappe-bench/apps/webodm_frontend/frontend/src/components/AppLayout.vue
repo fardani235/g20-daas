@@ -1,87 +1,41 @@
-<template>
-  <div class="flex h-screen bg-gray-50 dark:bg-gray-900">
-    <aside class="w-56 bg-white dark:bg-gray-900 border-r dark:border-gray-700 flex flex-col flex-shrink-0">
-      <div class="h-14 flex items-center px-4 border-b dark:border-gray-700">
-        <FeatherIcon name="map" class="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2" />
-        <span class="font-semibold text-gray-900 dark:text-gray-100">G20 Tech</span>
-      </div>
-      <nav class="flex-1 p-3 space-y-1">
-        <router-link
-          v-for="item in navItems"
-          :key="item.to"
-          :to="item.to"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-          :class="isActive(item.to) ? 'bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
-        >
-          <FeatherIcon :name="item.icon" class="h-4 w-4" />
-          {{ item.label }}
-        </router-link>
-      </nav>
-      <div class="p-3 border-t dark:border-gray-700 space-y-1">
-        <button
-          class="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          @click="cycle"
-        >
-          <FeatherIcon :name="themeIcon" class="h-4 w-4" />
-          {{ themeLabel }}
-        </button>
-        <button
-          class="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          @click="logout"
-        >
-          <FeatherIcon name="log-out" class="h-4 w-4" />
-          Sign out
-        </button>
-      </div>
-    </aside>
-    <div class="flex-1 flex flex-col min-w-0">
-      <header class="h-14 bg-white dark:bg-gray-900 border-b dark:border-gray-700 flex items-center px-6 flex-shrink-0">
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ pageTitle }}</h1>
-      </header>
-      <main class="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
-        <router-view v-slot="{ Component }">
-          <Transition name="page" mode="out-in">
-            <component :is="Component" />
-          </Transition>
-        </router-view>
-      </main>
-    </div>
-  </div>
-</template>
-
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { FeatherIcon } from 'frappe-ui'
-import { useTheme } from '../composables/useTheme'
+import { LogOut, Map as MapIcon, Menu, Monitor, Moon, Sun } from 'lucide-vue-next'
+import { Button, DropdownMenu, DropdownMenuItem } from '@/components/ui'
+import {
+  PRIMARY_TABS,
+  activePrimaryTab,
+  secondaryTabs,
+  activeSecondaryTab,
+} from '@/lib/nav'
+import { useTheme } from '@/composables/useTheme'
 
 const route = useRoute()
 const router = useRouter()
-
 const { current, cycle } = useTheme()
 
-const navItems = [
-  { to: '/dashboard', icon: 'grid', label: 'Dashboard' },
-  { to: '/projects', icon: 'folder', label: 'Projects' },
-  { to: '/presets', icon: 'sliders', label: 'Presets' },
-  { to: '/invoices', icon: 'file-text', label: 'Invoices' },
-  { to: '/settings', icon: 'settings', label: 'Settings' },
-  { to: '/plugins', icon: 'puzzle', label: 'Plugins' },
-]
+// All nav state is derived from the path — never stored — so deep links and
+// refreshes highlight the right tab.
+const activeTab = computed(() => activePrimaryTab(route.path))
+const subTabs = computed(() => secondaryTabs(route.path))
+const activeSubTab = computed(() => activeSecondaryTab(route.path))
+const activeTabLabel = computed(
+  () => PRIMARY_TABS.find(t => t.to === activeTab.value)?.label ?? 'Menu',
+)
 
-const pageTitle = computed(() => route.meta?.title || '')
-
-const isActive = (path) => route.path === path || route.path.startsWith(path + '/')
+// MapView fills the viewport and scrolls internally; every other page gets the
+// standard padded, scrollable shell.
+const fullBleed = computed(() => route.meta?.fullBleed === true)
 
 const themeIcon = computed(() => {
-  if (current.value === 'light') return 'sun'
-  if (current.value === 'dark') return 'moon'
-  return 'monitor'
+  if (current.value === 'light') return Sun
+  if (current.value === 'dark') return Moon
+  return Monitor
 })
-
-const themeLabel = computed(() => {
-  return current.value.charAt(0).toUpperCase() + current.value.slice(1)
-})
+const themeLabel = computed(
+  () => current.value.charAt(0).toUpperCase() + current.value.slice(1),
+)
 
 async function logout() {
   try {
@@ -90,3 +44,106 @@ async function logout() {
   router.push('/')
 }
 </script>
+
+<template>
+  <div class="flex h-screen flex-col bg-background">
+    <!-- Primary bar -->
+    <header class="flex-shrink-0 border-b border-border bg-card">
+      <div class="flex h-14 items-center gap-4 px-4 sm:px-6">
+        <router-link to="/dashboard" class="flex flex-shrink-0 items-center gap-2">
+          <MapIcon class="size-5 text-primary" />
+          <span class="font-semibold tracking-tight text-foreground">G20 Tech</span>
+        </router-link>
+
+        <!-- Tabs (md and up) -->
+        <nav class="hidden min-w-0 flex-1 items-center gap-1 md:flex" aria-label="Main">
+          <router-link
+            v-for="tab in PRIMARY_TABS"
+            :key="tab.to"
+            :to="tab.to"
+            :aria-current="activeTab === tab.to ? 'page' : undefined"
+            class="relative flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            :class="
+              activeTab === tab.to
+                ? 'text-primary after:absolute after:inset-x-2 after:-bottom-[13px] after:h-0.5 after:rounded-full after:bg-primary'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            "
+          >
+            <component :is="tab.icon" class="size-4" />
+            {{ tab.label }}
+          </router-link>
+        </nav>
+
+        <!-- Collapsed tabs (below md) -->
+        <div class="flex min-w-0 flex-1 md:hidden">
+          <DropdownMenu align="start">
+            <template #trigger>
+              <Button variant="ghost" size="sm">
+                <Menu />
+                {{ activeTabLabel }}
+              </Button>
+            </template>
+            <DropdownMenuItem
+              v-for="tab in PRIMARY_TABS"
+              :key="tab.to"
+              @select="router.push(tab.to)"
+            >
+              <component :is="tab.icon" />
+              {{ tab.label }}
+            </DropdownMenuItem>
+          </DropdownMenu>
+        </div>
+
+        <!-- Right side -->
+        <div class="flex flex-shrink-0 items-center gap-1">
+          <Button variant="ghost" size="icon" :title="`Theme: ${themeLabel}`" @click="cycle">
+            <component :is="themeIcon" />
+            <span class="sr-only">Toggle theme (currently {{ themeLabel }})</span>
+          </Button>
+          <DropdownMenu>
+            <template #trigger>
+              <Button variant="ghost" size="sm">Account</Button>
+            </template>
+            <DropdownMenuItem @select="logout">
+              <LogOut />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <!-- Secondary bar: project-detail routes only -->
+      <nav
+        v-if="subTabs.length"
+        class="flex items-center gap-1 border-t border-border px-4 sm:px-6"
+        aria-label="Project sections"
+      >
+        <router-link
+          v-for="tab in subTabs"
+          :key="tab.to"
+          :to="tab.to"
+          :aria-current="activeSubTab === tab.to ? 'page' : undefined"
+          class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          :class="
+            activeSubTab === tab.to
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          "
+        >
+          {{ tab.label }}
+        </router-link>
+      </nav>
+    </header>
+
+    <main
+      class="flex-1"
+      :class="fullBleed ? 'overflow-hidden' : 'overflow-auto p-4 sm:p-6'"
+    >
+      <router-view v-slot="{ Component }">
+        <Transition name="page" mode="out-in">
+          <component :is="Component" />
+        </Transition>
+      </router-view>
+    </main>
+  </div>
+</template>

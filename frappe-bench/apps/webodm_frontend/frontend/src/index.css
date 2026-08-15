@@ -2,25 +2,86 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
-}
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
 
-.dark {
-  --primary: #60a5fa;
-  --primary-dark: #3b82f6;
-}
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-}
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
 
-.dark body {
-  background-color: #111827;
-  color: #e5e7eb;
+    /* blue-600 — the single accent (Global Constraint 5) */
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 95% 44%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 96%;
+
+    --destructive: 0 63% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 69% 42%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 90% 48%;
+    --warning-foreground: 222 47% 11%;
+
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 217 91% 60%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    margin: 0;
+  }
 }
 
 .page-enter-active,
@@ -41,4 +102,16 @@ body {
 /* The first vertex of a measurement is the click-to-close target. */
 .measure-close-target {
   cursor: pointer;
+}
+
+/* Global Constraint 8: everything animated must yield to this. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

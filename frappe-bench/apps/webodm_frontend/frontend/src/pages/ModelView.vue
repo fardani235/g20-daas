@@ -1,19 +1,21 @@
 <template>
-  <div class="h-screen flex flex-col bg-gray-900">
-    <div class="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between flex-shrink-0 z-10">
-      <Button variant="outline" size="sm" theme="gray" @click="$router.back()">&larr; Back</Button>
-      <div class="flex items-center gap-3">
-        <Badge v-if="task" :theme="statusBadge(task.status)" size="sm">{{ task.status }}</Badge>
-        <h2 class="text-lg font-semibold text-gray-100">{{ task?.title || '3D Viewer' }}</h2>
-      </div>
-      <div class="flex items-center gap-2">
-        <a v-if="task?.model" :href="task.model" download
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700">
-          <FeatherIcon name="download" class="h-3.5 w-3.5" /> Model
+  <div class="flex h-full flex-col bg-background">
+    <div class="flex flex-shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+      <h2 class="text-base font-medium text-foreground">{{ task?.title || '3D viewer' }}</h2>
+      <Badge v-if="task" :variant="statusVariant(task.status)">{{ task.status }}</Badge>
+      <div class="ml-auto flex items-center gap-2">
+        <a
+          v-if="task?.model"
+          :href="task.model"
+          download
+          class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+        >
+          <Download class="size-3.5" />
+          Model
         </a>
-        <Button variant="ghost" size="sm" theme="gray" @click="resetCamera">
-          <template #prefix><FeatherIcon name="maximize" class="h-3 w-3" /></template>
-          Reset View
+        <Button variant="outline" size="sm" @click="resetCamera">
+          <Maximize />
+          Reset view
         </Button>
       </div>
     </div>
@@ -26,9 +28,9 @@
       </div>
       <div v-if="error" class="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-20">
         <div class="text-center max-w-md">
-          <FeatherIcon name="alert-triangle" class="h-10 w-10 text-yellow-500 mx-auto mb-3" />
+          <TriangleAlert class="mx-auto mb-3 size-10 text-warning" />
           <p class="text-gray-300 text-sm mb-2">{{ error }}</p>
-          <Button variant="outline" size="sm" theme="gray" @click="loadModel">Retry</Button>
+          <Button variant="outline" size="sm" @click="loadModel">Retry</Button>
         </div>
       </div>
     </div>
@@ -38,7 +40,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { Badge, Button, FeatherIcon } from 'frappe-ui'
+import { Download, Maximize, TriangleAlert } from 'lucide-vue-next'
+import { Badge, Button } from '@/components/ui'
+import { statusVariant } from '@/lib/status'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -56,11 +60,6 @@ let scene, camera, renderer, controls
 let modelGroup = null
 let animationId = null
 let cleanupScene = null
-
-function statusBadge(status) {
-  const themes = { completed: 'green', running: 'blue', failed: 'red', queued: 'orange', canceled: 'gray' }
-  return themes[status?.toLowerCase()] || 'gray'
-}
 
 function csrfHeaders() {
   const headers = { 'Content-Type': 'application/json' }

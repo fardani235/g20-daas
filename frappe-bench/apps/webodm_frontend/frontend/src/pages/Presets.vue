@@ -1,67 +1,127 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Processing Presets</h2>
-      <Button variant="solid" theme="blue" @click="openCreate">
-        <template #prefix><FeatherIcon name="plus" class="h-4 w-4" /></template>
-        New Preset
-      </Button>
-    </div>
+  <div class="space-y-6">
+    <PageHeader
+      title="Processing presets"
+      description="Reusable OpenDroneMap option sets for your organization."
+    >
+      <template #actions>
+        <Button @click="openCreate">
+          <Plus />
+          New preset
+        </Button>
+      </template>
+    </PageHeader>
 
-    <div class="bg-white dark:bg-gray-900 rounded-xl border dark:border-gray-700 overflow-hidden">
+    <div class="overflow-hidden rounded-lg border border-border bg-card">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b dark:border-gray-700 text-left text-gray-500 dark:text-gray-400">
+          <tr class="border-b border-border text-left text-muted-foreground">
             <th class="px-4 py-3 font-medium">Name</th>
             <th class="px-4 py-3 font-medium">Options</th>
             <th class="px-4 py-3 font-medium">Scope</th>
-            <th class="px-4 py-3 font-medium text-right">Actions</th>
+            <th class="px-4 py-3 text-right font-medium">Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="p in presets" :key="p.name" class="border-b dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
-            <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{{ p.preset_name }}</td>
-            <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ p.options.length }} option(s)</td>
+          <tr
+            v-for="p in presets"
+            :key="p.name"
+            class="border-b border-border transition-colors last:border-0 hover:bg-accent"
+          >
+            <td class="px-4 py-3 font-medium text-card-foreground">{{ p.preset_name }}</td>
+            <td class="px-4 py-3 text-muted-foreground">{{ p.options.length }} option(s)</td>
             <td class="px-4 py-3">
-              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                :class="p.system ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'">
-                {{ p.system ? 'System' : 'User' }}
-              </span>
+              <Badge :variant="p.system ? 'default' : 'secondary'">
+                {{ p.system ? 'System' : 'Organization' }}
+              </Badge>
             </td>
-            <td class="px-4 py-3 text-right space-x-2">
-              <button class="text-gray-400 hover:text-blue-600" @click="openEdit(p)"><FeatherIcon name="edit-2" class="h-4 w-4" /></button>
-              <button class="text-gray-400 hover:text-red-600" @click="onDelete(p)"><FeatherIcon name="trash-2" class="h-4 w-4" /></button>
+            <td class="px-4 py-3 text-right">
+              <Button variant="ghost" size="icon" class="size-8" title="Copy preset" @click="openCopy(p)">
+                <Copy />
+                <span class="sr-only">Copy {{ p.preset_name }}</span>
+              </Button>
+              <Button
+                v-if="p.can_write"
+                variant="ghost"
+                size="icon"
+                class="size-8"
+                title="Edit preset"
+                @click="openEdit(p)"
+              >
+                <Pencil />
+                <span class="sr-only">Edit {{ p.preset_name }}</span>
+              </Button>
+              <Button
+                v-if="p.can_delete"
+                variant="ghost"
+                size="icon"
+                class="size-8 text-muted-foreground hover:text-destructive"
+                title="Delete preset"
+                @click="onDelete(p)"
+              >
+                <Trash2 />
+                <span class="sr-only">Delete {{ p.preset_name }}</span>
+              </Button>
+            </td>
+          </tr>
+          <tr v-if="!presets.length">
+            <td colspan="4" class="px-4 py-10 text-center text-muted-foreground">
+              No presets yet.
             </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Create/Edit modal -->
-    <div v-if="showModal" class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50" @click.self="showModal = false">
-      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[85vh] overflow-y-auto">
-        <h3 class="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">{{ editing ? 'Edit' : 'New' }} Preset</h3>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-        <input v-model="draft.preset_name" class="w-full rounded-lg border dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm mb-4" />
-
-        <p v-if="odm.error.value" class="text-sm text-red-600 mb-3">{{ odm.error.value }}</p>
-        <p v-else-if="odm.loading.value" class="text-sm text-gray-500 mb-3">Loading options…</p>
-
-        <OdmOptionsForm v-else :catalog="odm.catalog.value" v-model="values" :field-type="odm.fieldType" />
-
-        <div class="flex justify-end gap-2 mt-6">
-          <Button variant="ghost" @click="showModal = false">Cancel</Button>
-          <Button variant="solid" theme="blue" :loading="saving" @click="onSave">Save</Button>
+    <Dialog
+      v-model:open="showModal"
+      :title="`${editing ? 'Edit' : 'New'} preset`"
+      class="sm:max-w-lg"
+    >
+      <div class="space-y-4">
+        <div class="space-y-1.5">
+          <Label for="preset-name">Name</Label>
+          <Input id="preset-name" v-model="draft.preset_name" />
         </div>
+
+        <div v-if="isAdmin" class="flex items-center gap-2">
+          <input
+            id="preset-system"
+            type="checkbox"
+            v-model="draft.system"
+            class="rounded"
+          />
+          <Label for="preset-system" class="font-normal">
+            System preset (visible to every organization)
+          </Label>
+        </div>
+
+        <p v-if="odm.error.value" class="text-sm text-destructive">{{ odm.error.value }}</p>
+        <p v-else-if="odm.loading.value" class="text-sm text-muted-foreground">
+          Loading options…
+        </p>
+        <OdmOptionsForm
+          v-else
+          :catalog="odm.catalog.value"
+          v-model="values"
+          :field-type="odm.fieldType"
+        />
       </div>
-    </div>
+      <template #footer>
+        <Button variant="ghost" @click="showModal = false">Cancel</Button>
+        <Button :loading="saving" @click="onSave">Save</Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive } from 'vue'
-import { Button, FeatherIcon, toast } from 'frappe-ui'
-import { listPresets, savePreset, deletePreset } from '@/lib/presets'
+import { Copy, Pencil, Plus, Trash2 } from 'lucide-vue-next'
+import { Badge, Button, Dialog, Input, Label } from '@/components/ui'
+import PageHeader from '@/components/PageHeader.vue'
+import { toast } from '@/lib/toast'
+import { listPresets, savePreset, deletePreset, whoami } from '@/lib/presets'
 import { useOdmOptions } from '@/composables/useOdmOptions'
 import OdmOptionsForm from '@/components/OdmOptionsForm.vue'
 
@@ -69,7 +129,10 @@ const presets = ref([])
 const showModal = ref(false)
 const editing = ref(null)
 const saving = ref(false)
-const draft = reactive({ preset_name: '' })
+const isAdmin = ref(false)
+// system is a boolean here: Vue's checkbox v-model compares with looseEqual(v, true),
+// so a numeric 1 would render unchecked. onSave normalizes back to 0/1 for the API.
+const draft = reactive({ preset_name: '', system: false })
 const values = ref({})
 const odm = useOdmOptions()
 
@@ -80,11 +143,22 @@ async function refresh() {
     toast.error(e.message || 'Failed to load presets')
   }
 }
+
+async function loadAdmin() {
+  try {
+    isAdmin.value = !!(await whoami()).is_platform_admin
+  } catch {
+    isAdmin.value = false  // no admin affordances if identity is unknown
+  }
+}
+
 refresh()
+loadAdmin()
 
 async function openCreate() {
   editing.value = null
   draft.preset_name = ''
+  draft.system = false
   values.value = {}
   showModal.value = true
   await odm.load()
@@ -94,6 +168,20 @@ async function openCreate() {
 async function openEdit(p) {
   editing.value = p
   draft.preset_name = p.preset_name
+  draft.system = !!p.system
+  values.value = Object.fromEntries((p.options || []).map(o => [o.name, o.value]))
+  showModal.value = true
+  await odm.load()
+  odm.seedEnumDefaults(values.value)
+}
+
+// Copy = open the create dialog pre-filled. editing stays null, so onSave
+// posts name:null and creates a new record. Always org-scoped unless an
+// admin flips the System toggle before saving.
+async function openCopy(p) {
+  editing.value = null
+  draft.preset_name = `${p.preset_name} (copy)`
+  draft.system = false
   values.value = Object.fromEntries((p.options || []).map(o => [o.name, o.value]))
   showModal.value = true
   await odm.load()
@@ -119,7 +207,7 @@ async function onSave() {
       name: editing.value?.name || null,
       preset_name: draft.preset_name,
       options: toOptionsArray(),
-      system: editing.value?.system || 0,
+      system: draft.system ? 1 : 0,
     })
     toast.success('Preset saved')
     showModal.value = false

@@ -1,8 +1,8 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
-import { FrappeUI } from 'frappe-ui'
 import App from './App.vue'
 import './index.css'
+import 'vue-sonner/style.css'
 import { getMyOrganization } from './lib/organization.js'
 
 const routes = [
@@ -58,7 +58,7 @@ const routes = [
     path: '/project/:id',
     name: 'MapView',
     component: () => import('./pages/MapView.vue'),
-    meta: { requiresAuth: true, title: 'Project' },
+    meta: { requiresAuth: true, title: 'Project', fullBleed: true },
   },
   {
     path: '/project/:id/task/:taskId/model',
@@ -127,5 +127,4 @@ router.beforeEach(async (to, from, next) => {
 
 const app = createApp(App)
 app.use(router)
-app.use(FrappeUI, { socketio: false })
 app.mount('#app')

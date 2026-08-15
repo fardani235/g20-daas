@@ -1,46 +1,8 @@
-<template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-    <div class="w-full max-w-sm mx-auto">
-      <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border dark:border-gray-700 p-8">
-        <div class="text-center mb-8">
-          <FeatherIcon name="map" class="h-10 w-10 text-blue-600 dark:text-blue-400 mx-auto mb-3" />
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">G20 Tech</h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Sign in to your account</p>
-        </div>
-        <form @submit.prevent="login" class="space-y-4">
-          <Alert v-if="error" :title="error" variant="error" class="mb-4" />
-          <FormControl
-            label="Username"
-            type="text"
-            v-model="username"
-            placeholder="Administrator"
-            :required="true"
-          />
-          <FormControl
-            label="Password"
-            type="password"
-            v-model="password"
-            placeholder="admin"
-            :required="true"
-          />
-          <Button
-            type="submit"
-            variant="solid"
-            class="w-full"
-            :loading="loading"
-          >
-            Sign in
-          </Button>
-        </form>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup>
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Alert, Button, FeatherIcon, FormControl } from 'frappe-ui'
+import { Map as MapIcon } from 'lucide-vue-next'
+import { Alert, Button, Input, Label } from '@/components/ui'
 
 const router = useRouter()
 const route = useRoute()
@@ -79,3 +41,29 @@ async function login() {
   }
 }
 </script>
+
+<template>
+  <div class="flex min-h-screen items-center justify-center bg-muted p-6">
+    <div class="w-full max-w-sm">
+      <div class="rounded-lg border border-border bg-card p-8 shadow-sm">
+        <div class="mb-8 text-center">
+          <MapIcon class="mx-auto mb-3 size-10 text-primary" />
+          <h1 class="text-2xl font-semibold tracking-tight text-card-foreground">G20 Tech</h1>
+          <p class="mt-1 text-sm text-muted-foreground">Sign in to your account</p>
+        </div>
+        <form class="space-y-4" @submit.prevent="login">
+          <Alert v-if="error" variant="destructive" :title="error" />
+          <div class="space-y-1.5">
+            <Label for="username">Username</Label>
+            <Input id="username" v-model="username" type="text" placeholder="Administrator" required />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="password">Password</Label>
+            <Input id="password" v-model="password" type="password" placeholder="••••••••" required />
+          </div>
+          <Button type="submit" class="w-full" :loading="loading">Sign in</Button>
+        </form>
+      </div>
+    </div>
+  </div>
+</template>

@@ -1,23 +1,10 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import Icons from 'unplugin-icons/vite'
-import frappeui from 'frappe-ui/vite'
 import path from 'path'
 
 export default defineConfig({
   base: '/assets/webodm_frontend/frontend/',
-  plugins: [
-    frappeui({
-      frappeProxy: false,
-      lucideIcons: true,
-    }),
-    vue(),
-    Icons({ compiler: 'vue3' }),
-  ],
-  optimizeDeps: {
-    include: ['feather-icons', 'debug'],
-    exclude: ['frappe-ui'],
-  },
+  plugins: [vue()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
@@ -33,17 +20,17 @@ export default defineConfig({
   },
   server: {
     port: 8081,
-    allowedHosts: ['webodm.local'],
+    allowedHosts: ['webodm.local','daas.raspigeek.me'],
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
-        headers: { Host: 'webodm.local' },
+        headers: { Host: 'webodm.local'},
       },
       '/private': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
-        headers: { Host: 'webodm.local' },
+        headers: { Host: 'webodm.local'},
       },
     },
   },

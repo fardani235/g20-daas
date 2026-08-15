@@ -132,14 +132,9 @@ export function useMeasure(getMap, { onVolume } = {}) {
     if (shape) shape.setTooltipContent(text)
   }
 
-  async function finishVolume() {
-    stopListening()
-    state.drawing = false
-    if (points.length < 3) {
-      clear()
-      return
-    }
-    redraw()
+  // Sends the current polygon to onVolume and writes the readout, ignoring the
+  // result if the mode changed or a newer request started meanwhile.
+  async function requestVolume() {
     setReadout('Computing…')
     const token = ++reqToken
     const latlngs = points.slice()
@@ -149,6 +144,24 @@ export function useMeasure(getMap, { onVolume } = {}) {
     } catch (e) {
       if (state.mode === 'volume' && token === reqToken) setReadout('Volume failed')
     }
+  }
+
+  async function finishVolume() {
+    stopListening()
+    state.drawing = false
+    if (points.length < 3) {
+      clear()
+      return
+    }
+    redraw()
+    await requestVolume()
+  }
+
+  // Re-measures the polygon already on the map, e.g. after the base method
+  // changes. No-op unless a finished volume polygon exists.
+  async function recomputeVolume() {
+    if (state.mode !== 'volume' || state.drawing || points.length < 3) return
+    await requestVolume()
   }
 
   function finish() {
@@ -191,5 +204,5 @@ export function useMeasure(getMap, { onVolume } = {}) {
     state.drawing = false
   }
 
-  return { state, start, finish, clear }
+  return { state, start, finish, clear, recomputeVolume }
 }
