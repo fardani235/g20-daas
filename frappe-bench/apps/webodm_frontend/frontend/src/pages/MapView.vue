@@ -60,7 +60,7 @@
                 Start
               </Button>
               <Button
-                v-if="task.status === 'Running' || task.status === 'Pending'"
+                v-if="['Pending', 'Queued', 'Running'].includes(task.status)"
                 variant="outline"
                 size="sm"
                 class="text-destructive"
@@ -94,101 +94,149 @@
     ></div>
     <div class="flex-1 relative z-0 bg-background">
       <div id="map" class="h-full w-full"></div>
-      <div class="absolute top-4 left-4 z-[1000] bg-card rounded-lg shadow-md border border-border p-2 flex items-center gap-2">
-        <Button
-          size="sm"
-          :variant="measure.state.mode === 'distance' ? 'default' : 'outline'"
-          title="Measure distance"
-          @click="startMeasure('distance')"
+      <!--
+        Overlay layer. `pl-14` keeps everything clear of Leaflet's default zoom
+        control (top-left, 10px + ~30px wide); children opt back into pointer
+        events so the map stays draggable through the gaps.
+      -->
+      <div
+        class="pointer-events-none absolute inset-0 z-[1000] flex items-start justify-between gap-2 p-4 pl-14"
+      >
+        <div
+          class="pointer-events-auto flex min-w-0 max-w-full flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 shadow-md"
         >
-          <Minus />
-          Distance
-        </Button>
-        <Button
-          size="sm"
-          :variant="measure.state.mode === 'area' ? 'default' : 'outline'"
-          title="Measure area"
-          @click="startMeasure('area')"
-        >
-          <Square />
-          Area
-        </Button>
-        <Button
-          size="sm"
-          :variant="measure.state.mode === 'volume' ? 'default' : 'outline'"
-          :disabled="!hasDsm"
-          :title="hasDsm ? 'Measure volume (needs DSM)' : 'Volume requires a DSM'"
-          @click="startMeasure('volume')"
-        >
-          <Box />
-          Volume
-        </Button>
-        <Button
-          v-if="measure.state.drawing"
-          size="sm"
-          variant="success"
-          title="Finish measurement"
-          @click="finishMeasure"
-        >
-          <Check />
-          Finish
-        </Button>
-        <Button size="sm" variant="ghost" title="Clear measurement" @click="clearMeasure">
-          <Trash2 />
-          <span class="sr-only">Clear measurement</span>
-        </Button>
-        <span v-if="measure.state.drawing" class="text-xs text-muted-foreground pl-1">
-          Click points, then Finish (or click the first point).
-        </span>
-        <span v-else-if="measure.state.formatted" class="text-sm font-medium text-foreground pl-1">
-          {{ measure.state.formatted }}
-        </span>
-      </div>
-      <div class="absolute top-4 right-4 z-[1000] space-y-2 flex flex-col items-end">
-        <Button variant="outline" size="sm" @click="zoomToFit">Zoom To Fit</Button>
-        <div class="bg-card rounded-lg shadow-md border border-border w-[200px] text-sm">
-          <!-- Basemap -->
-          <div class="p-3 border-b border-border">
-            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Basemap</p>
-            <label v-for="b in BASEMAPS" :key="b.id" class="flex items-center gap-2 text-foreground py-0.5 cursor-pointer">
-              <input type="radio" name="basemap" :value="b.id" :checked="currentBasemap === b.id" @change="setBasemap(b.id)" />
-              {{ b.label }}
-            </label>
+          <Button
+            size="sm"
+            :variant="measure.state.mode === 'distance' ? 'default' : 'outline'"
+            title="Measure distance"
+            @click="startMeasure('distance')"
+          >
+            <Minus />
+            <span class="hidden sm:inline">Distance</span>
+          </Button>
+          <Button
+            size="sm"
+            :variant="measure.state.mode === 'area' ? 'default' : 'outline'"
+            title="Measure area"
+            @click="startMeasure('area')"
+          >
+            <Square />
+            <span class="hidden sm:inline">Area</span>
+          </Button>
+          <Button
+            size="sm"
+            :variant="measure.state.mode === 'volume' ? 'default' : 'outline'"
+            :disabled="!hasDsm"
+            :title="hasDsm ? 'Measure volume (needs DSM)' : 'Volume requires a DSM'"
+            @click="startMeasure('volume')"
+          >
+            <Box />
+            <span class="hidden sm:inline">Volume</span>
+          </Button>
+          <Select
+            v-if="measure.state.mode === 'volume'"
+            :model-value="volumeBaseMethod"
+            class="h-8 w-auto"
+            title="Base surface used to separate fill from cut"
+            aria-label="Volume base method"
+            @update:model-value="onVolumeBaseMethodChange"
+          >
+            <option v-for="m in VOLUME_BASE_METHODS" :key="m.value" :value="m.value">
+              {{ m.label }}
+            </option>
+          </Select>
+          <Button
+            v-if="measure.state.drawing"
+            size="sm"
+            variant="success"
+            title="Finish measurement"
+            @click="finishMeasure"
+          >
+            <Check />
+            <span class="hidden sm:inline">Finish</span>
+          </Button>
+          <Button size="sm" variant="ghost" title="Clear measurement" @click="clearMeasure">
+            <Trash2 />
+            <span class="sr-only">Clear measurement</span>
+          </Button>
+          <span
+            v-if="measure.state.drawing"
+            class="w-full text-xs text-muted-foreground sm:w-auto sm:pl-1"
+          >
+            Click points, then Finish (or click the first point).
+          </span>
+          <span
+            v-else-if="measure.state.formatted"
+            class="w-full break-words text-sm font-medium text-foreground sm:w-auto sm:pl-1"
+          >
+            {{ measure.state.formatted }}
+          </span>
+        </div>
+        <div class="pointer-events-auto flex max-h-full min-h-0 flex-col items-end gap-2">
+          <div class="flex items-center gap-2">
+            <Button variant="outline" size="sm" title="Zoom to fit" @click="zoomToFit">
+              Zoom To Fit
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              class="h-8 w-8"
+              :title="panelOpen ? 'Hide map controls' : 'Show map controls'"
+              :aria-expanded="panelOpen"
+              @click="panelOpen = !panelOpen"
+            >
+              <X v-if="panelOpen" />
+              <Layers v-else />
+              <span class="sr-only">{{ panelOpen ? 'Hide map controls' : 'Show map controls' }}</span>
+            </Button>
           </div>
-          <!-- Layers + opacity -->
-          <div v-if="overlays.length" class="p-3 border-b border-border">
-            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Layers</p>
-            <div v-for="o in overlays" :key="o.key" class="py-1">
-              <label class="flex items-center gap-2 text-foreground cursor-pointer">
-                <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded" />
-                {{ o.label }}
+          <div
+            v-show="panelOpen"
+            class="min-h-0 w-[200px] max-w-full overflow-y-auto rounded-lg border border-border bg-card text-sm shadow-md"
+          >
+            <!-- Basemap -->
+            <div class="p-3 border-b border-border">
+              <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Basemap</p>
+              <label v-for="b in BASEMAPS" :key="b.id" class="flex items-center gap-2 text-foreground py-0.5 cursor-pointer">
+                <input type="radio" name="basemap" :value="b.id" :checked="currentBasemap === b.id" @change="setBasemap(b.id)" />
+                {{ b.label }}
               </label>
-              <input
-                v-if="o.visible"
-                type="range" min="0" max="100" step="5"
-                :value="o.opacity"
-                @input="setOverlayOpacity(o, $event.target.value)"
-                class="w-full mt-1"
-              />
             </div>
-          </div>
-          <!-- Show toggles -->
-          <div class="p-3">
-            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Show</p>
-            <label
-              class="flex items-center gap-2 py-0.5"
-              :class="hasGps ? 'text-foreground cursor-pointer' : 'text-muted-foreground cursor-not-allowed'"
-            >
-              <input type="checkbox" :checked="showMarkers" :disabled="!hasGps" @change="toggleMarkers" class="rounded" />
-              Image markers
-            </label>
-            <label
-              class="flex items-center gap-2 py-0.5"
-              :class="hasGps ? 'text-foreground cursor-pointer' : 'text-muted-foreground cursor-not-allowed'"
-            >
-              <input type="checkbox" :checked="showFlightPath" :disabled="!hasGps" @change="toggleFlightPath" class="rounded" />
-              Flight path
-            </label>
+            <!-- Layers + opacity -->
+            <div v-if="overlays.length" class="p-3 border-b border-border">
+              <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Layers</p>
+              <div v-for="o in overlays" :key="o.key" class="py-1">
+                <label class="flex items-center gap-2 text-foreground cursor-pointer">
+                  <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded" />
+                  {{ o.label }}
+                </label>
+                <input
+                  v-if="o.visible"
+                  type="range" min="0" max="100" step="5"
+                  :value="o.opacity"
+                  @input="setOverlayOpacity(o, $event.target.value)"
+                  class="w-full mt-1"
+                />
+              </div>
+            </div>
+            <!-- Show toggles -->
+            <div class="p-3">
+              <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Show</p>
+              <label
+                class="flex items-center gap-2 py-0.5"
+                :class="hasGps ? 'text-foreground cursor-pointer' : 'text-muted-foreground cursor-not-allowed'"
+              >
+                <input type="checkbox" :checked="showMarkers" :disabled="!hasGps" @change="toggleMarkers" class="rounded" />
+                Image markers
+              </label>
+              <label
+                class="flex items-center gap-2 py-0.5"
+                :class="hasGps ? 'text-foreground cursor-pointer' : 'text-muted-foreground cursor-not-allowed'"
+              >
+                <input type="checkbox" :checked="showFlightPath" :disabled="!hasGps" @change="toggleFlightPath" class="rounded" />
+                Flight path
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -247,17 +295,24 @@ import {
   Check,
   CircleX,
   CloudUpload,
+  Layers,
   Minus,
   Play,
   Square,
   Terminal,
   Trash2,
+  X,
 } from 'lucide-vue-next'
 import { Badge, Button, Dialog, Label, Select } from '@/components/ui'
 import { statusVariant } from '@/lib/status'
 import { toast } from '@/lib/toast'
 import L from 'leaflet'
 import { formatVolume } from '@/lib/format'
+import {
+  VOLUME_BASE_METHODS,
+  loadVolumeBaseMethod,
+  saveVolumeBaseMethod,
+} from '@/lib/volumeMethods'
 import { BASEMAPS, createBasemap } from '@/lib/mapLayers'
 import { sortImagesByCapture } from '@/lib/flightPath'
 import { useMeasure } from '@/composables/useMeasure'
@@ -316,6 +371,8 @@ function openUpload() {
   loadUploadForm()
 }
 const sidebarWidth = ref(360)
+// Collapsible so the basemap/layers/show card never eats a narrow map pane.
+const panelOpen = ref(true)
 // Raster overlays available for the selected task: { key, label, visible }.
 const overlays = ref([])
 const currentBasemap = ref('osm')
@@ -323,6 +380,7 @@ const showMarkers = ref(true)
 const currentImages = ref([])
 const currentTask = ref(null)
 const hasDsm = computed(() => !!currentTask.value?.dsm)
+const volumeBaseMethod = ref(loadVolumeBaseMethod())
 const hasGps = computed(() =>
   currentImages.value.some(img => {
     const lat = parseFloat(img.latitude)
@@ -332,6 +390,9 @@ const hasGps = computed(() =>
 )
 let resizing = false
 let map = null
+// Union of everything currently plotted (markers + overlay extents) so
+// "Zoom To Fit" frames the data instead of the whole globe.
+let dataBounds = null
 let imageMarkers = null
 let baseLayer = null
 let flightPathLayer = null
@@ -371,8 +432,16 @@ function plotImageMarkers(images) {
 
   if (hasGps) {
     if (showMarkers.value) imageMarkers.addTo(map)
+    extendDataBounds(bounds)
     map.fitBounds(bounds, { padding: [50, 50] })
   }
+}
+
+// Accumulate plotted extents; `null` bounds and empty groups are ignored.
+function extendDataBounds(bounds) {
+  if (!bounds || !bounds.isValid || !bounds.isValid()) return
+  if (dataBounds) dataBounds.extend(bounds)
+  else dataBounds = L.latLngBounds(bounds.getSouthWest(), bounds.getNorthEast())
 }
 
 function clearOverlays() {
@@ -418,6 +487,7 @@ function loadOverlays(task) {
     if (visible) layer.addTo(map)
     overlayLayers[key] = layer
     overlays.value.push({ key, label: DATASET_LABELS[key], visible, opacity: 100 })
+    extendDataBounds(bounds)
     if (visible && bounds) fitB = bounds
   }
   if (fitB) map.fitBounds(fitB, { padding: [30, 30] })
@@ -542,6 +612,7 @@ async function selectTask(task) {
   currentImages.value = full.images || []
   currentTask.value = full
   measure.clear()
+  dataBounds = null // recomputed by the two plotting calls below
   plotImageMarkers(full.images)
   loadOverlays(full)
   if (showFlightPath.value) buildFlightPath(currentImages.value)
@@ -559,6 +630,14 @@ function clearMeasure() {
   measure.clear()
 }
 
+// Persist the choice like WebODM does, and re-measure any polygon already drawn
+// so the readout matches the newly selected base surface.
+function onVolumeBaseMethodChange(method) {
+  volumeBaseMethod.value = method
+  saveVolumeBaseMethod(method)
+  measure.recomputeVolume()
+}
+
 async function computeVolume(latlngs) {
   try {
     const ring = latlngs.map(p => [p.lng, p.lat])
@@ -573,7 +652,11 @@ async function computeVolume(latlngs) {
     const res = await fetch('/api/method/webodm_core.api.tiles.volume', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ task_name: selectedTask.value, polygon: JSON.stringify(polygon) }),
+      body: JSON.stringify({
+        task_name: selectedTask.value,
+        polygon: JSON.stringify(polygon),
+        method: volumeBaseMethod.value,
+      }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -596,9 +679,11 @@ function openTaskModel(task) {
 }
 
 function zoomToFit() {
-  if (map) {
-    map.fitWorld()
-  }
+  if (!map) return
+  // Frame the loaded task (markers + raster extents); only fall back to the
+  // whole world when nothing has been plotted yet.
+  if (dataBounds && dataBounds.isValid()) map.fitBounds(dataBounds, { padding: [30, 30] })
+  else map.fitWorld()
 }
 
 function startResize() {
@@ -606,7 +691,11 @@ function startResize() {
 }
 
 function stopResize() {
+  if (!resizing) return
   resizing = false
+  // Leaflet only watches window resize, so the map pane stays mis-sized after
+  // the sidebar drag until we tell it the container changed.
+  if (map) map.invalidateSize()
 }
 
 function onResize(e) {
@@ -627,8 +716,10 @@ async function startProcessing(task) {
     if (!res.ok) throw new Error('Failed to start processing')
     const result = await res.json()
     toast.success(result.message || 'Processing started')
+    // Mirror the backend's Pending -> Queued handoff so the row stops offering
+    // Start immediately; writing 'Pending' here left the button visible.
     const idx = tasks.value.findIndex(t => t.name === task.name)
-    if (idx !== -1) tasks.value[idx].status = 'Pending'
+    if (idx !== -1) tasks.value[idx].status = 'Queued'
   } catch (e) {
     toast.error(e.message)
   }
