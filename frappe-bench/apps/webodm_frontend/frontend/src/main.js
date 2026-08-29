@@ -73,6 +73,18 @@ const routes = [
     meta: { requiresAuth: true, title: 'Task Console' },
   },
   {
+    path: '/account/profile',
+    name: 'Profile',
+    component: () => import('./pages/Profile.vue'),
+    meta: { requiresAuth: true, title: 'Profile' },
+  },
+  {
+    path: '/account/password',
+    name: 'ChangePassword',
+    component: () => import('./pages/ChangePassword.vue'),
+    meta: { requiresAuth: true, title: 'Change Password' },
+  },
+  {
     path: '/onboarding',
     name: 'Onboarding',
     component: () => import('./pages/Onboarding.vue'),

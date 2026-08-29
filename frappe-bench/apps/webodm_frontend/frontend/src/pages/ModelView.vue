@@ -194,13 +194,17 @@ async function loadModel() {
     }
 
     loadingMessage.value = 'Downloading model...'
-    const res = await fetch(modelUrl)
+    const res = await fetch(modelUrl, { credentials: 'include' })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
     loadingMessage.value = 'Parsing model...'
 
-    let loaderUrl = modelUrl
+    const loader = new GLTFLoader()
+    const dracoLoader = new DRACOLoader()
+    dracoLoader.setDecoderPath('/assets/webodm_frontend/frontend/draco/')
+    loader.setDRACOLoader(dracoLoader)
 
+    let loaderUrl
     if (modelUrl.endsWith('.zip')) {
       loadingMessage.value = 'Extracting model archive...'
       const buf = await res.arrayBuffer()
@@ -221,9 +225,8 @@ async function loadModel() {
       const gltfEntry = Object.keys(files).find(k => k.endsWith('.gltf') || k.endsWith('.glb'))
       if (!gltfEntry) throw new Error('No GLTF/GLB found in archive')
 
-      if (gltfEntry.endsWith('.glb')) {
-        loaderUrl = files[gltfEntry]
-      } else {
+      loaderUrl = files[gltfEntry]
+      if (!gltfEntry.endsWith('.glb')) {
         const gltfText = await (await fetch(files[gltfEntry])).text()
         const gltfJson = JSON.parse(gltfText)
         for (const key of ['buffers', 'images']) {
@@ -236,12 +239,13 @@ async function loadModel() {
         const patched = new Blob([JSON.stringify(gltfJson)], { type: 'application/json' })
         loaderUrl = URL.createObjectURL(patched)
       }
+    } else {
+      // Feed Three.js a blob URL so it never re-fetches the private file
+      // (its internal FileLoader may not send cookies).
+      const blob = await res.blob()
+      loaderUrl = URL.createObjectURL(blob)
     }
 
-    const loader = new GLTFLoader()
-    const dracoLoader = new DRACOLoader()
-    dracoLoader.setDecoderPath('/assets/webodm_frontend/frontend/draco/')
-    loader.setDRACOLoader(dracoLoader)
     const gltf = await new Promise((resolve, reject) => {
       loader.load(loaderUrl, resolve, (p) => {
         if (p.total) loadingMessage.value = `Loading model... ${Math.round(p.loaded / p.total * 100)}%`

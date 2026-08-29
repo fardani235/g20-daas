@@ -1,8 +1,25 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogOut, Map as MapIcon, Menu, Monitor, Moon, Sun } from 'lucide-vue-next'
-import { Button, DropdownMenu, DropdownMenuItem } from '@/components/ui'
+import {
+  CreditCard,
+  Lock,
+  LogOut,
+  Map as MapIcon,
+  Menu,
+  Monitor,
+  Moon,
+  Settings,
+  Sun,
+  User,
+} from 'lucide-vue-next'
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui'
 import {
   PRIMARY_TABS,
   activePrimaryTab,
@@ -104,8 +121,26 @@ async function logout() {
             <template #trigger>
               <Button variant="ghost" size="sm">Account</Button>
             </template>
+            <DropdownMenuItem @select="router.push('/account/profile')">
+              <User class="size-4 mr-2" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem @select="router.push('/invoices')">
+              <CreditCard class="size-4 mr-2" />
+              Billing
+            </DropdownMenuItem>
+            <DropdownMenuItem @select="router.push('/settings')">
+              <Settings class="size-4 mr-2" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @select="router.push('/account/password')">
+              <Lock class="size-4 mr-2" />
+              Change Password
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem @select="logout">
-              <LogOut />
+              <LogOut class="size-4 mr-2" />
               Sign out
             </DropdownMenuItem>
           </DropdownMenu>

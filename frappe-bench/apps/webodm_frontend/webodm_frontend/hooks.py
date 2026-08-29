@@ -25,8 +25,10 @@ app_license = "mit"
 # ------------------
 
 # include js, css files in header of desk.html
-app_include_css = "/assets/webodm_frontend/css/webodm_frontend.css"
-app_include_js = "/assets/webodm_frontend/js/webodm_frontend.js"
+# The WebODM frontend is a standalone Vite SPA under /assets/webodm_frontend/frontend/,
+# not a Frappe desk extension. These includes would 404 because css/ and js/ are empty.
+# app_include_css = "/assets/webodm_frontend/css/webodm_frontend.css"
+# app_include_js = "/assets/webodm_frontend/js/webodm_frontend.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/webodm_frontend/css/webodm_frontend.css"

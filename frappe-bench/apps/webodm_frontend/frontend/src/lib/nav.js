@@ -1,9 +1,7 @@
 import {
-  FileText,
   Folder,
   LayoutGrid,
   Puzzle,
-  Settings,
   SlidersHorizontal,
 } from 'lucide-vue-next'
 
@@ -14,8 +12,6 @@ export const PRIMARY_TABS = Object.freeze([
   { to: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
   { to: '/projects', label: 'Projects', icon: Folder },
   { to: '/presets', label: 'Presets', icon: SlidersHorizontal },
-  { to: '/invoices', label: 'Invoices', icon: FileText },
-  { to: '/settings', label: 'Settings', icon: Settings },
   { to: '/plugins', label: 'Plugins', icon: Puzzle },
 ])
 
