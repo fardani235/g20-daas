@@ -13,6 +13,18 @@ const routes = [
     meta: { layout: false },
   },
   {
+    path: '/about',
+    name: 'About',
+    component: () => import('./pages/About.vue'),
+    meta: { layout: false, title: 'About' },
+  },
+  {
+    path: '/contact',
+    name: 'Contact',
+    component: () => import('./pages/Contact.vue'),
+    meta: { layout: false, title: 'Contact' },
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('./pages/Login.vue'),
