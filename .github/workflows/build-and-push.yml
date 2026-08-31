@@ -4,7 +4,6 @@ on:
   push:
     branches: [main, master]
     paths:
-      - 'frappe-bench/apps/**'
       - 'infra/**'
       - 'docker-compose.yml'
       - '.github/workflows/build-and-push.yml'
@@ -22,7 +21,7 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout monorepo
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
@@ -43,6 +42,32 @@ jobs:
           echo "frappe_version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Detected version: $VERSION"
 
+      - name: Clone apps into build context
+        run: |
+          VERSION=${{ steps.version.outputs.frappe_version }}
+          CONTEXT=build-context/frappe-bench
+          mkdir -p "$CONTEXT/apps" "$CONTEXT/sites"
+
+          # Frappe core (upstream, pinned to version tag)
+          git clone --depth 1 --branch "v${VERSION}" \
+            https://github.com/frappe/frappe.git "$CONTEXT/apps/frappe"
+
+          # Our custom apps
+          git clone --depth 1 https://github.com/fardani235/webodm-core.git \
+            "$CONTEXT/apps/webodm_core"
+          git clone --depth 1 https://github.com/fardani235/webodm-frontend.git \
+            "$CONTEXT/apps/webodm_frontend"
+
+          # Dockerfile + sites/apps.txt from monorepo
+          cp frappe-bench/apps/Dockerfile "$CONTEXT/apps/"
+          cp frappe-bench/sites/apps.txt "$CONTEXT/sites/"
+
+          # infra/ for Dockerfile's COPY --from=root
+          cp -r infra/ build-context/infra/
+
+          echo "Build context assembled:"
+          ls -la "$CONTEXT/apps/"
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -55,13 +80,13 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ./frappe-bench/apps
-          file: ./frappe-bench/apps/Dockerfile
+          context: ./build-context/frappe-bench/apps
+          file: ./build-context/frappe-bench/apps/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-contexts: |
-            sites=./frappe-bench/sites
-            root=.
+            sites=./build-context/frappe-bench/sites
+            root=./build-context
