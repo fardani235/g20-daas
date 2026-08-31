@@ -38,7 +38,8 @@ jobs:
       - name: Extract Frappe version
         id: version
         run: |
-          VERSION=$(grep -oP 'FRAPPE_VERSION:-\K[^}]+' docker-compose.yml || echo "16.26.3")
+          VERSION=$(sed -n 's/.*FRAPPE_VERSION:-\([^}]*\).*/\1/p' docker-compose.yml)
+          VERSION=${VERSION:-16.26.3}
           echo "frappe_version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Docker metadata
