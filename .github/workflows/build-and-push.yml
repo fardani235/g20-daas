@@ -43,6 +43,8 @@ jobs:
           echo "Detected version: $VERSION"
 
       - name: Clone apps into build context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.version.outputs.frappe_version }}
           CONTEXT=build-context/frappe-bench
@@ -52,10 +54,10 @@ jobs:
           git clone --depth 1 --branch "v${VERSION}" \
             https://github.com/frappe/frappe.git "$CONTEXT/apps/frappe"
 
-          # Our custom apps
-          git clone --depth 1 https://github.com/fardani235/webodm-core.git \
+          # Our custom apps (use GITHUB_TOKEN for private repo access)
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/fardani235/webodm-core.git" \
             "$CONTEXT/apps/webodm_core"
-          git clone --depth 1 https://github.com/fardani235/webodm-frontend.git \
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/fardani235/webodm-frontend.git" \
             "$CONTEXT/apps/webodm_frontend"
 
           # Dockerfile + sites/apps.txt from monorepo
