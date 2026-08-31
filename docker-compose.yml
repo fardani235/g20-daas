@@ -175,9 +175,9 @@ x-frappe-volumes: &frappe-volumes
 
 services:
   caddy:
-    image: webodm-caddy:2
-    build:
-      context: ./infra/caddy
+    image: ghcr.io/fardani235/webodm-caddy:2
+    # build:
+    #   context: ./infra/caddy
     restart: unless-stopped
     ports:
       - "80:80"
@@ -469,9 +469,10 @@ services:
           memory: 1G
 
   geospatial:
-    build:
-      context: ../webodm-geospatial
-      dockerfile: Dockerfile
+    image: ghcr.io/fardani235/webodm-geospatial:1
+    # build:
+    #   context: ../webodm-geospatial
+    #   dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       DATA_DIR: /data
@@ -511,9 +512,9 @@ services:
       start_period: 60s
 
   backup:
-    image: webodm-backup:1
-    build:
-      context: ./infra/backup
+    image: ghcr.io/fardani235/webodm-backup:1
+    # build:
+    #   context: ./infra/backup
     restart: unless-stopped
     environment:
       SITE_NAME: ${SITE_NAME:-webodm.local}
