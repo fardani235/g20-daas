@@ -68,24 +68,24 @@ x-frappe-image: &frappe-image
       # "localhost" so direct curl to the gunicorn port (Host: localhost) resolves
       # to the default site. Frappe doesn't have a default-site-for-unknown-host
       # fallback, so this alias is the smallest in-compose workaround.
-      if [ -f "$$sites_dir/webodm.local/site_config.json" ]; then
+      if [ -f "$$sites_dir/$${SITE_NAME}/site_config.json" ]; then
         # Per-site log symlinks at the bench root (Frappe's logger writes to
         # <sitename>/logs/<module>.log relative to CWD=/workspace/frappe-bench, but
         # the site dir actually lives at sites/<sitename>/...). Use `sitename`
         # as the loop var to avoid colliding with compose's variable interpolation.
-        for sitename in webodm.local localhost; do
+        for sitename in "$${SITE_NAME}" localhost; do
           mkdir -p "$$sites_dir/$$sitename/logs"
-          ln -sfn "$$sites_dir/webodm.local" "/workspace/frappe-bench/$$sitename"
+          ln -sfn "$$sites_dir/$${SITE_NAME}" "/workspace/frappe-bench/$$sitename"
         done
         # Direct curl to gunicorn (Host: localhost) needs a "localhost" site.
         # Frappe has no default-site-for-unknown-host fallback, so we mirror
-        # webodm.local into sites/localhost/ with symlinks so site_config.json
+        # the primary site into sites/localhost/ with symlinks so site_config.json
         # and the assets/private trees resolve correctly. Remove any pre-existing
         # localhost directory first (created by an earlier wrapper run before we
         # switched to a symlink) — ln -sfn can't replace a directory with a
         # symlink.
         rm -rf "$$sites_dir/localhost"
-        ln -sfn webodm.local "$$sites_dir/localhost"
+        ln -sfn "$${SITE_NAME}" "$$sites_dir/localhost"
         mkdir -p "$$sites_dir/localhost/logs"
       fi
       cfg="$$sites_dir/common_site_config.json"
@@ -347,7 +347,12 @@ services:
       - redis_cache_password
       - redis_queue_password
     command: ["frappe-web"]
-    volumes: *frappe-volumes
+    volumes:
+      - frappe_sites:/workspace/frappe-bench/sites
+      - frappe_assets:/workspace/frappe-bench/sites/assets
+      - frappe_logs:/workspace/frappe-bench/logs
+      - frappe_data:/data
+      - ./infra/frappe/wsgi.py:/workspace/infra/frappe/wsgi.py:ro
     networks:
       - backend
       - frontend

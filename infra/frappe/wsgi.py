@@ -16,9 +16,10 @@ import os
 os.environ.setdefault("SITES_PATH", "/workspace/frappe-bench/sites")
 
 # Import frappe.app explicitly so `frappe.app.application` is available.
-import frappe
+# Do NOT call frappe.init() at module level — frappe.app.application handles
+# per-request init using the SITES_PATH env var set above.
+import frappe  # noqa: F401
 import frappe.app as frappe_app  # noqa: F401
-frappe.init(site=os.environ.get("SITE_NAME", "webodm.local"))
 
 from werkzeug.middleware.shared_data import SharedDataMiddleware
 from frappe.middlewares import StaticDataMiddleware
