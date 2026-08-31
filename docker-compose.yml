@@ -215,9 +215,10 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     secrets:
       - db_password
+      - frappe_admin_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres/init-frappe-admin.sql:/docker-entrypoint-initdb.d/init-frappe-admin.sql:ro
+      - ./infra/postgres/init-frappe-admin.sh:/docker-entrypoint-initdb.d/init-frappe-admin.sh:ro
     networks:
       - data
       - backend
