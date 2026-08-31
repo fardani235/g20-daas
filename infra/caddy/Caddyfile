@@ -1,0 +1,102 @@
+# Auto-TLS via Let's Encrypt DNS-01 challenge.
+# Set CLOUDFLARE_API_TOKEN or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY in the environment.
+{
+    email admin@{$SITE_DOMAIN}
+    admin off
+}
+
+# Admin subdomain — Frappe Desk UI. Root redirects to /desk.
+admin.{$SITE_DOMAIN} {
+    encode zstd gzip
+
+    @root path /
+    redir @root /desk permanent
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com; connect-src 'self' wss://admin.{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none'"
+        -Server
+    }
+
+    # SocketIO long-lived connections.
+    @socketio path /socket.io/*
+    reverse_proxy @socketio frappe-socketio:9000 {
+        header_up Host {host}
+        header_up X-Frappe-Site-Name webodm.local
+    }
+
+    # Frappe static files (assets, files, public, private).
+    @assets path /assets/** /files/** /public/** /private/files/**
+    reverse_proxy @assets frappe-web:8000 {
+        header_up Host webodm.local
+    }
+
+    # Everything else → Frappe web.
+    reverse_proxy frappe-web:8000 {
+        header_up Host webodm.local
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
+{$SITE_DOMAIN} {
+    encode zstd gzip
+
+    # WebODM SPA is the home page. Redirect the root to the SPA base so
+    # https://webodm.local/ opens the Vue app directly (Frappe desk stays at /desk).
+    @root path /
+    redir @root /assets/webodm_frontend/frontend/ permanent
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com; connect-src 'self' wss://{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none'"
+        -Server
+    }
+
+    # Rate limit Frappe login endpoint.
+    @login path /api/method/login
+    rate_limit @login {
+        zone login {
+            match {
+                path /api/method/login
+            }
+            key {remote_host}
+            window 1s
+            events 50
+        }
+    }
+
+    # SocketIO long-lived connections.
+    @socketio path /socket.io/*
+    reverse_proxy @socketio frappe-socketio:9000 {
+        header_up Host {host}
+    }
+
+    # Geospatial raster tiles (large responses; disable buffering).
+    @tiles path /tiles/*
+    reverse_proxy @tiles geospatial:5000 {
+        flush_interval -1
+    }
+
+    # Frappe static files (assets, files, public, private).
+    # Use ** to match nested paths (e.g. /assets/frappe/dist/css/login.bundle.css).
+    @assets path /assets/** /files/** /public/** /private/files/**
+    reverse_proxy @assets frappe-web:8000
+
+    # Everything else → Frappe web (Vue SPA fallback included).
+    reverse_proxy frappe-web:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

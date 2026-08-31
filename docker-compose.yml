@@ -1,0 +1,574 @@
+name: webodm
+
+x-frappe-image: &frappe-image
+  image: ghcr.io/fardani235/webodm-frappe:${FRAPPE_VERSION:-16.26.3}
+  # To build locally instead of pulling from registry, uncomment below:
+  # build:
+  #   context: ./frappe-bench/apps
+  #   dockerfile: Dockerfile
+  #   additional_contexts:
+  #     - sites=./frappe-bench/sites
+  #     - root=.
+  # Override the image's ENTRYPOINT (tini + /entrypoint.sh) with a wrapper that
+  # reads redis password secrets and exports FRAPPE_REDIS_CACHE / FRAPPE_REDIS_QUEUE
+  # with embedded credentials before exec'ing the original entrypoint. Frappe's
+  # redis client honours URL-embedded passwords via redis.from_url().
+  #
+  # Why this wrapper exists: Compose v2 cannot interpolate secret file contents
+  # into env values, and infra/frappe/entrypoint.sh is out of scope for this task.
+  # The wrapper reads each *_PASSWORD_FILE pointed at /run/secrets/<name>, exports
+  # FRAPPE_REDIS_CACHE / FRAPPE_REDIS_QUEUE with the password embedded, then execs
+  # tini + /entrypoint.sh to preserve the image's PID-1 / signal-handling semantics.
+  # Each Frappe service must mount the redis_*_password secrets and set
+  # REDIS_CACHE_PASSWORD_FILE / REDIS_QUEUE_PASSWORD_FILE in its environment.
+  entrypoint:
+    - /bin/sh
+    - -c
+    - |
+      set -eu
+      : "$${REDIS_CACHE_PASSWORD_FILE:?REDIS_CACHE_PASSWORD_FILE must be set}"
+      : "$${REDIS_QUEUE_PASSWORD_FILE:?REDIS_QUEUE_PASSWORD_FILE must be set}"
+      : "$${DB_PASSWORD_FILE:?DB_PASSWORD_FILE must be set}"
+      : "$${DB_USER:?DB_USER must be set}"
+      : "$${FRAPPE_ROOT_PASSWORD_FILE:?FRAPPE_ROOT_PASSWORD_FILE must be set}"
+      export "REDIS_CACHE_PASSWORD=$$(cat "$$REDIS_CACHE_PASSWORD_FILE")"
+      export "REDIS_QUEUE_PASSWORD=$$(cat "$$REDIS_QUEUE_PASSWORD_FILE")"
+      export "DB_PASSWORD=$$(cat "$$DB_PASSWORD_FILE")"
+      export "FRAPPE_ROOT_USER=frappe_admin"
+      export "FRAPPE_ROOT_PASSWORD=$$(cat "$$FRAPPE_ROOT_PASSWORD_FILE")"
+      export "FRAPPE_REDIS_CACHE=redis://:$$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""), end="")' "$$REDIS_CACHE_PASSWORD")@redis-cache:13000"
+      export "FRAPPE_REDIS_QUEUE=redis://:$$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""), end="")' "$$REDIS_QUEUE_PASSWORD")@redis-queue:11000"
+      # Write /workspace/frappe-bench/sites/common_site_config.json with the postgres
+      # root credentials (Frappe's installer needs them as a superuser to drop/create
+      # the application DB) and the auth-embedded redis URLs. The image's baked-in
+      # common_site_config.json lacks both. We only write if root_login is missing,
+      # so we never clobber a config that was already populated by an earlier
+      # successful init. Python's json.dumps handles escaping of password specials.
+      sites_dir=/workspace/frappe-bench/sites
+      mkdir -p "$$sites_dir"
+      # Frappe writes logs to ../logs (=/workspace/logs) when CWD=/workspace/frappe-bench,
+      # but the brief mounts the logs volume at /workspace/frappe-bench/logs. Bridge
+      # the two with a symlink so log writes hit the named volume.
+      ln -sfn /workspace/frappe-bench/logs /workspace/logs
+      # Frappe's get_assets_json() reads assets/assets.json relative to CWD
+      # (= /workspace/frappe-bench). The build actually emits assets at
+      # /workspace/frappe-bench/sites/assets/<app>/. Bridge so the read succeeds.
+      ln -sfn /workspace/frappe-bench/sites/assets /workspace/frappe-bench/assets
+      # Same problem for common_site_config.json / apps.txt / apps.json reads
+      # that Bench does relative to CWD=/workspace/frappe-bench.
+      ln -sfn /workspace/frappe-bench/sites/apps.txt /workspace/frappe-bench/apps.txt
+      ln -sfn /workspace/frappe-bench/sites/apps.json /workspace/frappe-bench/apps.json
+      ln -sfn /workspace/frappe-bench/sites/common_site_config.json /workspace/frappe-bench/common_site_config.json
+      # Frappe's per-site logger builds paths like <sitename>/logs/<module>.log relative
+      # to CWD=/workspace/frappe-bench (so the expected path is
+      # /workspace/frappe-bench/<sitename>/logs/...). The site dir actually lives at
+      # /workspace/frappe-bench/sites/<sitename>/ — bridge with per-site symlinks at the
+      # bench root so log writes hit the named volume. We mirror real sites only
+      # (anything under sites/ with a site_config.json sibling), and we also alias
+      # "localhost" so direct curl to the gunicorn port (Host: localhost) resolves
+      # to the default site. Frappe doesn't have a default-site-for-unknown-host
+      # fallback, so this alias is the smallest in-compose workaround.
+      if [ -f "$$sites_dir/webodm.local/site_config.json" ]; then
+        # Per-site log symlinks at the bench root (Frappe's logger writes to
+        # <sitename>/logs/<module>.log relative to CWD=/workspace/frappe-bench, but
+        # the site dir actually lives at sites/<sitename>/...). Use `sitename`
+        # as the loop var to avoid colliding with compose's variable interpolation.
+        for sitename in webodm.local localhost; do
+          mkdir -p "$$sites_dir/$$sitename/logs"
+          ln -sfn "$$sites_dir/webodm.local" "/workspace/frappe-bench/$$sitename"
+        done
+        # Direct curl to gunicorn (Host: localhost) needs a "localhost" site.
+        # Frappe has no default-site-for-unknown-host fallback, so we mirror
+        # webodm.local into sites/localhost/ with symlinks so site_config.json
+        # and the assets/private trees resolve correctly. Remove any pre-existing
+        # localhost directory first (created by an earlier wrapper run before we
+        # switched to a symlink) — ln -sfn can't replace a directory with a
+        # symlink.
+        rm -rf "$$sites_dir/localhost"
+        ln -sfn webodm.local "$$sites_dir/localhost"
+        mkdir -p "$$sites_dir/localhost/logs"
+      fi
+      cfg="$$sites_dir/common_site_config.json"
+      if [ ! -f "$$cfg" ] || ! grep -q '"root_login"' "$$cfg" 2>/dev/null; then
+        writecfg="$$sites_dir/.write-common-config.$$$$.py"
+        printf '%s\n' \
+          'import json, os, urllib.parse' \
+          'cfg_path = os.environ["CFG_PATH"]' \
+          'rcp = urllib.parse.quote(os.environ["REDIS_CACHE_PASSWORD"], safe="")' \
+          'rqp = urllib.parse.quote(os.environ["REDIS_QUEUE_PASSWORD"], safe="")' \
+          'cfg = {' \
+          '    "frappe_user": "root",' \
+          '    "restart_supervisor_on_update": False,' \
+          '    "restart_systemd_on_update": False,' \
+          '    "rebase_on_pull": False,' \
+          '    "shallow_clone": True,' \
+          '    "background_workers": 1,' \
+          '    "use_redis_auth": False,' \
+          '    "live_reload": True,' \
+          '    "root_login": os.environ["FRAPPE_ROOT_USER"],' \
+          '    "root_password": os.environ["FRAPPE_ROOT_PASSWORD"],' \
+          '    "redis_cache": "redis://:" + rcp + "@redis-cache:13000",' \
+          '    "redis_queue": "redis://:" + rqp + "@redis-queue:11000",' \
+          '}' \
+          'with open(cfg_path, "w") as f:' \
+          '    f.write(json.dumps(cfg, indent=2))' \
+          > "$$writecfg"
+        CFG_PATH="$$cfg" python3 "$$writecfg"
+        rm -f "$$writecfg"
+      fi
+      # infra/frappe/entrypoint.sh dispatches by FRAPPE_ROLE. The socketio branch
+      # runs `bench socketio --port 9000`, but `bench socketio` doesn't accept
+      # --port (its only option is --help). FRAPPE_SOCKETIO_PORT above already
+      # tells realtime/index.js to bind 9000. We bypass entrypoint.sh's broken
+      # flag so the socketio container can actually start.
+      if [ "$${FRAPPE_ROLE:-}" = "socketio" ]; then
+        exec tini -- env FRAPPE_SOCKETIO_PORT="$${FRAPPE_SOCKETIO_PORT:-9000}" bench socketio
+      fi
+      # For the web role, the entrypoint.sh runs gunicorn importing
+      # `frappe.app:application`. That bypasses Frappe's static middleware
+      # (which is only installed in `frappe.app.serve()` for the werkzeug dev
+      # server). We redirect gunicorn to import a WSGI wrapper from this workspace
+      # that installs the same static middleware so /assets/* and /files/* are
+      # served directly from sites/assets instead of round-tripping through the
+      # WSGI app. The wrapper file is bind-mounted at /workspace/infra/frappe/wsgi.py
+      # (via the build context that's already pulled into the image at build time).
+      if [ "$${FRAPPE_ROLE:-}" = "web" ]; then
+        # wsgi.py is in /workspace/infra/frappe/ per the Dockerfile COPY lines.
+        if [ -f /workspace/infra/frappe/wsgi.py ]; then
+          install -m 0644 /workspace/infra/frappe/wsgi.py /workspace/frappe-bench/infra_frappe_wsgi.py
+        fi
+      fi
+      exec tini -- /entrypoint.sh
+  command: []
+
+x-frappe-env-base: &frappe-env-base
+  SITE_NAME: ${SITE_NAME:-webodm.local}
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_NAME: ${DB_NAME:-webodm}
+  DB_USER: ${DB_USER:-webodm}
+  FRAPPE_ROOT_USER: frappe_admin
+  # Frappe reads FRAPPE_REDIS_CACHE / FRAPPE_REDIS_QUEUE (NOT REDIS_CACHE /
+  # REDIS_QUEUE). The wrapper entrypoint above overrides these at runtime with
+  # auth-embedded URLs; the values here are fallbacks used only if the wrapper
+  # somehow fails to set them.
+  FRAPPE_REDIS_CACHE: redis://redis-cache:13000
+  FRAPPE_REDIS_QUEUE: redis://redis-queue:11000
+  # Pin the realtime service to 9000. The legacy infra/frappe/entrypoint.sh runs
+  # `bench socketio --port 9000`, but `bench socketio` doesn't accept --port —
+  # it reads conf.socketio_port / FRAPPE_SOCKETIO_PORT instead. Since
+  # entrypoint.sh is out of scope for this task, set the env var here so the
+  # node socketio.js binds 9000 regardless.
+  FRAPPE_SOCKETIO_PORT: "9000"
+  # Pointers to the redis password secrets mounted by each service's `secrets:`
+  # block. The wrapper reads these to construct FRAPPE_REDIS_CACHE/_QUEUE.
+  REDIS_CACHE_PASSWORD_FILE: /run/secrets/redis_cache_password
+  REDIS_QUEUE_PASSWORD_FILE: /run/secrets/redis_queue_password
+  FRAPPE_VERSION: ${FRAPPE_VERSION:-16.26.3}
+  FRAPPE_BENCH_ROOT: /workspace/frappe-bench
+
+x-frappe-volumes: &frappe-volumes
+  - frappe_sites:/workspace/frappe-bench/sites
+  - frappe_assets:/workspace/frappe-bench/sites/assets
+  - frappe_logs:/workspace/frappe-bench/logs
+  - frappe_data:/data
+
+services:
+  caddy:
+    image: webodm-caddy:2
+    build:
+      context: ./infra/caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-webodm.local}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -ksSo /dev/null --max-time 5 http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-webodm}
+      POSTGRES_USER: ${DB_USER:-webodm}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    secrets:
+      - db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init-frappe-admin.sql:/docker-entrypoint-initdb.d/init-frappe-admin.sql:ro
+    networks:
+      - data
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-webodm} -d ${DB_NAME:-webodm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+
+  redis-cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - |
+        exec redis-server \
+          --port 13000 \
+          --save "" \
+          --appendonly "no" \
+          --maxmemory 512mb \
+          --maxmemory-policy allkeys-lru \
+          --requirepass "$$(cat /run/secrets/redis_cache_password)"
+    secrets:
+      - redis_cache_password
+    volumes:
+      - redis_cache_data:/data
+    networks:
+      - data
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 13000 -a \"$$(cat /run/secrets/redis_cache_password)\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  redis-queue:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - |
+        exec redis-server \
+          --port 11000 \
+          --save "" \
+          --appendonly "yes" \
+          --appendfsync everysec \
+          --requirepass "$$(cat /run/secrets/redis_queue_password)"
+    secrets:
+      - redis_queue_password
+    volumes:
+      - redis_queue_data:/data
+    networks:
+      - data
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 11000 -a \"$$(cat /run/secrets/redis_queue_password)\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  frappe-init:
+    <<: *frappe-image
+    environment:
+      <<: *frappe-env-base
+      FRAPPE_ROLE: init
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      FRAPPE_ROOT_PASSWORD_FILE: /run/secrets/frappe_admin_password
+    secrets:
+      - admin_password
+      - db_password
+      - frappe_admin_password
+      # NOTE: brief Step 1 omits redis secrets on frappe-init. We add them
+      # because `frappe.init()` (called by `bench new-site`) eagerly calls
+      # `setup_redis_cache_connection()`, which would NOAUTH-fail against
+      # the auth-enabled redis services without credentials.
+      - redis_cache_password
+      - redis_queue_password
+    volumes:
+      - frappe_sites:/workspace/frappe-bench/sites
+    networks:
+      - backend
+      - data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  frappe-web:
+    <<: *frappe-image
+    environment:
+      <<: *frappe-env-base
+      FRAPPE_ROLE: web
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      FRAPPE_ROOT_PASSWORD_FILE: /run/secrets/frappe_admin_password
+    secrets:
+      - admin_password
+      - db_password
+      - frappe_admin_password
+      - redis_cache_password
+      - redis_queue_password
+    command: ["frappe-web"]
+    volumes: *frappe-volumes
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      frappe-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/method/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+
+  frappe-worker:
+    <<: *frappe-image
+    environment:
+      <<: *frappe-env-base
+      FRAPPE_ROLE: worker
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      FRAPPE_ROOT_PASSWORD_FILE: /run/secrets/frappe_admin_password
+    secrets:
+      - admin_password
+      - db_password
+      - frappe_admin_password
+      - redis_cache_password
+      - redis_queue_password
+    command: ["frappe-worker"]
+    volumes:
+      - frappe_sites:/workspace/frappe-bench/sites
+      - frappe_logs:/workspace/frappe-bench/logs
+      - frappe_data:/data
+    networks:
+      - backend
+    depends_on:
+      frappe-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+
+  frappe-scheduler:
+    <<: *frappe-image
+    environment:
+      <<: *frappe-env-base
+      FRAPPE_ROLE: scheduler
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      FRAPPE_ROOT_PASSWORD_FILE: /run/secrets/frappe_admin_password
+    secrets:
+      - admin_password
+      - db_password
+      - frappe_admin_password
+      - redis_cache_password
+      - redis_queue_password
+    command: ["frappe-scheduler"]
+    volumes:
+      - frappe_sites:/workspace/frappe-bench/sites
+      - frappe_logs:/workspace/frappe-bench/logs
+    networks:
+      - backend
+    depends_on:
+      frappe-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  frappe-socketio:
+    <<: *frappe-image
+    environment:
+      <<: *frappe-env-base
+      FRAPPE_ROLE: socketio
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      FRAPPE_ROOT_PASSWORD_FILE: /run/secrets/frappe_admin_password
+    secrets:
+      - admin_password
+      - db_password
+      - frappe_admin_password
+      - redis_cache_password
+      - redis_queue_password
+    command: ["frappe-socketio"]
+    volumes:
+      - frappe_sites:/workspace/frappe-bench/sites
+      - frappe_assets:/workspace/frappe-bench/sites/assets
+      - frappe_logs:/workspace/frappe-bench/logs
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      frappe-web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9000/socket.io/?EIO=4&transport=polling' | grep -q 'sid'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  geospatial:
+    build:
+      context: ../webodm-geospatial
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /data
+      REDIS_URL: redis://redis-cache:13000
+    volumes:
+      - frappe_data:/data
+      - frappe_sites:/workspace/frappe-bench/sites
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+
+  nodeodm:
+    image: opendronemap/nodeodm:latest
+    restart: unless-stopped
+    volumes:
+      - nodeodm_data:/var/www/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  backup:
+    image: webodm-backup:1
+    build:
+      context: ./infra/backup
+    restart: unless-stopped
+    environment:
+      SITE_NAME: ${SITE_NAME:-webodm.local}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 3 * * *}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-}
+      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+    volumes:
+      - .:/host:ro
+      - frappe_sites:/workspace/frappe-bench/sites:ro
+      - frappe_data:/data:ro
+      - backup_storage:/backups
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - backend
+    depends_on:
+      frappe-web:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+  data:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_cache_data:
+  redis_queue_data:
+  frappe_sites:
+  frappe_assets:
+  frappe_logs:
+  frappe_data:
+  nodeodm_data:
+  backup_storage:
+  caddy_data:
+  caddy_config:
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  admin_password:
+    file: ./secrets/admin_password.txt
+  redis_cache_password:
+    file: ./secrets/redis_cache_password.txt
+  redis_queue_password:
+    file: ./secrets/redis_queue_password.txt
+  frappe_admin_password:
+    file: ./secrets/frappe_admin_password.txt
