@@ -116,6 +116,22 @@ x-frappe-image: &frappe-image
         CFG_PATH="$$cfg" python3 "$$writecfg"
         rm -f "$$writecfg"
       fi
+      # Ensure default_site matches the current SITE_NAME. This handles the case
+      # where the user changes SITE_NAME in .env but common_site_config.json
+      # (on a persistent volume) still references the old site name.
+      if [ -f "$$cfg" ]; then
+        python3 -c "
+import json
+cfg_path = '$$cfg'
+site = '$$SITE_NAME'
+with open(cfg_path) as f:
+    cfg = json.load(f)
+if cfg.get('default_site') != site:
+    cfg['default_site'] = site
+    with open(cfg_path, 'w') as f:
+        json.dump(cfg, f, indent=2)
+"
+      fi
       # infra/frappe/entrypoint.sh dispatches by FRAPPE_ROLE. The socketio branch
       # runs `bench socketio --port 9000`, but `bench socketio` doesn't accept
       # --port (its only option is --help). FRAPPE_SOCKETIO_PORT above already
@@ -183,7 +199,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      SITE_DOMAIN: ${SITE_DOMAIN:-webodm.local}
+      SITE_DOMAIN: ${SITE_DOMAIN:-${SITE_NAME:-webodm.local}}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}

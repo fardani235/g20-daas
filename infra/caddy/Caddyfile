@@ -26,18 +26,18 @@ admin.{$SITE_DOMAIN} {
     @socketio path /socket.io/*
     reverse_proxy @socketio frappe-socketio:9000 {
         header_up Host {host}
-        header_up X-Frappe-Site-Name webodm.local
+        header_up X-Frappe-Site-Name {$SITE_DOMAIN}
     }
 
     # Frappe static files (assets, files, public, private).
     @assets path /assets/** /files/** /public/** /private/files/**
     reverse_proxy @assets frappe-web:8000 {
-        header_up Host webodm.local
+        header_up Host {$SITE_DOMAIN}
     }
 
     # Everything else → Frappe web.
     reverse_proxy frappe-web:8000 {
-        header_up Host webodm.local
+        header_up Host {$SITE_DOMAIN}
         header_up X-Real-IP {remote}
         header_up X-Forwarded-For {remote}
         header_up X-Forwarded-Proto {scheme}
