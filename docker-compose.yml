@@ -120,17 +120,20 @@ x-frappe-image: &frappe-image
       # where the user changes SITE_NAME in .env but common_site_config.json
       # (on a persistent volume) still references the old site name.
       if [ -f "$$cfg" ]; then
-        python3 -c "
-import json
-cfg_path = '$$cfg'
-site = '$$SITE_NAME'
-with open(cfg_path) as f:
-    cfg = json.load(f)
-if cfg.get('default_site') != site:
-    cfg['default_site'] = site
-    with open(cfg_path, 'w') as f:
-        json.dump(cfg, f, indent=2)
-"
+        fixdefault="$$sites_dir/.fix-default-site.$$$$.py"
+        printf '%s\n' \
+          'import json, os' \
+          'cfg_path = os.environ["CFG_PATH"]' \
+          'site = os.environ["SITE_NAME"]' \
+          'with open(cfg_path) as f:' \
+          '    cfg = json.load(f)' \
+          'if cfg.get("default_site") != site:' \
+          '    cfg["default_site"] = site' \
+          '    with open(cfg_path, "w") as f:' \
+          '        json.dump(cfg, f, indent=2)' \
+          > "$$fixdefault"
+        CFG_PATH="$$cfg" SITE_NAME="$$SITE_NAME" python3 "$$fixdefault"
+        rm -f "$$fixdefault"
       fi
       # infra/frappe/entrypoint.sh dispatches by FRAPPE_ROLE. The socketio branch
       # runs `bench socketio --port 9000`, but `bench socketio` doesn't accept
