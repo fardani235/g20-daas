@@ -75,6 +75,12 @@ admin.{$SITE_DOMAIN} {
         }
     }
 
+    # Allow large file uploads (drone images can be 50MB+ each).
+    @upload path /api/method/*
+    request_body @upload {
+        max_size 10GB
+    }
+
     # SocketIO long-lived connections.
     @socketio path /socket.io/*
     reverse_proxy @socketio frappe-socketio:9000 {
