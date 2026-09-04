@@ -135,6 +135,25 @@ x-frappe-image: &frappe-image
         CFG_PATH="$$cfg" SITE_NAME="$$SITE_NAME" python3 "$$fixdefault"
         rm -f "$$fixdefault"
       fi
+      # Ensure max_file_size is set in the site config. Frappe defaults to 25 MB
+      # which is too small for drone image uploads. This must be in the per-site
+      # site_config.json, not common_site_config.json.
+      site_cfg="$$sites_dir/$${SITE_NAME}/site_config.json"
+      if [ -f "$$site_cfg" ]; then
+        fixsize="$$sites_dir/.fix-max-file-size.$$$$.py"
+        printf '%s\n' \
+          'import json, os' \
+          'cfg_path = os.environ["CFG_PATH"]' \
+          'with open(cfg_path) as f:' \
+          '    cfg = json.load(f)' \
+          'if cfg.get("max_file_size") != 10737418240:' \
+          '    cfg["max_file_size"] = 10737418240' \
+          '    with open(cfg_path, "w") as f:' \
+          '        json.dump(cfg, f, indent=2)' \
+          > "$$fixsize"
+        CFG_PATH="$$site_cfg" python3 "$$fixsize"
+        rm -f "$$fixsize"
+      fi
       # infra/frappe/entrypoint.sh dispatches by FRAPPE_ROLE. The socketio branch
       # runs `bench socketio --port 9000`, but `bench socketio` doesn't accept
       # --port (its only option is --help). FRAPPE_SOCKETIO_PORT above already
