@@ -270,6 +270,10 @@ def upload_images():
     from webodm_core import tenancy
     tenancy.require_org()  # deny-by-default: a user with no org cannot upload
 
+    # Frappe only sets max_content_length for /api/method/upload_file.
+    # Our custom endpoint needs an explicit limit for large drone datasets.
+    frappe.request.max_content_length = 10 * 1024 * 1024 * 1024  # 10 GB
+
     files = frappe.request.files.getlist("files")
     project_id = frappe.form_dict.get("project_id")
     options_raw = frappe.form_dict.get("options")

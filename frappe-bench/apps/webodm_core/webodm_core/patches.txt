@@ -5,3 +5,4 @@
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 webodm_core.patches.seed_system_presets
+webodm_core.patches.seed_processing_node
