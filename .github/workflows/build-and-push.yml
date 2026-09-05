@@ -6,6 +6,7 @@ on:
     paths:
       - 'infra/**'
       - 'docker-compose.yml'
+      - 'frappe-bench/apps/Dockerfile'
       - '.github/workflows/build-and-push.yml'
   workflow_dispatch:
 
