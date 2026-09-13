@@ -175,6 +175,35 @@ def _resolve_inputs(task, inputs_spec: list) -> dict:
     return resolved
 
 
+def _reject_if_active(plugin: str, task_name: str):
+    """Refuse a new run while one for the same plugin+task is in flight."""
+    active = frappe.get_all(
+        "WebODM Plugin Run",
+        filters={"plugin": plugin, "task": task_name,
+                 "status": ["in", ("Queued", "Running")]},
+        pluck="name",
+    )
+    if active:
+        frappe.throw(f"'{plugin}' is already running on this task; cancel it first")
+
+
+def _delete_previous_runs(plugin: str, task_name: str):
+    """Delete prior runs for the same plugin+task, including their output files."""
+    names = frappe.get_all(
+        "WebODM Plugin Run",
+        filters={"plugin": plugin, "task": task_name},
+        pluck="name",
+    )
+    for name in names:
+        for file_name in frappe.get_all(
+            "File",
+            filters={"attached_to_doctype": "WebODM Plugin Run", "attached_to_name": name},
+            pluck="name",
+        ):
+            frappe.delete_doc("File", file_name, force=True, ignore_permissions=True)
+        frappe.delete_doc("WebODM Plugin Run", name, force=True, ignore_permissions=True)
+
+
 @frappe.whitelist(allow_guest=False)
 def run_plugin(**kwargs):
     """Validate eligibility and queue an analysis run for a completed task."""
@@ -218,6 +247,11 @@ def run_plugin(**kwargs):
         schema_mod.validate(effective, _parse_json(plugin_doc.params_schema, {}))
     except schema_mod.SchemaValidationError as e:
         frappe.throw(str(e))
+
+    # One run per (plugin, task): refuse while one is active, otherwise replace
+    # the previous result (and its output) so the panel/layers never accumulate.
+    _reject_if_active(plugin, task.name)
+    _delete_previous_runs(plugin, task.name)
 
     run = frappe.get_doc({
         "doctype": "WebODM Plugin Run",

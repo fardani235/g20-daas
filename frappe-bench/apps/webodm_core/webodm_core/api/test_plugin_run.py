@@ -222,11 +222,18 @@ class TestPluginRun(FrappeTestCase):
         self._enable(settings={"interval_m": 5})
         self._as(self.owner)
         with patch.object(frappe, "enqueue", lambda *a, **k: None):
-            default = plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)
-            override = plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok,
-                                              params={"interval_m": 9})
-        p1 = json.loads(frappe.get_doc("WebODM Plugin Run", default["run"]).parameters)["params"]
-        p2 = json.loads(frappe.get_doc("WebODM Plugin Run", override["run"]).parameters)["params"]
+            default = plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)["run"]
+        p1 = json.loads(frappe.get_doc("WebODM Plugin Run", default).parameters)["params"]
+
+        # Finish the first run so a second is permitted (and replaces it).
+        frappe.db.set_value("WebODM Plugin Run", default, "status", "Completed")
+
+        self._as(self.owner)
+        with patch.object(frappe, "enqueue", lambda *a, **k: None):
+            override = plugins_api.run_plugin(
+                plugin=PLUGIN_ID, task=self.task_ok, params={"interval_m": 9}
+            )["run"]
+        p2 = json.loads(frappe.get_doc("WebODM Plugin Run", override).parameters)["params"]
         self.assertEqual(p1["interval_m"], 5)
         self.assertEqual(p2["interval_m"], 9)
 
@@ -283,6 +290,44 @@ class TestPluginRun(FrappeTestCase):
         self.assertEqual(run.status, "Failed")
         self.assertIn("geospatial exploded", run.error)
         self.assertFalse(run.output_file)
+
+    # --- replace semantics ---
+
+    def test_rerun_replaces_previous_run_and_output(self):
+        self._enable(settings={"interval_m": 5})
+        self._as(self.owner)
+        with patch.object(frappe, "enqueue", lambda *a, **k: None):
+            first = plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)["run"]
+        with patch.object(runner, "run_operation", self._fake_operation):
+            runner.execute_run(first)
+        first_doc = frappe.get_doc("WebODM Plugin Run", first)
+        self.assertTrue(first_doc.output_file)
+        output_file = frappe.db.get_value("File", {"file_url": first_doc.output_file}, "name")
+
+        self._as(self.owner)
+        with patch.object(frappe, "enqueue", lambda *a, **k: None):
+            second = plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)["run"]
+
+        self.assertNotEqual(first, second)
+        self.assertFalse(frappe.db.exists("WebODM Plugin Run", first))
+        self.assertFalse(frappe.db.exists("File", output_file))
+        remaining = frappe.get_all(
+            "WebODM Plugin Run",
+            filters={"plugin": PLUGIN_ID, "task": self.task_ok},
+            pluck="name",
+        )
+        self.assertEqual(remaining, [second])
+
+    def test_rerun_blocked_while_active(self):
+        self._enable(settings={"interval_m": 5})
+        self._as(self.owner)
+        with patch.object(frappe, "enqueue", lambda *a, **k: None):
+            plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)  # stays Queued
+
+        self._as(self.owner)
+        with patch.object(frappe, "enqueue", lambda *a, **k: None):
+            with self.assertRaises(frappe.ValidationError):
+                plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)
 
     # --- cancel (4.7) ---
 
