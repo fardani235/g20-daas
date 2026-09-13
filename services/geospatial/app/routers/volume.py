@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from app.routers.tiles import _require_raster
 from app.utils.volume import DEFAULT_BASE_METHOD, compute_volume
@@ -20,8 +21,10 @@ async def volume(req: VolumeRequest):
     """Compute fill/cut/net volume of a polygon over a DSM raster."""
     _require_raster(req.path)
     try:
-        return compute_volume(
-            req.path, req.polygon, base_method=req.method or DEFAULT_BASE_METHOD
+        # NumPy/rasterio work is blocking; keep it off the event loop.
+        return await run_in_threadpool(
+            compute_volume, req.path, req.polygon,
+            base_method=req.method or DEFAULT_BASE_METHOD,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

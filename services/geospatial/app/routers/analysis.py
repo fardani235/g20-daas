@@ -9,6 +9,7 @@ import os
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from app.analysis import catalog, get_op
 
@@ -49,7 +50,7 @@ async def validate_analysis(op_id: str, req: AnalysisValidateRequest):
 
     if op.validator is not None:
         try:
-            op.validator(params)
+            await run_in_threadpool(op.validator, params)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
@@ -78,7 +79,11 @@ async def run_analysis(op_id: str, req: AnalysisRunRequest):
         raise HTTPException(status_code=422, detail=f"invalid parameters: {e}")
 
     try:
-        result = op.handler(req.inputs, params, req.output_path)
+        # Inference/GDAL work is blocking; run it off the event loop so a long
+        # analysis never stalls health checks, tiles, or other requests.
+        result = await run_in_threadpool(
+            op.handler, req.inputs, params, req.output_path
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:

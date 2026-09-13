@@ -47,4 +47,8 @@ COPY models/tree.txt /opt/webodm/models/tree.txt
 
 EXPOSE 5000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5000", "--reload"]
+# Multiple workers so one blocking request can't stall the service, and no
+# --reload (dev-only, and incompatible with workers). Blocking work is also
+# offloaded to a threadpool in the handlers.
+ENV WEB_CONCURRENCY=2
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 5000 --workers ${WEB_CONCURRENCY}"]

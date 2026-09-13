@@ -2,6 +2,7 @@ import os
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from rio_tiler.errors import TileOutsideBounds
+from starlette.concurrency import run_in_threadpool
 
 from app.utils import raster
 
@@ -27,7 +28,9 @@ async def tile_info(path: str = Query(...)):
     """Bounds (EPSG:4326), zoom range, and band stats for a raster."""
     _require_raster(path)
     try:
-        return raster.tile_info(path)
+        # Raster I/O is blocking; run it off the event loop so one request
+        # cannot stall the service (health checks, other tiles, analysis).
+        return await run_in_threadpool(raster.tile_info, path)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"tile_info failed: {e}")
 
@@ -43,7 +46,7 @@ async def get_tile(
     """Serve a single XYZ raster tile as PNG (orthophoto RGB, or colored DEM)."""
     _require_raster(path)
     try:
-        data = raster.render_tile(path, z, x, y, kind=kind)
+        data = await run_in_threadpool(raster.render_tile, path, z, x, y, kind)
     except TileOutsideBounds:
         return Response(content=_EMPTY_PNG, media_type="image/png")
     except Exception as e:

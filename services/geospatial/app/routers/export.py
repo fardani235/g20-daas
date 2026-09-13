@@ -3,10 +3,22 @@ import subprocess
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from app.utils import raster
 
 router = APIRouter()
+
+
+def _run_ogr2ogr(path: str, output_path: str) -> None:
+    proc = subprocess.run(
+        ["ogr2ogr", "-f", "GeoJSON", "-t_srs", "EPSG:4326", output_path, path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise ValueError(f"ogr2ogr failed: {proc.stderr.strip()}")
 
 
 class CogifyRequest(BaseModel):
@@ -36,8 +48,9 @@ async def cogify(req: CogifyRequest):
         raise HTTPException(status_code=404, detail=f"raster not found: {req.path}")
 
     try:
-        out_path = raster.to_cog(req.path, req.dst_path)
-        georef = raster.read_georef(out_path)
+        # GDAL work is blocking; keep it off the event loop.
+        out_path = await run_in_threadpool(raster.to_cog, req.path, req.dst_path)
+        georef = await run_in_threadpool(raster.read_georef, out_path)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"cogify failed: {e}")
 
@@ -64,14 +77,10 @@ async def vector_to_geojson(req: VectorToGeoJSONRequest):
     if not os.path.isabs(req.output_path):
         raise HTTPException(status_code=400, detail="output_path must be absolute")
 
-    proc = subprocess.run(
-        ["ogr2ogr", "-f", "GeoJSON", "-t_srs", "EPSG:4326", req.output_path, req.path],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if proc.returncode != 0:
-        raise HTTPException(status_code=422, detail=f"ogr2ogr failed: {proc.stderr.strip()}")
+    try:
+        await run_in_threadpool(_run_ogr2ogr, req.path, req.output_path)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     return {"path": req.output_path, "format": "GeoJSON", "crs": "EPSG:4326"}
 
