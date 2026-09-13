@@ -28,12 +28,20 @@ runnable through the existing plugin catalog and enablement flow.
 The detection operation SHALL use an ONNX model file and a matching label set
 supplied by configuration, with a platform default that an organization may
 override, and MUST reject a run when the model or labels are missing,
-unreadable, or inconsistent.
+unreadable, or inconsistent. The platform default SHALL be configurable so a
+deployment can select a domain-appropriate model (for example an
+aerial-trained model for top-down imagery).
 
 #### Scenario: Default model used
 
 - **WHEN** no model is configured for the organization
 - **THEN** the platform default model and labels are used
+
+#### Scenario: Aerial model selected
+
+- **WHEN** a run or the platform default selects an aerial-trained model and its
+  labels
+- **THEN** detection uses that model and reports its classes
 
 #### Scenario: Organization override used
 
@@ -74,6 +82,12 @@ values MUST be validated before execution.
   names
 - **THEN** those names are used as the filter without requiring JSON syntax
 
+#### Scenario: Tile size given in ground metres
+
+- **WHEN** a run supplies a tile/overlap size in ground metres
+- **THEN** the pixel tile and overlap are derived from the raster's ground
+  sample distance, so object scale is consistent across resolutions
+
 ### Requirement: Tiled inference over large imagery
 
 The operation SHALL process the entire orthophoto by tiles that overlap, and
@@ -90,6 +104,12 @@ regardless of where it falls relative to a tile edge.
 - **WHEN** the orthophoto is larger than one tile
 - **THEN** detections are produced across the whole image extent, not only the
   first tile
+
+#### Scenario: Padding and edge artifacts discarded
+
+- **WHEN** a detection is centred in letterbox padding, or is clipped at an
+  interior tile edge where a neighbouring tile sees it whole
+- **THEN** it is not emitted as a detection
 
 ### Requirement: Detection output
 

@@ -65,7 +65,10 @@ single non-maximum suppression pass over all boxes.
 exceed memory if resized whole; tiling covers the full extent and preserves small
 objects, while overlap prevents clipping at tile edges and global NMS removes
 cross-tile duplicates. **Alternatives:** whole-image resize (loses small
-objects, high memory); tiling without overlap (edge losses).
+objects, high memory); tiling without overlap (edge losses). Edge tiles are not
+square, so they are letterboxed with padding; detections centred in that padding,
+or clipped at an interior tile edge (a neighbour tile sees them whole), are
+discarded so edges do not emit fake or duplicate boxes.
 
 ### D3: Output is GeoJSON bounding boxes
 
@@ -97,6 +100,12 @@ the model and labels and checks them). Frappe calls it before creating a run, so
 a missing, unreadable, or label-mismatched model rejects the request up front
 instead of failing a run after the fact.
 
+Model choice is domain-driven: COCO (yolov8n) is trained on ground-level photos
+and is weak on top-down orthophotos, so the image also provisions an
+aerial-trained model (VisDrone). The platform default is configurable
+(`OBJECT_DETECTION_DEFAULT_MODEL`/`_LABELS`) so a deployment can default to the
+aerial model; the code fallback stays COCO.
+
 **Rationale:** Keeps the model supply trusted and prevents an organization admin
 from pointing the op at arbitrary files (information disclosure / DoS), while
 still allowing per-org model choice, and satisfies the "rejected before a run is
@@ -111,6 +120,10 @@ and defaults): `model` (name in the models dir), `labels` (name), `confidence`
 default `0.25` (0–1), `iou` default `0.45` (0–1), `tile_size` default `640`
 (multiple of 32, bounded), `overlap` default `64` (≥0 and < `tile_size`),
 `max_detections` default `5000` (>0), and `classes` (optional subset of labels).
+`tile_size`/`overlap` are in raster pixels; optional `tile_size_m`/`overlap_m`
+give the tile and overlap in ground metres, which the op converts using the
+raster's ground sample distance so object scale is consistent across
+resolutions.
 
 **Rationale:** Reuses the existing schema-driven form and prefill; bounds are
 validated before a run is created. **Alternatives:** free-form strings (poor UX,

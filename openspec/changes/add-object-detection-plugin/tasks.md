@@ -4,6 +4,7 @@
 - [x] 1.2 Add a managed models-directory resolver that rejects absolute paths, `..`, and symlink escapes, and verify unit tests reject traversal and accept a valid file inside the directory
 - [x] 1.3 Implement a model + labels loader that validates a single image input and a compatible detection output and that the label count matches the model's class count, and verify tests cover valid, malformed, and mismatched-label cases
 - [x] 1.4 Provision a default COCO ONNX detector and its labels into the models directory and verify the operation loads it and reports the expected class names
+- [x] 1.5 Provision an aerial-trained detector (VisDrone, 10 classes) and its labels, make the platform default model/labels configurable, and verify a real orthophoto yields aerial classes instead of COCO's
 
 ## 2. Geospatial: detection operation
 
@@ -12,6 +13,8 @@
 - [x] 2.3 Implement a single global non-maximum-suppression pass over merged detections and verify an object spanning a tile boundary yields exactly one detection
 - [x] 2.4 Emit a GeoJSON `FeatureCollection` of bounding boxes (EPSG:4326) with `class`, `class_id`, `confidence` and metadata with per-class counts and a total, and verify structure plus the empty-result case
 - [x] 2.5 Register the operation (`op_id: object-detection`, `output_kind: vector`, `render_kind: detections`, `inputs: orthophoto`, and its timeout) and verify the catalog exposes it with params schema, inputs, and timeout
+- [x] 2.6 Discard detections centred in letterbox padding or clipped at an interior tile edge, and verify with unit tests on the mapping helper
+- [x] 2.7 Support ground-metre tiling (`tile_size_m`/`overlap_m`) resolved from the raster GSD, and verify with a unit test on the tiling resolver
 
 ## 3. Catalog and run timeout contract
 

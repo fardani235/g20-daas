@@ -526,6 +526,10 @@ services:
     environment:
       DATA_DIR: /data
       REDIS_URL: redis://redis-cache:13000
+      # Defaults for the object-detection op. Aerial orthophotos need an
+      # aerial-trained model; COCO (yolov8n) remains the code fallback.
+      OBJECT_DETECTION_DEFAULT_MODEL: visdrone-yolov11s.onnx
+      OBJECT_DETECTION_DEFAULT_LABELS: visdrone.txt
     volumes:
       - frappe_data:/data
       - frappe_sites:/workspace/frappe-bench/sites
