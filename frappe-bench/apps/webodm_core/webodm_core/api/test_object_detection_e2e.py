@@ -113,7 +113,8 @@ class TestObjectDetectionE2E(FrappeTestCase):
         frappe.local.webodm_org_cache = {}
 
     def test_detection_end_to_end(self):
-        self._enable()
+        # Pin the model so the test is independent of the platform default.
+        self._enable(settings={"model": "yolov8n.onnx", "labels": "coco.txt"})
 
         self._as(self.owner)
         with patch.object(frappe, "enqueue", lambda *a, **k: None):
