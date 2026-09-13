@@ -33,10 +33,13 @@ OutputKind = Literal["raster", "vector"]
 
 # Bumped when the shape of the catalog response changes, so consumers can detect
 # an incompatible contract instead of silently dropping operations.
-CATALOG_SCHEMA_VERSION = 1
+CATALOG_SCHEMA_VERSION = 2
 
 # Handler signature: (input name -> absolute path, validated params, output path).
 AnalysisHandler = Callable[[dict[str, str], BaseModel, str], dict]
+
+# Optional pre-run validator: raises ValueError when the operation cannot run.
+AnalysisValidator = Callable[[BaseModel], None]
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,8 @@ class AnalysisOp:
     render_kind: str
     inputs: list[dict]
     handler: AnalysisHandler
+    timeout_seconds: int | None = None
+    validator: AnalysisValidator | None = None
 
     def catalog_entry(self) -> dict:
         """JSON-serializable catalog description of this operation."""
@@ -62,6 +67,8 @@ class AnalysisOp:
             "output_kind": self.output_kind,
             "render_kind": self.render_kind,
             "inputs": self.inputs,
+            "timeout_seconds": self.timeout_seconds,
+            "needs_validation": self.validator is not None,
         }
 
 

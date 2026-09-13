@@ -21,10 +21,39 @@ class AnalysisRunRequest(BaseModel):
     output_path: str
 
 
+class AnalysisValidateRequest(BaseModel):
+    params: dict = {}
+
+
 @router.get("")
 async def list_analysis():
     """Return the registered analysis catalog."""
     return catalog()
+
+
+@router.post("/{op_id}/validate")
+async def validate_analysis(op_id: str, req: AnalysisValidateRequest):
+    """Validate params (and any op-specific preconditions) without running.
+
+    Lets the caller reject an impossible run before creating it — e.g. a
+    detection model that is missing, unreadable, or label-mismatched.
+    """
+    op = get_op(op_id)
+    if op is None:
+        raise HTTPException(status_code=404, detail=f"unknown analysis op: {op_id}")
+
+    try:
+        params = op.params_model(**req.params)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=f"invalid parameters: {e}")
+
+    if op.validator is not None:
+        try:
+            op.validator(params)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+    return {"ok": True}
 
 
 @router.post("/{op_id}/run")

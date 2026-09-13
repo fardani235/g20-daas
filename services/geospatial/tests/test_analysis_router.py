@@ -25,14 +25,24 @@ def _dem(path):
 
 def test_catalog_matches_registered_ops():
     res = asyncio.run(list_analysis())
-    assert res["schema_version"] == 1
+    assert res["schema_version"] == 2
     ids = {o["op_id"] for o in res["operations"]}
     assert ids == {op.op_id for op in all_ops()}
     for entry in res["operations"]:
         assert set(entry) >= {
             "op_id", "label", "description", "version",
             "params_schema", "output_kind", "render_kind", "inputs",
+            "timeout_seconds", "needs_validation",
         }
+
+
+def test_catalog_timeouts_are_optional():
+    res = asyncio.run(list_analysis())
+    by_id = {o["op_id"]: o for o in res["operations"]}
+    # Existing classic ops keep the default (no declared timeout)...
+    assert by_id["contours"]["timeout_seconds"] is None
+    # ...while the ML op declares a longer one.
+    assert by_id["object-detection"]["timeout_seconds"] == 1800
 
 
 def test_catalog_declares_operation_inputs():
