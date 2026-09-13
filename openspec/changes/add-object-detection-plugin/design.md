@@ -185,7 +185,9 @@ option for arbitrary models), so users don't type filenames or know the family.
 
 - [CPU inference is slow on large orthophotos] → configurable tile size/overlap,
   op-declared longer timeout, coarse progress preserved; document expected
-  durations.
+  durations. The service also runs multiple uvicorn workers and offloads blocking
+  work to a threadpool (with `--reload` removed), so a long detection cannot
+  stall health checks or other requests.
 - [Model/output contract drift breaks parsing] → validate input/output tensor
   shapes and label count at load; fail with a clear message.
 - [Untrusted model files or path traversal] → managed models directory +

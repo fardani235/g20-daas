@@ -42,3 +42,4 @@
 
 - [x] 6.1 Verify the full vertical: enable the plugin for an organization, run it on a completed task with an orthophoto, confirm a detections GeoJSON with per-class counts, see the class-styled overlay and legend, and download the output
 - [x] 6.2 Verify robustness/security: an out-of-directory or missing model is rejected before a run is created, a failed inference records an error, and a dense detection set does not freeze the map
+- [x] 6.3 Harden the geospatial service so long inference cannot stall it — run multiple uvicorn workers, drop `--reload`, and offload blocking I/O/inference to a threadpool; verify health/catalog stay responsive during a full detection run
