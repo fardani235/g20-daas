@@ -89,7 +89,7 @@ import { Badge, Button, Dialog } from '@/components/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import PluginParamsForm from '@/components/PluginParamsForm.vue'
 import { toast } from '@/lib/toast'
-import { listPlugins, savePluginSetting } from '@/lib/plugins'
+import { listPlugins, savePluginSetting, schemaDefaults } from '@/lib/plugins'
 import { whoami } from '@/lib/presets'
 
 const plugins = ref([])
@@ -146,7 +146,8 @@ async function toggle(plugin) {
 
 function openConfig(plugin) {
   editing.value = plugin
-  draftSettings.value = { ...(plugin.settings || {}) }
+  // Schema defaults first, then any saved organization overrides.
+  draftSettings.value = { ...schemaDefaults(plugin.params_schema), ...(plugin.settings || {}) }
   showModal.value = true
 }
 

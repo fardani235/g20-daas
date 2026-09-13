@@ -54,4 +54,20 @@ describe('plugins lib', () => {
     expect(plugins.getRunGeojson('R1')).toBeInstanceOf(Promise)
     expect(plugins.runDownloadUrl('R1')).toContain('run_name=R1')
   })
+
+  it('extracts schema defaults', () => {
+    const schema = {
+      properties: {
+        interval_m: { type: 'number', default: 5 },
+        output_format: { type: 'string' },
+        enabled: { type: 'boolean', default: false },
+      },
+    }
+    expect(plugins.schemaDefaults(schema)).toEqual({ interval_m: 5, enabled: false })
+    expect(plugins.schemaDefaults(null)).toEqual({})
+  })
+
+  it('caps vector features', () => {
+    expect(plugins.MAX_VECTOR_FEATURES).toBeGreaterThan(0)
+  })
 })

@@ -51,3 +51,17 @@ export const runTileUrl = runName =>
 // Direct download URL for a run's output artifact.
 export const runDownloadUrl = runName =>
   `/api/method/webodm_core.api.plugins.download_run_output?run_name=${encodeURIComponent(runName)}`
+
+// Vector outputs above this many features are not drawn client-side; they stay
+// downloadable and the UI warns instead of freezing the map.
+export const MAX_VECTOR_FEATURES = 5000
+
+// Default parameter values declared by an operation's JSON schema, keyed by name.
+export function schemaDefaults(schema) {
+  const out = {}
+  const properties = schema?.properties || {}
+  for (const [name, spec] of Object.entries(properties)) {
+    if (spec && spec.default !== undefined) out[name] = spec.default
+  }
+  return out
+}

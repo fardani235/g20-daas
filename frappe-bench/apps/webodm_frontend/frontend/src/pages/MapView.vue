@@ -381,11 +381,12 @@ import {
   listPlugins,
   listRuns,
   runPlugin,
-  getRun,
   cancelRun,
   getRunGeojson,
   runTileUrl,
   runDownloadUrl,
+  schemaDefaults,
+  MAX_VECTOR_FEATURES,
 } from '@/lib/plugins'
 
 const route = useRoute()
@@ -466,7 +467,8 @@ let baseLayer = null
 let flightPathLayer = null
 const showFlightPath = ref(false)
 const measure = useMeasure(() => map, { onVolume: computeVolume })
-const overlayLayers = {}  // key -> Leaflet tileLayer
+const overlayLayers = {}  // key -> Leaflet tileLayer/geojson layer
+const warnedLargeRuns = new Set()  // run names already warned as too large
 
 // Analysis plugins enabled for the caller's organization, and the runs for the
 // selected task. Populated lazily; labels fall back to the plugin id.
@@ -505,7 +507,9 @@ async function loadTaskRuns(taskName) {
 
 function openRunDialog(plugin) {
   runPluginDoc.value = plugin
-  runParams.value = { ...(plugin.settings || {}) }
+  // Start from the operation's schema defaults, then the organization's saved
+  // settings, so the dialog never opens blank and users don't invent values.
+  runParams.value = { ...schemaDefaults(plugin.params_schema), ...(plugin.settings || {}) }
   showRunDialog.value = true
 }
 
@@ -513,15 +517,14 @@ async function startPluginRun() {
   if (!runPluginDoc.value || !selectedTask.value) return
   runStarting.value = true
   try {
-    const { run } = await runPlugin({
+    await runPlugin({
       plugin: runPluginDoc.value.op_id,
       task: selectedTask.value,
       params: runParams.value,
     })
     showRunDialog.value = false
     toast.success('Analysis started')
-    await loadTaskRuns(selectedTask.value)
-    pollRun(run)
+    await startRunPolling()
   } catch (e) {
     toast.error(e.message || 'Failed to start analysis')
   } finally {
@@ -529,24 +532,37 @@ async function startPluginRun() {
   }
 }
 
-async function pollRun(runName) {
-  for (let i = 0; i < 150; i++) {
-    let run
-    try {
-      run = await getRun(runName)
-    } catch {
-      return
-    }
-    const idx = taskRuns.value.findIndex(r => r.name === runName)
-    if (idx !== -1) taskRuns.value[idx] = { ...taskRuns.value[idx], ...run }
-    if (['Completed', 'Failed', 'Cancelled'].includes(run.status)) {
-      await loadTaskRuns(selectedTask.value)
-      if (run.status === 'Completed' && currentTask.value) await loadOverlays(currentTask.value)
-      if (run.status === 'Failed') toast.error('Analysis failed')
-      return
-    }
-    await new Promise(r => setTimeout(r, 2000))
+const RUN_TERMINAL = ['Completed', 'Failed', 'Cancelled']
+const isRunTerminal = status => RUN_TERMINAL.includes(status)
+let runPollTimer = null
+
+// Poll the task's run list (not a single id) so the UI keeps up even if a poll
+// fails or the tab was backgrounded. Stops once no run is Queued/Running.
+async function pollRuns() {
+  runPollTimer = null
+  if (!selectedTask.value) return
+  try {
+    await loadTaskRuns(selectedTask.value)
+  } catch {
+    // Keep polling through transient errors.
   }
+  const active = taskRuns.value.some(r => !isRunTerminal(r.status))
+  if (active) {
+    runPollTimer = setTimeout(pollRuns, 2500)
+  } else if (currentTask.value) {
+    await loadOverlays(currentTask.value)
+  }
+}
+
+async function startRunPolling() {
+  if (runPollTimer) clearTimeout(runPollTimer)
+  await loadTaskRuns(selectedTask.value)
+  runPollTimer = setTimeout(pollRuns, 1500)
+}
+
+function onVisibility() {
+  // A backgrounded tab throttles timers, so refresh immediately on return.
+  if (document.visibilityState === 'visible' && selectedTask.value) startRunPolling()
 }
 
 async function cancelPluginRun(run) {
@@ -687,7 +703,24 @@ async function loadRunOverlays(taskName) {
     } else if (run.output_kind === 'vector') {
       try {
         const geojson = await getRunGeojson(run.name)
-        const layer = L.geoJSON(geojson, { style: { color: '#2563eb', weight: 1.5 } })
+        const count = Array.isArray(geojson?.features) ? geojson.features.length : 0
+        if (count > MAX_VECTOR_FEATURES) {
+          // Drawing tens of thousands of vector features blocks the main
+          // thread. Keep the run downloadable and warn once.
+          if (!warnedLargeRuns.has(run.name)) {
+            warnedLargeRuns.add(run.name)
+            toast.error(
+              `${label}: ${count.toLocaleString()} features is too large to display. ` +
+              'Download it or re-run with a coarser interval.',
+            )
+          }
+          continue
+        }
+        const layer = L.geoJSON(geojson, {
+          renderer: L.canvas(),  // canvas avoids per-feature DOM/SVG overhead
+          smoothFactor: 2,
+          style: { color: '#2563eb', weight: 1.5 },
+        })
         overlayLayers[key] = layer
         overlays.value.push({ key, label, visible: false, opacity: 100, kind: 'vector' })
         const bounds = layer.getBounds()
@@ -1044,6 +1077,7 @@ onMounted(() => {
   fetchProject()
   fetchTasks()
   loadPlugins()
+  document.addEventListener('visibilitychange', onVisibility)
 
   map = L.map('map').setView([0, 0], 2)
   baseLayer = createBasemap(currentBasemap.value)
@@ -1051,6 +1085,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibility)
+  if (runPollTimer) clearTimeout(runPollTimer)
   measure.clear()
   removeFlightPath()
   if (map) {
