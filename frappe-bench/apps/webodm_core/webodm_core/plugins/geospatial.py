@@ -88,3 +88,21 @@ def vector_to_geojson(path: str, output_path: str, timeout: int = 120) -> dict:
         raise GeospatialError(f"vector conversion failed: {detail or e}") from e
     except Exception as e:
         raise GeospatialUnavailable(f"analysis service unreachable: {e}") from e
+
+
+def validate_operation(op_id: str, params: dict, timeout: int = 30) -> dict:
+    """Ask the analysis service to validate params/preconditions without running."""
+    url = f"{geospatial_url().rstrip('/')}/analysis/{op_id}/validate"
+    try:
+        resp = requests.post(url, json={"params": params}, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            detail = e.response.text if e.response is not None else ""
+        raise GeospatialError(str(detail or e)) from e
+    except Exception as e:
+        raise GeospatialUnavailable(f"analysis service unreachable: {e}") from e

@@ -75,7 +75,10 @@ def execute_run(run_name: str):
         os.makedirs(out_dir, exist_ok=True)
         tmp_path = os.path.join(out_dir, f"{run.name}.{ext}")
 
-        result = run_operation(plugin.name, inputs, params, tmp_path)
+        result = run_operation(
+            plugin.name, inputs, params, tmp_path,
+            timeout=int(plugin.timeout_seconds or 600),
+        )
 
         # A cancel may have landed while the operation was running.
         run.reload()

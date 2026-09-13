@@ -43,6 +43,8 @@ def _catalog_values(op: dict) -> dict:
         "output_kind": op.get("output_kind") or "raster",
         "render_kind": op.get("render_kind"),
         "inputs": _as_json_text(op.get("inputs")),
+        "timeout_seconds": op.get("timeout_seconds") or 0,
+        "needs_validation": 1 if op.get("needs_validation") else 0,
         "available": 1,
     }
 

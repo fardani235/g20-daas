@@ -13,9 +13,18 @@ from frappe.utils import now_datetime, sbool
 
 from webodm_core import tenancy
 from webodm_core.plugins import schema as schema_mod
+from webodm_core.plugins.geospatial import (
+    GeospatialError,
+    GeospatialUnavailable,
+    validate_operation,
+)
 
 _PLUGIN = "WebODM Plugin"
 _SETTING = "WebODM Plugin Setting"
+
+# Seconds. Used when an operation does not declare its own timeout; ML ops set
+# a longer one so their RQ jobs are not killed mid-inference.
+_RUN_DEFAULT_TIMEOUT = 300
 
 
 def _parse_json(value, default=None):
@@ -248,6 +257,14 @@ def run_plugin(**kwargs):
     except schema_mod.SchemaValidationError as e:
         frappe.throw(str(e))
 
+    # Ops that declare it are validated by the analysis service *before* a run
+    # exists, so e.g. a missing/unreadable model rejects the request up front.
+    if plugin_doc.needs_validation:
+        try:
+            validate_operation(plugin, effective)
+        except (GeospatialError, GeospatialUnavailable) as e:
+            frappe.throw(str(e))
+
     # One run per (plugin, task): refuse while one is active, otherwise replace
     # the previous result (and its output) so the panel/layers never accumulate.
     _reject_if_active(plugin, task.name)
@@ -269,6 +286,7 @@ def run_plugin(**kwargs):
         "webodm_core.plugins.runner.execute_run",
         queue="long",
         job_name=f"plugin_run_{run.name}",
+        timeout=int(plugin_doc.timeout_seconds or _RUN_DEFAULT_TIMEOUT),
         run_name=run.name,
     )
     return {"run": run.name, "status": run.status}

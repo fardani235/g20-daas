@@ -13,6 +13,8 @@ SCHEMA = {
     "properties": {
         "interval_m": {"type": "number", "exclusiveMinimum": 0},
         "output_format": {"type": "string", "enum": ["GeoJSON", "GPKG"]},
+        "model": {"type": "string", "default": "yolov8n.onnx"},
+        "labels": {"type": "string", "default": "coco.txt"},
     },
     "required": ["interval_m"],
 }
@@ -138,6 +140,22 @@ class TestPluginApi(FrappeTestCase):
         # Nothing should have been stored.
         self.assertFalse(frappe.db.exists("WebODM Plugin Setting",
                                           {"plugin": PLUGIN_ID, "organization": self.org}))
+
+    def test_model_labels_defaults_and_override(self):
+        self._as(self.owner)
+        # Defaults surface in the catalog schema...
+        entry = self._entry()
+        self.assertEqual(entry["params_schema"]["properties"]["model"]["default"], "yolov8n.onnx")
+        self.assertEqual(entry["params_schema"]["properties"]["labels"]["default"], "coco.txt")
+
+        # ...and an organization can override them.
+        plugins_api.save_plugin_setting(
+            plugin=PLUGIN_ID, enabled=True,
+            settings={"interval_m": 5, "model": "custom.onnx", "labels": "custom.txt"},
+        )
+        entry = self._entry()
+        self.assertEqual(entry["settings"]["model"], "custom.onnx")
+        self.assertEqual(entry["settings"]["labels"], "custom.txt")
 
     def test_valid_settings_stored(self):
         self._as(self.owner)

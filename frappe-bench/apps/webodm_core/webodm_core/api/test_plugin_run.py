@@ -8,6 +8,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from webodm_core.api import plugins as plugins_api
 from webodm_core.plugins import runner
+from webodm_core.plugins.geospatial import GeospatialError
 
 PLUGIN_ID = "test-run-op"
 SCHEMA = {
@@ -142,7 +143,10 @@ class TestPluginRun(FrappeTestCase):
             frappe.delete_doc("WebODM Plugin Run", name, force=True, ignore_permissions=True)
         for name in frappe.get_all("WebODM Plugin Setting", filters={"plugin": PLUGIN_ID}, pluck="name"):
             frappe.delete_doc("WebODM Plugin Setting", name, force=True, ignore_permissions=True)
-        frappe.db.set_value("WebODM Plugin", PLUGIN_ID, {"platform_enabled": 1, "available": 1})
+        frappe.db.set_value("WebODM Plugin", PLUGIN_ID,
+                            {"platform_enabled": 1, "available": 1, "timeout_seconds": 0,
+                             "needs_validation": 0, "inputs": json.dumps(INPUTS),
+                             "output_kind": "raster", "render_kind": "dem"})
         frappe.set_user("Administrator")
         frappe.local.webodm_org_cache = {}
 
@@ -185,6 +189,7 @@ class TestPluginRun(FrappeTestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][0][0], "webodm_core.plugins.runner.execute_run")
         self.assertEqual(calls[0][1]["run_name"], result["run"])
+        self.assertEqual(calls[0][1]["timeout"], 300)  # default when op declares none
 
     def test_not_enabled_for_org_rejected(self):
         self._as(self.owner)
@@ -291,8 +296,125 @@ class TestPluginRun(FrappeTestCase):
         self.assertIn("geospatial exploded", run.error)
         self.assertFalse(run.output_file)
 
-    # --- replace semantics ---
+    # --- pre-run validation (6.2) ---
 
+    def test_validation_failure_rejects_before_run(self):
+        frappe.db.set_value("WebODM Plugin", PLUGIN_ID, "needs_validation", 1)
+        self._enable(settings={"interval_m": 5})
+        self._as(self.owner)
+        before = frappe.db.count("WebODM Plugin Run", {"plugin": PLUGIN_ID})
+        with patch("webodm_core.api.plugins.validate_operation",
+                   side_effect=GeospatialError("model not found")):
+            with patch.object(frappe, "enqueue", lambda *a, **k: None):
+                with self.assertRaises(frappe.ValidationError):
+                    plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)
+        self.assertEqual(frappe.db.count("WebODM Plugin Run", {"plugin": PLUGIN_ID}), before)
+
+    def test_validation_success_allows_run(self):
+        frappe.db.set_value("WebODM Plugin", PLUGIN_ID, "needs_validation", 1)
+        self._enable(settings={"interval_m": 5})
+        self._as(self.owner)
+        with patch("webodm_core.api.plugins.validate_operation", return_value={"ok": True}):
+            with patch.object(frappe, "enqueue", lambda *a, **k: None):
+                result = plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)
+        self.assertEqual(result["status"], "Queued")
+
+    # --- detection integration (4.1, 4.2) ---
+
+    def _attach_dataset(self, task_name, field, filename, content=b"x"):
+        file_doc = frappe.get_doc({
+            "doctype": "File",
+            "file_name": f"{task_name}_{filename}",
+            "is_private": 1,
+            "content": content,
+            "attached_to_doctype": "WebODM Task",
+            "attached_to_name": task_name,
+        }).save(ignore_permissions=True)
+        frappe.db.set_value("WebODM Task", task_name, field, file_doc.file_url)
+        return file_doc
+
+    def test_orthophoto_input_resolution_and_missing(self):
+        frappe.db.set_value("WebODM Plugin", PLUGIN_ID, "inputs",
+                            json.dumps([{"name": "raster", "datasets": ["orthophoto"]}]))
+        with_ortho = self._task(self.owner, self.project, "Completed", with_dsm=False)
+        self._attach_dataset(with_ortho, "orthophoto", "ortho.tif")
+        self._enable(settings={"interval_m": 5})
+
+        self._as(self.owner)
+        with patch.object(frappe, "enqueue", lambda *a, **k: None):
+            result = plugins_api.run_plugin(plugin=PLUGIN_ID, task=with_ortho)
+        self.assertEqual(result["status"], "Queued")
+
+        # task_ok has a DSM but no orthophoto -> missing required input
+        self._as(self.owner)
+        with patch.object(frappe, "enqueue", lambda *a, **k: None):
+            with self.assertRaises(frappe.ValidationError):
+                plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)
+
+    def test_vector_output_persisted_and_served(self):
+        frappe.db.set_value("WebODM Plugin", PLUGIN_ID,
+                            {"output_kind": "vector", "render_kind": "detections"})
+        self._enable(settings={"interval_m": 5})
+        self._as(self.owner)
+        with patch.object(frappe, "enqueue", lambda *a, **k: None):
+            run_name = plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)["run"]
+
+        collection = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "properties": {"class": "person", "class_id": 0, "confidence": 0.9},
+                "geometry": {"type": "Polygon",
+                             "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+            }],
+        }
+
+        def _fake_vector(op_id, inputs, params, output_path, timeout=600):
+            with open(output_path, "w") as f:
+                json.dump(collection, f)
+            return {"output_path": output_path, "metadata": {"total": 1}}
+
+        with patch.object(runner, "run_operation", _fake_vector):
+            runner.execute_run(run_name)
+
+        run = frappe.get_doc("WebODM Plugin Run", run_name)
+        self.assertEqual(run.status, "Completed")
+        self.assertTrue(run.output_file.endswith(".geojson"))
+
+        self._as(self.owner)
+        data = plugins_api.get_run_geojson(run_name)
+        self.assertEqual(data["type"], "FeatureCollection")
+        self.assertEqual(data["features"][0]["properties"]["class"], "person")
+
+    # --- timeouts (3.3) ---
+
+    def test_run_enqueue_uses_plugin_timeout(self):
+        frappe.db.set_value("WebODM Plugin", PLUGIN_ID, "timeout_seconds", 1800)
+        self._enable(settings={"interval_m": 5})
+        self._as(self.owner)
+        calls = []
+        with patch.object(frappe, "enqueue", lambda *a, **k: calls.append((a, k))):
+            plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)
+        self.assertEqual(calls[0][1]["timeout"], 1800)
+
+    def test_worker_passes_plugin_timeout(self):
+        frappe.db.set_value("WebODM Plugin", PLUGIN_ID, "timeout_seconds", 1234)
+        self._enable(settings={"interval_m": 5})
+        self._as(self.owner)
+        with patch.object(frappe, "enqueue", lambda *a, **k: None):
+            run_name = plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)["run"]
+
+        seen = {}
+
+        def _capture(op_id, inputs, params, output_path, timeout=600):
+            seen["timeout"] = timeout
+            return self._fake_operation(op_id, inputs, params, output_path)
+
+        with patch.object(runner, "run_operation", _capture):
+            runner.execute_run(run_name)
+        self.assertEqual(seen["timeout"], 1234)
+
+    # --- replace semantics ---
     def test_rerun_replaces_previous_run_and_output(self):
         self._enable(settings={"interval_m": 5})
         self._as(self.owner)

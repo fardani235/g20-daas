@@ -163,6 +163,28 @@ class TestPluginCatalogSync(FrappeTestCase):
         self.assertIn("service down", result["error"])
         self.assertEqual(frappe.db.get_value("WebODM Plugin", "test-sync-new", "available"), before)
 
+    def test_sync_stores_timeout_seconds(self):
+        sync.upsert_catalog([{**NEW_OP, "timeout_seconds": 1800}])
+        self.assertEqual(
+            frappe.db.get_value("WebODM Plugin", "test-sync-new", "timeout_seconds"), 1800
+        )
+
+    def test_sync_timeout_absent_is_zero(self):
+        sync.upsert_catalog([NEW_OP])
+        self.assertEqual(
+            frappe.db.get_value("WebODM Plugin", "test-sync-new", "timeout_seconds"), 0
+        )
+
+    def test_sync_stores_needs_validation(self):
+        sync.upsert_catalog([{**NEW_OP, "needs_validation": True}])
+        self.assertEqual(
+            frappe.db.get_value("WebODM Plugin", "test-sync-new", "needs_validation"), 1
+        )
+        sync.upsert_catalog([NEW_OP])
+        self.assertEqual(
+            frappe.db.get_value("WebODM Plugin", "test-sync-new", "needs_validation"), 0
+        )
+
     def test_scheduler_registers_catalog_sync(self):
         import webodm_core.hooks as hooks
 

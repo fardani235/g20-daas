@@ -12,6 +12,8 @@
   "output_kind",
   "render_kind",
   "inputs",
+  "timeout_seconds",
+  "needs_validation",
   "platform_enabled",
   "available",
   "params_schema"
@@ -63,6 +65,22 @@
    "fieldtype": "Code",
    "label": "Inputs",
    "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Operation-specific run timeout in seconds; 0 uses the default.",
+   "fieldname": "timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Timeout (seconds)",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Validate with the analysis service before creating a run (e.g. model availability).",
+   "fieldname": "needs_validation",
+   "fieldtype": "Check",
+   "label": "Needs Validation",
    "read_only": 1
   },
   {
