@@ -19,6 +19,9 @@ detections as map features.
   tile size, tile overlap, max detections, and an optional class filter.
 - List-valued parameters (the class filter) are entered as plain
   comma/newline-separated text rather than JSON.
+- Support multiple detector output families — YOLO-style single-tensor output
+  and torchvision-style `boxes`/`scores`/`labels` — so tree/vegetation models
+  such as DeepForest can run on the same operation.
 - Default model + labels are configurable platform-wide and overridable per
   organization through the existing plugin settings; a general pretrained model
   (COCO classes) is the default.

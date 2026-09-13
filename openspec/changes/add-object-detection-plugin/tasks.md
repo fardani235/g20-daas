@@ -15,6 +15,7 @@
 - [x] 2.5 Register the operation (`op_id: object-detection`, `output_kind: vector`, `render_kind: detections`, `inputs: orthophoto`, and its timeout) and verify the catalog exposes it with params schema, inputs, and timeout
 - [x] 2.6 Discard detections centred in letterbox padding or clipped at an interior tile edge, and verify with unit tests on the mapping helper
 - [x] 2.7 Support ground-metre tiling (`tile_size_m`/`overlap_m`) resolved from the raster GSD, and verify with a unit test on the tiling resolver
+- [x] 2.8 Support a second detection family (torchvision `boxes`/`scores`/`labels`, ImageNet preprocessing, optional batch dim, configurable label offset), provision a tree model (DeepForest) and labels, and verify with a fixture model and a live run
 
 ## 3. Catalog and run timeout contract
 

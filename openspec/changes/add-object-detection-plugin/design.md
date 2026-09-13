@@ -162,6 +162,20 @@ the cap prevents the freeze the vector path already guards against.
 **Rationale:** Detection needs RGB imagery, not a DEM; the existing eligibility
 and missing-input checks then apply unchanged.
 
+### D9: Detection model families
+
+**Decision:** The op inspects the ONNX session and supports two families:
+`yolo` (a single `(N, 4 + classes, anchors)` tensor, 0-based classes, 0–1
+scaling) and `torchvision` (`boxes`/`scores`/`labels` outputs, ImageNet-normalised
+CHW input with an optional batch dimension, and a configurable `label_offset` for
+models whose labels do not start at 0). The family is inferred when not given.
+
+**Rationale:** Lets the same operation run Ultralytics YOLO detectors (COCO,
+VisDrone) and torchvision detectors such as DeepForest (tree crowns) without a
+separate op, reusing all tiling/GeoJSON/overlay machinery. **Alternatives:** a
+separate per-family op (duplicates plumbing), or requiring every model be
+re-exported to YOLO (not always possible/faithful).
+
 ## Risks / Trade-offs
 
 - [CPU inference is slow on large orthophotos] → configurable tile size/overlap,

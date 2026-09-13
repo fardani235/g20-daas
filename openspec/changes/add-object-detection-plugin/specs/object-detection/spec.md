@@ -43,6 +43,35 @@ aerial-trained model for top-down imagery).
   labels
 - **THEN** detection uses that model and reports its classes
 
+### Requirement: Detection model families
+
+The operation SHALL support detectors with different output conventions — at
+least a YOLO-style single tensor and a torchvision-style
+`boxes`/`scores`/`labels` output — inferring the family when it is not
+specified, and SHALL allow the class-index offset to be configured for models
+whose labels do not start at zero.
+
+#### Scenario: YOLO-family model
+
+- **WHEN** the model exposes a YOLO-style `(N, 4 + classes, anchors)` output
+- **THEN** its detections are decoded from that tensor
+
+#### Scenario: Torchvision-family model
+
+- **WHEN** the model exposes `boxes`, `scores` and `labels` outputs
+- **THEN** its detections are decoded from those outputs
+
+#### Scenario: Unrecognized model rejected
+
+- **WHEN** the model exposes neither supported output shape
+- **THEN** the run is rejected before it is created with a clear reason
+
+#### Scenario: Label offset applied
+
+- **WHEN** a model's labels do not start at the index of the first line in the
+  label file
+- **THEN** the configured offset maps model labels onto the label file
+
 #### Scenario: Organization override used
 
 - **WHEN** the organization has configured a model and labels
