@@ -84,3 +84,14 @@ def test_validate_rejects_label_mismatch(_models_dir):
 def test_load_missing_model(_models_dir):
     with pytest.raises(models.ModelError):
         models.load_session("nope.onnx")
+
+
+def test_inspect_torchvision_family(_models_dir):
+    _install("tiny_torchvision.onnx", _models_dir, labels=1)
+    session = models.load_session("tiny_torchvision.onnx")
+    labels = models.read_labels("labels.txt")
+    spec = models.inspect_session(session, labels)
+    assert spec.family == "torchvision"
+    assert spec.input_size == (256, 256)
+    assert spec.has_batch_dim is False
+    assert models.validate_session(session, labels).num_classes == 1

@@ -14,20 +14,22 @@ The geospatial image provisions:
 - `visdrone-yolov11s.onnx` — YOLO11s VisDrone detector (10 aerial classes:
   pedestrian, people, bicycle, car, van, truck, tricycle, awning-tricycle, bus,
   motor), fetched at build time from the pinned source and verified by SHA-256.
-- `coco.txt` / `visdrone.txt` — the matching class labels, one per line.
+- `deepforest.onnx` — DeepForest tree-crown detector (1 class `tree`), an
+  ONNX export of the MIT-licensed DeepForest RetinaNet model, pinned by SHA-256.
+- `coco.txt` / `visdrone.txt` / `tree.txt` — the matching class labels.
 
 ## Choosing a model
 
-The COCO model is the built-in default but is trained on **ground-level**
-photos; it is weak on top-down orthophotos. For nadir/drone imagery use the
-aerial model instead, either per run/organization:
+- **Ground-level / general**: `yolov8n.onnx` + `coco.txt` (default; weak on
+  nadir imagery).
+- **Aerial vehicles/people**: `visdrone-yolov11s.onnx` + `visdrone.txt`.
+- **Trees (airborne RGB)**: `deepforest.onnx` + `tree.txt`. This is a
+  torchvision-style model, so set `family = torchvision` (or leave `auto`),
+  `label_offset = 0`, and `tile_size = 256` (its native input). Score
+  thresholds are low for tree crowns — use `confidence` around 0.2–0.4.
 
-- plugin setting `model = visdrone-yolov11s.onnx`, `labels = visdrone.txt`
-
-or as the platform default, set `OBJECT_DETECTION_DEFAULT_MODEL` /
-`OBJECT_DETECTION_DEFAULT_LABELS` on the geospatial service (e.g. in compose):
-`OBJECT_DETECTION_DEFAULT_MODEL=visdrone-yolov11s.onnx`
-`OBJECT_DETECTION_DEFAULT_LABELS=visdrone.txt`.
+The default platform model is configurable with
+`OBJECT_DETECTION_DEFAULT_MODEL` / `OBJECT_DETECTION_DEFAULT_LABELS`.
 
 Recommended aerial parameters: `tile_size_m`/`overlap_m` (ground metres) so
 object scale is consistent across GSDs, `overlap_m` at least the largest object

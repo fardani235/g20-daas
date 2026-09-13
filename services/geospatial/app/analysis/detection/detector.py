@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from rasterio.windows import Window
 from rasterio.warp import transform_geom
 
-from app.analysis.detection import models, yolo
+from app.analysis.detection import models, torchvision_det, yolo
 
 _TILE_MIN, _TILE_MAX = 64, 4096
 
@@ -39,6 +39,14 @@ _DEFAULT_LABELS = os.environ.get("OBJECT_DETECTION_DEFAULT_LABELS") or "coco.txt
 class DetectionParams(BaseModel):
     model: str = Field(_DEFAULT_MODEL, description="ONNX detector in the models directory")
     labels: str = Field(_DEFAULT_LABELS, description="Class labels file in the models directory")
+    family: str = Field(
+        "auto", description="Model family: auto, yolo, or torchvision (DeepForest-style)"
+    )
+    label_offset: int = Field(
+        0, ge=0, le=10,
+        description="Subtract from model labels to index the labels file "
+                    "(0 for DeepForest exports, 1 for standard torchvision)",
+    )
     confidence: float = Field(0.25, ge=0.0, le=1.0, description="Minimum class confidence")
     iou: float = Field(0.45, ge=0.0, le=1.0, description="NMS IoU threshold")
     tile_size: int = Field(640, ge=_TILE_MIN, le=_TILE_MAX, description="Tile size in raster pixels")
@@ -59,6 +67,13 @@ class DetectionParams(BaseModel):
     def _tile_multiple_of_32(cls, value: int) -> int:
         if value % 32 != 0:
             raise ValueError("tile_size must be a multiple of 32")
+        return value
+
+    @field_validator("family")
+    @classmethod
+    def _known_family(cls, value: str) -> str:
+        if value not in ("auto", "yolo", "torchvision"):
+            raise ValueError("family must be auto, yolo, or torchvision")
         return value
 
     @model_validator(mode="after")
@@ -177,8 +192,8 @@ def run_detection(inputs: dict, params: DetectionParams, output_path: str) -> di
 
     session = models.load_session(params.model)
     labels = models.read_labels(params.labels)
-    info = models.validate_session(session, labels)
-    model_input = info.input_size or (params.tile_size, params.tile_size)
+    spec = models.inspect_session(session, labels, family=params.family)
+    model_input = spec.input_size
 
     allowed = {label for label in params.classes} if params.classes else None
 
@@ -194,13 +209,27 @@ def run_detection(inputs: dict, params: DetectionParams, output_path: str) -> di
         for window in _windows(raster_w, raster_h, tile, overlap):
             tile_array = ds.read(window=window)
             image = _tile_to_image(tile_array)
-            tensor, scale, pad_x, pad_y = yolo.preprocess(image, model_input)
+            if spec.family == "torchvision":
+                tensor, scale, pad_x, pad_y = torchvision_det.preprocess(
+                    image, model_input, batch=spec.has_batch_dim
+                )
+            else:
+                tensor, scale, pad_x, pad_y = yolo.preprocess(image, model_input)
             valid_w = round(image.shape[1] * scale)
             valid_h = round(image.shape[0] * scale)
-            output = session.run([info.output_name], {info.input_name: tensor})[0]
 
-            for det in yolo.decode(output, params.confidence):
-                if det["class_id"] >= len(labels):
+            outputs = session.run(spec.output_names, {spec.input_name: tensor})
+            if spec.family == "torchvision":
+                decoded = torchvision_det.decode(
+                    dict(zip(("boxes", "scores", "labels"), outputs)),
+                    params.confidence,
+                    label_offset=params.label_offset,
+                )
+            else:
+                decoded = yolo.decode(outputs[0], params.confidence)
+
+            for det in decoded:
+                if det["class_id"] < 0 or det["class_id"] >= len(labels):
                     continue
                 if allowed is not None and labels[det["class_id"]] not in allowed:
                     continue
@@ -248,6 +277,7 @@ def run_detection(inputs: dict, params: DetectionParams, output_path: str) -> di
             "total": len(features),
             "model": params.model,
             "labels": params.labels,
+            "family": spec.family,
             "tile_size": tile,
             "overlap": overlap,
             "gsd": round(gsd, 6),

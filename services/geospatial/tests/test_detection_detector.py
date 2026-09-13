@@ -80,6 +80,34 @@ def test_params_reject_bad_metre_overlap():
         DetectionParams(tile_size_m=10, overlap_m=10)
 
 
+def test_params_family_validation():
+    assert DetectionParams(family="torchvision").family == "torchvision"
+    with pytest.raises(Exception):
+        DetectionParams(family="bogus")
+
+
+def test_torchvision_model_family_runs(tmp_path, monkeypatch):
+    models_path = tmp_path / "models"
+    models_path.mkdir()
+    monkeypatch.setenv(models.MODELS_DIR_ENV, str(models_path))
+    shutil.copy(FIXTURES / "tiny_torchvision.onnx", models_path / "tv.onnx")
+    (models_path / "tree.txt").write_text("tree\n")
+
+    src = _ortho(tmp_path / "o.tif")  # 256x256
+    out = tmp_path / "tv.geojson"
+    result = detector.run_detection(
+        {"raster": src},
+        DetectionParams(model="tv.onnx", labels="tree.txt",
+                        tile_size=256, overlap=0, confidence=0.5),
+        str(out),
+    )
+
+    data = json.loads(out.read_text())
+    assert result["metadata"]["family"] == "torchvision"
+    assert result["metadata"]["total"] == 1
+    assert data["features"][0]["properties"]["class"] == "tree"
+
+
 def test_map_detection_drops_padding_centres():
     win = Window(100, 100, 200, 200)
     # centre falls in the left letterbox padding
