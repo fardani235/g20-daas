@@ -56,6 +56,11 @@ export const runDownloadUrl = runName =>
 // downloadable and the UI warns instead of freezing the map.
 export const MAX_VECTOR_FEATURES = 5000
 
+// Whether a vector overlay is small enough to draw client-side.
+export function shouldRenderVector(count, cap = MAX_VECTOR_FEATURES) {
+  return (Number(count) || 0) <= cap
+}
+
 // Default parameter values declared by an operation's JSON schema, keyed by name.
 export function schemaDefaults(schema) {
   const out = {}

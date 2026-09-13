@@ -36,6 +36,15 @@
       />
 
       <Textarea
+        v-else-if="field.list"
+        :id="`pp-${field.name}`"
+        :rows="3"
+        placeholder="One per line or comma-separated"
+        :model-value="listText(field.name)"
+        @update:model-value="v => setList(field.name, v)"
+      />
+
+      <Textarea
         v-else-if="field.type === 'array' || field.type === 'object'"
         :id="`pp-${field.name}`"
         :model-value="jsonFor(field.name)"
@@ -63,6 +72,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Input, Label, Select, Textarea } from '@/components/ui'
+import { parseList, formatList } from '@/lib/paramLists'
 
 const props = defineProps({
   schema: { type: Object, default: () => ({}) },
@@ -82,6 +92,8 @@ const fields = computed(() => {
     description: spec.description || '',
     type: spec.type || 'string',
     enum: Array.isArray(spec.enum) ? spec.enum : null,
+    // Arrays of strings get a plain comma/newline textarea instead of JSON.
+    list: spec.type === 'array' && spec.items?.type === 'string',
     required: required.has(name),
   }))
 })
@@ -104,5 +116,14 @@ function setJson(name, text) {
   } catch {
     // Keep the raw text while the user is mid-edit; only valid JSON is emitted.
   }
+}
+
+function listText(name) {
+  return formatList(props.modelValue[name])
+}
+
+function setList(name, text) {
+  const items = parseList(text)
+  set(name, items.length ? items : undefined)
 }
 </script>

@@ -254,6 +254,16 @@
                   <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded" />
                   {{ o.label }}
                 </label>
+                <div v-if="o.legend?.length" class="mt-1 ml-6 space-y-0.5">
+                  <div
+                    v-for="item in o.legend"
+                    :key="item.class"
+                    class="flex items-center gap-1.5 text-xs text-muted-foreground"
+                  >
+                    <span class="inline-block size-2.5 rounded-sm" :style="{ background: item.color }"></span>
+                    <span>{{ item.class }} ({{ item.count }})</span>
+                  </div>
+                </div>
                 <input
                   v-if="o.visible && o.kind !== 'vector'"
                   type="range" min="0" max="100" step="5"
@@ -387,8 +397,9 @@ import {
   runDownloadUrl,
   schemaDefaults,
   latestRunPerPlugin,
-  MAX_VECTOR_FEATURES,
+  shouldRenderVector,
 } from '@/lib/plugins'
+import { detectionStyle, detectionLegend } from '@/lib/detections'
 
 const route = useRoute()
 const router = useRouter()
@@ -710,9 +721,7 @@ async function loadRunOverlays(taskName) {
       try {
         const geojson = await getRunGeojson(run.name)
         const count = Array.isArray(geojson?.features) ? geojson.features.length : 0
-        if (count > MAX_VECTOR_FEATURES) {
-          // Drawing tens of thousands of vector features blocks the main
-          // thread. Keep the run downloadable and warn once.
+        if (!shouldRenderVector(count)) {
           if (!warnedLargeRuns.has(run.name)) {
             warnedLargeRuns.add(run.name)
             toast.error(
@@ -722,13 +731,17 @@ async function loadRunOverlays(taskName) {
           }
           continue
         }
+        const isDetections = run.render_kind === 'detections'
         const layer = L.geoJSON(geojson, {
           renderer: L.canvas(),  // canvas avoids per-feature DOM/SVG overhead
           smoothFactor: 2,
-          style: { color: '#2563eb', weight: 1.5 },
+          style: isDetections ? detectionStyle : { color: '#2563eb', weight: 1.5 },
         })
         overlayLayers[key] = layer
-        overlays.value.push({ key, label, visible: false, opacity: 100, kind: 'vector' })
+        overlays.value.push({
+          key, label, visible: false, opacity: 100, kind: 'vector',
+          legend: isDetections ? detectionLegend(geojson.features) : null,
+        })
         const bounds = layer.getBounds()
         if (bounds && bounds.isValid()) extendDataBounds(bounds)
       } catch {

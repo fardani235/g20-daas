@@ -69,6 +69,9 @@ describe('plugins lib', () => {
 
   it('caps vector features', () => {
     expect(plugins.MAX_VECTOR_FEATURES).toBeGreaterThan(0)
+    expect(plugins.shouldRenderVector(10)).toBe(true)
+    expect(plugins.shouldRenderVector(plugins.MAX_VECTOR_FEATURES + 1)).toBe(false)
+    expect(plugins.shouldRenderVector(undefined)).toBe(true)
   })
 
   it('keeps the newest run per plugin', () => {
