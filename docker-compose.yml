@@ -207,7 +207,7 @@ x-frappe-env-base: &frappe-env-base
 
 x-frappe-volumes: &frappe-volumes
   - frappe_sites:/workspace/frappe-bench/sites
-  - frappe_assets:/workspace/frappe-bench/sites/assets
+  - /workspace/frappe-bench/sites/assets
   - frappe_logs:/workspace/frappe-bench/logs
   - frappe_data:/data
 
@@ -387,7 +387,10 @@ services:
     command: ["frappe-web"]
     volumes:
       - frappe_sites:/workspace/frappe-bench/sites
-      - frappe_assets:/workspace/frappe-bench/sites/assets
+      # Anonymous volume: Docker initialises it from the image's baked assets on
+      # every container (re)create, so served assets always match the image and
+      # never drift from a long-lived named volume.
+      - /workspace/frappe-bench/sites/assets
       - frappe_logs:/workspace/frappe-bench/logs
       - frappe_data:/data
       - ./infra/frappe/wsgi.py:/workspace/infra/frappe/wsgi.py:ro
@@ -491,7 +494,10 @@ services:
     command: ["frappe-socketio"]
     volumes:
       - frappe_sites:/workspace/frappe-bench/sites
-      - frappe_assets:/workspace/frappe-bench/sites/assets
+      # Anonymous volume: Docker initialises it from the image's baked assets on
+      # every container (re)create, so served assets always match the image and
+      # never drift from a long-lived named volume.
+      - /workspace/frappe-bench/sites/assets
       - frappe_logs:/workspace/frappe-bench/logs
     networks:
       - backend
@@ -598,7 +604,6 @@ volumes:
   redis_cache_data:
   redis_queue_data:
   frappe_sites:
-  frappe_assets:
   frappe_logs:
   frappe_data:
   nodeodm_data:

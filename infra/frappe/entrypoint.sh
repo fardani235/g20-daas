@@ -19,6 +19,11 @@ case "$role" in
     exec /usr/local/bin/frappe-init.sh
     ;;
   web)
+    # Refresh sites/assets from the image's baked copy and drop the cached
+    # asset manifest, so a rebuilt image's hashes are used (else CSS 404s).
+    /workspace/frappe-bench/env/bin/python \
+      /workspace/infra/frappe/prepare_assets.py || true
+
     # gunicorn with sync workers, threads off (Frappe handles its own concurrency per worker).
     # We use `infra_frappe_wsgi:application` instead of `frappe.app:application` because the
     # latter bypasses Frappe's static middleware (which is only installed in

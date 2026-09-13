@@ -116,26 +116,10 @@ RUN cd /workspace/frappe-bench/apps/webodm_frontend/frontend && \
     npm install && \
     npm run build
 
-# Create symlinks for old asset hashes that Frappe's cached HTML templates may
-# still reference. This prevents 404s when the asset manifest is stale in Redis.
-RUN cd /workspace/frappe-bench/sites/assets/frappe/dist/css && \
-    ln -sf website.bundle.SWDROYVF.css website.bundle.O2E3HIFX.css && \
-    ln -sf login.bundle.KMQ57AS2.css login.bundle.FSM44DKP.css && \
-    ln -sf desk.bundle.I7MTTDEK.css desk.bundle.VXKWDPP2.css && \
-    ln -sf report.bundle.KZGHFBKK.css report.bundle.USOYVG4O.css && \
-    ln -sf email.bundle.ZRB6QPMG.css email.bundle.CBUSZXAR.css && \
-    ln -sf print.bundle.EFDDGPIK.css print.bundle.RJBWMDLZ.css && \
-    ln -sf print_format.bundle.QBW4Y7JU.css print_format.bundle.UIVQSN3U.css && \
-    ln -sf web_form.bundle.LTPZ7XW5.css web_form.bundle.24QVWQ5C.css && \
-    cd /workspace/frappe-bench/sites/assets/frappe/dist/css-rtl && \
-    ln -sf website.bundle.WOFYNPDX.css website.bundle.QPDW3S5M.css && \
-    ln -sf login.bundle.EPMX2X5X.css login.bundle.G3XYFFET.css && \
-    ln -sf desk.bundle.Y26RZDMU.css desk.bundle.UXAD2Z2O.css && \
-    ln -sf report.bundle.NEXDK22G.css report.bundle.3ZVHB5DK.css && \
-    ln -sf email.bundle.CZG3KSRZ.css email.bundle.XRLHJ4XT.css && \
-    ln -sf print.bundle.JH5RUQPV.css print.bundle.E7UMRBXI.css && \
-    ln -sf print_format.bundle.MGSE7PDU.css print_format.bundle.A6VIANNN.css && \
-    ln -sf web_form.bundle.HFNPPH5U.css web_form.bundle.T34I674G.css
+# Keep an unmasked copy of the built assets so the runtime entrypoint can
+# refresh the sites/assets volume from the image (otherwise a stale volume
+# serves hashes that no longer exist and CSS 404s).
+RUN cp -a /workspace/frappe-bench/sites/assets /workspace/assets-baked
 
 # -------- Stage 2: runtime --------
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
@@ -184,6 +168,7 @@ COPY --from=builder /workspace /workspace
 COPY --from=root infra/frappe/entrypoint.sh /workspace/infra/frappe/entrypoint.sh
 COPY --from=root infra/frappe/init.sh /workspace/infra/frappe/init.sh
 COPY --from=root infra/frappe/wsgi.py /workspace/infra/frappe/wsgi.py
+COPY --from=root infra/frappe/prepare_assets.py /workspace/infra/frappe/prepare_assets.py
 RUN cp /workspace/infra/frappe/entrypoint.sh /entrypoint.sh && \
     cp /workspace/infra/frappe/init.sh /usr/local/bin/frappe-init.sh && \
     chmod +x /entrypoint.sh /usr/local/bin/frappe-init.sh
