@@ -96,9 +96,9 @@
               <p v-else class="text-xs text-muted-foreground">
                 No analysis plugins enabled for your organization.
               </p>
-              <div v-if="taskRuns.length" class="space-y-1">
+              <div v-if="displayRuns.length" class="space-y-1">
                 <div
-                  v-for="run in taskRuns"
+                  v-for="run in displayRuns"
                   :key="run.name"
                   class="flex items-center justify-between gap-2 text-xs"
                 >
@@ -386,6 +386,7 @@ import {
   runTileUrl,
   runDownloadUrl,
   schemaDefaults,
+  latestRunPerPlugin,
   MAX_VECTOR_FEATURES,
 } from '@/lib/plugins'
 
@@ -480,6 +481,9 @@ const runParams = ref({})
 const runStarting = ref(false)
 
 const runnablePlugins = computed(() => availablePlugins.value.filter(p => p.runnable))
+
+// One row per plugin (its newest run), so repeated runs never accumulate.
+const displayRuns = computed(() => latestRunPerPlugin(taskRuns.value))
 
 function pluginLabel(opId) {
   return availablePlugins.value.find(p => p.op_id === opId)?.label || opId
@@ -682,9 +686,11 @@ async function loadRunOverlays(taskName) {
   }
   taskRuns.value = runs
 
-  for (const run of runs) {
+  // Only the newest run per plugin gets a layer, keyed by plugin so a new run
+  // supersedes the previous one instead of stacking another layer.
+  for (const run of latestRunPerPlugin(runs)) {
     if (run.status !== 'Completed' || !run.output_file) continue
-    const key = `run:${run.name}`
+    const key = `plugin:${run.plugin}`
     if (overlayLayers[key]) continue
     const label = pluginLabel(run.plugin)
 

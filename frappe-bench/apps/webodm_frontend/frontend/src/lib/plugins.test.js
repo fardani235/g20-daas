@@ -70,4 +70,15 @@ describe('plugins lib', () => {
   it('caps vector features', () => {
     expect(plugins.MAX_VECTOR_FEATURES).toBeGreaterThan(0)
   })
+
+  it('keeps the newest run per plugin', () => {
+    const runs = [
+      { name: 'c2', plugin: 'contours', creation: '2026-09-13 10:00:00' },
+      { name: 'h1', plugin: 'hillshade', creation: '2026-09-13 09:00:00' },
+      { name: 'c1', plugin: 'contours', creation: '2026-09-13 08:00:00' },
+    ]
+    const latest = plugins.latestRunPerPlugin(runs)
+    expect(latest.map(r => r.name).sort()).toEqual(['c2', 'h1'])
+    expect(plugins.latestRunPerPlugin([])).toEqual([])
+  })
 })

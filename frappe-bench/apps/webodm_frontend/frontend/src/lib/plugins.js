@@ -65,3 +65,16 @@ export function schemaDefaults(schema) {
   }
   return out
 }
+
+// Newest run per plugin. Input is usually newest-first (list_runs orders by
+// creation desc); creation is compared so ordering bugs can't show an old run.
+export function latestRunPerPlugin(runs) {
+  const byPlugin = new Map()
+  for (const run of runs || []) {
+    const current = byPlugin.get(run.plugin)
+    if (!current || String(run.creation || '') > String(current.creation || '')) {
+      byPlugin.set(run.plugin, run)
+    }
+  }
+  return [...byPlugin.values()]
+}
