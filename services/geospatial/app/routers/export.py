@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -13,6 +14,13 @@ class CogifyRequest(BaseModel):
     path: str
     # Optional separate destination; defaults to converting in place.
     dst_path: str | None = None
+
+
+class VectorToGeoJSONRequest(BaseModel):
+    # Absolute path to a vector dataset (GPKG, Shapefile, ...) on shared storage.
+    path: str
+    # Absolute path to write the GeoJSON result to.
+    output_path: str
 
 
 @router.post("/cogify")
@@ -44,6 +52,28 @@ async def cogify(req: CogifyRequest):
         "width": georef["width"],
         "height": georef["height"],
     }
+
+
+@router.post("/vector-to-geojson")
+async def vector_to_geojson(req: VectorToGeoJSONRequest):
+    """Convert a vector dataset to GeoJSON (reprojected to EPSG:4326)."""
+    if not os.path.isabs(req.path):
+        raise HTTPException(status_code=400, detail="path must be absolute")
+    if not os.path.isfile(req.path):
+        raise HTTPException(status_code=404, detail=f"vector not found: {req.path}")
+    if not os.path.isabs(req.output_path):
+        raise HTTPException(status_code=400, detail="output_path must be absolute")
+
+    proc = subprocess.run(
+        ["ogr2ogr", "-f", "GeoJSON", "-t_srs", "EPSG:4326", req.output_path, req.path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise HTTPException(status_code=422, detail=f"ogr2ogr failed: {proc.stderr.strip()}")
+
+    return {"path": req.output_path, "format": "GeoJSON", "crs": "EPSG:4326"}
 
 
 @router.post("/raster")
