@@ -72,6 +72,13 @@ whose labels do not start at zero.
   label file
 - **THEN** the configured offset maps model labels onto the label file
 
+#### Scenario: Curated model list offered
+
+- **WHEN** a client requests the catalog for an operation that declares known
+  models
+- **THEN** each entry carries its model file, labels, family, label offset, and
+  recommended parameters so a UI can offer them without the user typing them
+
 #### Scenario: Organization override used
 
 - **WHEN** the organization has configured a model and labels

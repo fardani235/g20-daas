@@ -176,6 +176,11 @@ separate op, reusing all tiling/GeoJSON/overlay machinery. **Alternatives:** a
 separate per-family op (duplicates plumbing), or requiring every model be
 re-exported to YOLO (not always possible/faithful).
 
+The op also publishes a curated list of known models (`model`, `labels`,
+`family`, `label_offset`, `recommended` params) in the catalog. Frappe syncs it
+and the UI offers a model dropdown that fills those fields (with a "Custom"
+option for arbitrary models), so users don't type filenames or know the family.
+
 ## Risks / Trade-offs
 
 - [CPU inference is slow on large orthophotos] → configurable tile size/overlap,
