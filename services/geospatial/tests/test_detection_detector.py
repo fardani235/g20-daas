@@ -8,6 +8,7 @@ import pytest
 import rasterio
 from fastapi import HTTPException
 from rasterio.transform import from_origin
+from rasterio.windows import Window
 
 from app.analysis.detection import detector, models
 from app.analysis.detection.detector import DetectionParams
@@ -61,6 +62,48 @@ def test_windows_cover_full_extent_with_overlap():
         covered[int(w.row_off):int(w.row_off + w.height),
                 int(w.col_off):int(w.col_off + w.width)] = True
     assert covered.all()
+
+
+def test_resolve_tiling_uses_ground_size():
+    class _DS:
+        res = (0.05, 0.05)
+
+    tile, overlap = detector._resolve_tiling(
+        _DS(), DetectionParams(tile_size_m=32.0, overlap_m=6.4)
+    )
+    assert tile == 640  # 32 m / 0.05 m
+    assert overlap == 128  # 6.4 m / 0.05 m
+
+
+def test_params_reject_bad_metre_overlap():
+    with pytest.raises(Exception):
+        DetectionParams(tile_size_m=10, overlap_m=10)
+
+
+def test_map_detection_drops_padding_centres():
+    win = Window(100, 100, 200, 200)
+    # centre falls in the left letterbox padding
+    det = {"x1": -60, "y1": 100, "x2": 0, "y2": 150, "class_id": 0, "confidence": 0.9}
+    assert detector._map_detection(det, 1.0, 20, 0, 160, 200, win, 1000, 1000) is None
+
+
+def test_map_detection_drops_interior_edge_clip():
+    win = Window(100, 100, 200, 200)  # col0 > 0 -> left edge is interior
+    det = {"x1": 10, "y1": 60, "x2": 120, "y2": 140, "class_id": 0, "confidence": 0.9}
+    assert detector._map_detection(det, 1.0, 20, 0, 160, 200, win, 1000, 1000) is None
+
+
+def test_map_detection_clamps_at_raster_edge_and_maps_inside():
+    win = Window(100, 100, 200, 200)
+    inside = {"x1": 40, "y1": 40, "x2": 120, "y2": 120, "class_id": 0, "confidence": 0.9}
+    box = detector._map_detection(inside, 1.0, 20, 0, 160, 200, win, 1000, 1000)
+    assert box == (120.0, 140.0, 200.0, 220.0)
+
+    edge_win = Window(0, 100, 200, 200)  # col0 == 0 -> outer edge, clipping allowed
+    clipped = {"x1": 10, "y1": 60, "x2": 120, "y2": 140, "class_id": 0, "confidence": 0.9}
+    box = detector._map_detection(clipped, 1.0, 20, 0, 160, 200, edge_win, 1000, 1000)
+    assert box is not None
+    assert box[0] == 0.0
 
 
 def test_run_detection_emits_geojson_with_properties(models_dir, tmp_path):
