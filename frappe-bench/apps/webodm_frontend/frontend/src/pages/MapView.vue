@@ -79,6 +79,50 @@
               </Button>
             </div>
 
+            <div class="mt-2 pt-2 border-t border-border space-y-2">
+              <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Analysis</p>
+              <div v-if="runnablePlugins.length" class="flex flex-wrap gap-1.5">
+                <Button
+                  v-for="p in runnablePlugins"
+                  :key="p.op_id"
+                  variant="outline"
+                  size="sm"
+                  @click.stop="openRunDialog(p)"
+                >
+                  <Sparkles />
+                  {{ p.label }}
+                </Button>
+              </div>
+              <p v-else class="text-xs text-muted-foreground">
+                No analysis plugins enabled for your organization.
+              </p>
+              <div v-if="taskRuns.length" class="space-y-1">
+                <div
+                  v-for="run in taskRuns"
+                  :key="run.name"
+                  class="flex items-center justify-between gap-2 text-xs"
+                >
+                  <span class="truncate text-foreground">{{ pluginLabel(run.plugin) }}</span>
+                  <Badge :variant="statusVariant(run.status)">{{ run.status }}</Badge>
+                  <span class="flex items-center gap-2">
+                    <a
+                      v-if="run.status === 'Completed' && run.output_file"
+                      :href="runDownloadUrl(run.name)"
+                      class="text-primary hover:underline"
+                      @click.stop
+                    >Download</a>
+                    <Button
+                      v-if="['Queued', 'Running'].includes(run.status)"
+                      variant="ghost"
+                      size="sm"
+                      class="h-6 px-1 text-destructive"
+                      @click.stop="cancelPluginRun(run)"
+                    >Cancel</Button>
+                  </span>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
         <Button class="mt-4 w-full" @click="openUpload">
@@ -211,7 +255,7 @@
                   {{ o.label }}
                 </label>
                 <input
-                  v-if="o.visible"
+                  v-if="o.visible && o.kind !== 'vector'"
                   type="range" min="0" max="100" step="5"
                   :value="o.opacity"
                   @input="setOverlayOpacity(o, $event.target.value)"
@@ -284,6 +328,18 @@
         <Button variant="ghost" @click="showUpload = false">Cancel</Button>
       </template>
     </Dialog>
+
+    <Dialog v-model:open="showRunDialog" :title="`Run ${runPluginDoc?.label || ''}`">
+      <PluginParamsForm
+        v-if="runPluginDoc"
+        :schema="runPluginDoc.params_schema"
+        v-model="runParams"
+      />
+      <template #footer>
+        <Button variant="ghost" @click="showRunDialog = false">Cancel</Button>
+        <Button :loading="runStarting" @click="startPluginRun">Run</Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -298,6 +354,7 @@ import {
   Layers,
   Minus,
   Play,
+  Sparkles,
   Square,
   Terminal,
   Trash2,
@@ -319,6 +376,17 @@ import { useMeasure } from '@/composables/useMeasure'
 import { listPresets, getSettings } from '@/lib/presets'
 import { useOdmOptions } from '@/composables/useOdmOptions'
 import OdmOptionsForm from '@/components/OdmOptionsForm.vue'
+import PluginParamsForm from '@/components/PluginParamsForm.vue'
+import {
+  listPlugins,
+  listRuns,
+  runPlugin,
+  getRun,
+  cancelRun,
+  getRunGeojson,
+  runTileUrl,
+  runDownloadUrl,
+} from '@/lib/plugins'
 
 const route = useRoute()
 const router = useRouter()
@@ -400,6 +468,97 @@ const showFlightPath = ref(false)
 const measure = useMeasure(() => map, { onVolume: computeVolume })
 const overlayLayers = {}  // key -> Leaflet tileLayer
 
+// Analysis plugins enabled for the caller's organization, and the runs for the
+// selected task. Populated lazily; labels fall back to the plugin id.
+const availablePlugins = ref([])
+const taskRuns = ref([])
+const showRunDialog = ref(false)
+const runPluginDoc = ref(null)
+const runParams = ref({})
+const runStarting = ref(false)
+
+const runnablePlugins = computed(() => availablePlugins.value.filter(p => p.runnable))
+
+function pluginLabel(opId) {
+  return availablePlugins.value.find(p => p.op_id === opId)?.label || opId
+}
+
+async function loadPlugins() {
+  try {
+    availablePlugins.value = await listPlugins()
+  } catch {
+    availablePlugins.value = []
+  }
+}
+
+async function loadTaskRuns(taskName) {
+  if (!taskName) {
+    taskRuns.value = []
+    return
+  }
+  try {
+    taskRuns.value = await listRuns(taskName)
+  } catch {
+    taskRuns.value = []
+  }
+}
+
+function openRunDialog(plugin) {
+  runPluginDoc.value = plugin
+  runParams.value = { ...(plugin.settings || {}) }
+  showRunDialog.value = true
+}
+
+async function startPluginRun() {
+  if (!runPluginDoc.value || !selectedTask.value) return
+  runStarting.value = true
+  try {
+    const { run } = await runPlugin({
+      plugin: runPluginDoc.value.op_id,
+      task: selectedTask.value,
+      params: runParams.value,
+    })
+    showRunDialog.value = false
+    toast.success('Analysis started')
+    await loadTaskRuns(selectedTask.value)
+    pollRun(run)
+  } catch (e) {
+    toast.error(e.message || 'Failed to start analysis')
+  } finally {
+    runStarting.value = false
+  }
+}
+
+async function pollRun(runName) {
+  for (let i = 0; i < 150; i++) {
+    let run
+    try {
+      run = await getRun(runName)
+    } catch {
+      return
+    }
+    const idx = taskRuns.value.findIndex(r => r.name === runName)
+    if (idx !== -1) taskRuns.value[idx] = { ...taskRuns.value[idx], ...run }
+    if (['Completed', 'Failed', 'Cancelled'].includes(run.status)) {
+      await loadTaskRuns(selectedTask.value)
+      if (run.status === 'Completed' && currentTask.value) await loadOverlays(currentTask.value)
+      if (run.status === 'Failed') toast.error('Analysis failed')
+      return
+    }
+    await new Promise(r => setTimeout(r, 2000))
+  }
+}
+
+async function cancelPluginRun(run) {
+  try {
+    await cancelRun(run.name)
+    toast.success('Analysis cancelled')
+    await loadTaskRuns(selectedTask.value)
+  } catch (e) {
+    toast.error(e.message || 'Failed to cancel analysis')
+  }
+}
+
 const DATASET_LABELS = { orthophoto: 'Orthophoto', dsm: 'DSM', dtm: 'DTM' }
 const DATASET_EXTENT_FIELD = {
   orthophoto: 'orthophoto_extent',
@@ -464,9 +623,10 @@ function parseExtentBounds(extent) {
 }
 
 // Add raster tile overlays for a completed task, driven by the extent fields
-// populated during asset download (recommendation #2).
-function loadOverlays(task) {
+// populated during asset download, plus overlays for its plugin-run outputs.
+async function loadOverlays(task) {
   clearOverlays()
+  taskRuns.value = []
   if (!map || task.status !== 'Completed') return
 
   let fitB = null
@@ -486,11 +646,57 @@ function loadOverlays(task) {
     const visible = key === 'orthophoto'  // show orthophoto by default
     if (visible) layer.addTo(map)
     overlayLayers[key] = layer
-    overlays.value.push({ key, label: DATASET_LABELS[key], visible, opacity: 100 })
+    overlays.value.push({ key, label: DATASET_LABELS[key], visible, opacity: 100, kind: 'raster' })
     extendDataBounds(bounds)
     if (visible && bounds) fitB = bounds
   }
   if (fitB) map.fitBounds(fitB, { padding: [30, 30] })
+
+  await loadRunOverlays(task.name)
+}
+
+// Plugin-run outputs: raster outputs become tile layers, vector outputs become
+// GeoJSON layers. Both start hidden so the base orthophoto stays readable.
+async function loadRunOverlays(taskName) {
+  let runs = []
+  try {
+    runs = await listRuns(taskName)
+  } catch {
+    return
+  }
+  taskRuns.value = runs
+
+  for (const run of runs) {
+    if (run.status !== 'Completed' || !run.output_file) continue
+    const key = `run:${run.name}`
+    if (overlayLayers[key]) continue
+    const label = pluginLabel(run.plugin)
+
+    if (run.output_kind === 'raster') {
+      const bounds = parseExtentBounds(run.output_extent)
+      const layer = L.tileLayer(runTileUrl(run.name), {
+        bounds: bounds || undefined,
+        maxNativeZoom: 22,
+        maxZoom: 24,
+        tileSize: 256,
+        opacity: 1,
+      })
+      overlayLayers[key] = layer
+      overlays.value.push({ key, label, visible: false, opacity: 80, kind: 'raster' })
+      extendDataBounds(bounds)
+    } else if (run.output_kind === 'vector') {
+      try {
+        const geojson = await getRunGeojson(run.name)
+        const layer = L.geoJSON(geojson, { style: { color: '#2563eb', weight: 1.5 } })
+        overlayLayers[key] = layer
+        overlays.value.push({ key, label, visible: false, opacity: 100, kind: 'vector' })
+        const bounds = layer.getBounds()
+        if (bounds && bounds.isValid()) extendDataBounds(bounds)
+      } catch {
+        // Conversion can fail when the geo service is down; skip this overlay.
+      }
+    }
+  }
 }
 
 function toggleOverlay(o) {
@@ -837,6 +1043,7 @@ async function fetchTasks() {
 onMounted(() => {
   fetchProject()
   fetchTasks()
+  loadPlugins()
 
   map = L.map('map').setView([0, 0], 2)
   baseLayer = createBasemap(currentBasemap.value)

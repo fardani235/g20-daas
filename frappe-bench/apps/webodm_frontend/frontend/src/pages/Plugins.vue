@@ -1,25 +1,10 @@
-<script setup>
-import { ref } from 'vue'
-import { MoreVertical, Plus } from 'lucide-vue-next'
-import { Badge, Button } from '@/components/ui'
-import PageHeader from '@/components/PageHeader.vue'
-
-const plugins = ref([
-  { name: 'Change Detection', version: '1.0.0', enabled: true },
-  { name: 'Object Detection', version: '1.0.0', enabled: true },
-  { name: 'Plantation Health', version: '1.0.0', enabled: false },
-  { name: 'Tree Counting', version: '1.0.0', enabled: false },
-  { name: 'AI Analytics', version: '1.0.0', enabled: false },
-])
-</script>
-
 <template>
   <div class="space-y-6">
-    <PageHeader title="Plugins" description="Extend processing with optional analysis modules.">
+    <PageHeader title="Analysis plugins" description="Run geospatial analysis on completed task outputs.">
       <template #actions>
-        <Button>
-          <Plus />
-          Install plugin
+        <Button variant="ghost" :loading="loading" @click="refresh">
+          <RefreshCw />
+          Refresh
         </Button>
       </template>
     </PageHeader>
@@ -30,6 +15,7 @@ const plugins = ref([
           <tr class="border-b border-border text-left text-muted-foreground">
             <th class="px-4 py-3 font-medium">Name</th>
             <th class="px-4 py-3 font-medium">Version</th>
+            <th class="px-4 py-3 font-medium">Output</th>
             <th class="px-4 py-3 font-medium">Status</th>
             <th class="px-4 py-3 text-right font-medium">Actions</th>
           </tr>
@@ -37,25 +23,151 @@ const plugins = ref([
         <tbody>
           <tr
             v-for="plugin in plugins"
-            :key="plugin.name"
+            :key="plugin.op_id"
             class="border-b border-border transition-colors last:border-0 hover:bg-accent"
           >
-            <td class="px-4 py-3 font-medium text-card-foreground">{{ plugin.name }}</td>
-            <td class="px-4 py-3 text-muted-foreground">{{ plugin.version }}</td>
             <td class="px-4 py-3">
-              <Badge :variant="plugin.enabled ? 'success' : 'secondary'">
-                {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
-              </Badge>
+              <p class="font-medium text-card-foreground">{{ plugin.label }}</p>
+              <p v-if="plugin.description" class="text-xs text-muted-foreground">
+                {{ plugin.description }}
+              </p>
+            </td>
+            <td class="px-4 py-3 text-muted-foreground">{{ plugin.version || '—' }}</td>
+            <td class="px-4 py-3 text-muted-foreground capitalize">{{ plugin.output_kind }}</td>
+            <td class="px-4 py-3">
+              <Badge :variant="statusVariant(plugin)">{{ statusLabel(plugin) }}</Badge>
             </td>
             <td class="px-4 py-3 text-right">
-              <Button variant="ghost" size="icon" :title="`Options for ${plugin.name}`">
-                <MoreVertical />
-                <span class="sr-only">Options for {{ plugin.name }}</span>
-              </Button>
+              <template v-if="isAdmin">
+                <Button
+                  v-if="plugin.available"
+                  variant="ghost"
+                  size="sm"
+                  :disabled="!plugin.platform_enabled"
+                  @click="toggle(plugin)"
+                >
+                  {{ plugin.enabled ? 'Disable' : 'Enable' }}
+                </Button>
+                <Button
+                  v-if="plugin.available && hasParams(plugin)"
+                  variant="ghost"
+                  size="icon"
+                  class="size-8"
+                  :title="`Configure ${plugin.label}`"
+                  @click="openConfig(plugin)"
+                >
+                  <Settings2 />
+                  <span class="sr-only">Configure {{ plugin.label }}</span>
+                </Button>
+              </template>
+              <span v-else class="text-xs text-muted-foreground">Admin only</span>
+            </td>
+          </tr>
+          <tr v-if="!plugins.length && !loading">
+            <td colspan="5" class="px-4 py-10 text-center text-muted-foreground">
+              No plugins available.
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <Dialog v-model:open="showModal" :title="`Configure ${editing?.label || ''}`" class="sm:max-w-lg">
+      <PluginParamsForm v-if="editing" :schema="editing.params_schema" v-model="draftSettings" />
+      <template #footer>
+        <Button variant="ghost" @click="showModal = false">Cancel</Button>
+        <Button :loading="saving" @click="saveConfig">Save</Button>
+      </template>
+    </Dialog>
   </div>
 </template>
+
+<script setup>
+import { ref } from 'vue'
+import { RefreshCw, Settings2 } from 'lucide-vue-next'
+import { Badge, Button, Dialog } from '@/components/ui'
+import PageHeader from '@/components/PageHeader.vue'
+import PluginParamsForm from '@/components/PluginParamsForm.vue'
+import { toast } from '@/lib/toast'
+import { listPlugins, savePluginSetting } from '@/lib/plugins'
+import { whoami } from '@/lib/presets'
+
+const plugins = ref([])
+const loading = ref(false)
+const isAdmin = ref(false)
+const showModal = ref(false)
+const saving = ref(false)
+const editing = ref(null)
+const draftSettings = ref({})
+
+async function refresh() {
+  loading.value = true
+  try {
+    plugins.value = await listPlugins()
+  } catch (e) {
+    toast.error(e.message || 'Failed to load plugins')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadAdmin() {
+  try {
+    isAdmin.value = !!(await whoami()).is_platform_admin
+  } catch {
+    isAdmin.value = false
+  }
+}
+
+function hasParams(plugin) {
+  return Object.keys(plugin.params_schema?.properties || {}).length > 0
+}
+
+function statusVariant(plugin) {
+  if (!plugin.available || !plugin.platform_enabled) return 'secondary'
+  return plugin.enabled ? 'success' : 'secondary'
+}
+
+function statusLabel(plugin) {
+  if (!plugin.available) return 'Unavailable'
+  if (!plugin.platform_enabled) return 'Disabled by platform'
+  return plugin.enabled ? 'Enabled' : 'Disabled'
+}
+
+async function toggle(plugin) {
+  try {
+    await savePluginSetting({ plugin: plugin.op_id, enabled: !plugin.enabled })
+    toast.success(plugin.enabled ? 'Plugin disabled' : 'Plugin enabled')
+    await refresh()
+  } catch (e) {
+    toast.error(e.message || 'Failed to update plugin')
+  }
+}
+
+function openConfig(plugin) {
+  editing.value = plugin
+  draftSettings.value = { ...(plugin.settings || {}) }
+  showModal.value = true
+}
+
+async function saveConfig() {
+  if (!editing.value) return
+  saving.value = true
+  try {
+    await savePluginSetting({
+      plugin: editing.value.op_id,
+      settings: draftSettings.value,
+    })
+    toast.success('Plugin settings saved')
+    showModal.value = false
+    await refresh()
+  } catch (e) {
+    toast.error(e.message || 'Failed to save settings')
+  } finally {
+    saving.value = false
+  }
+}
+
+refresh()
+loadAdmin()
+</script>
