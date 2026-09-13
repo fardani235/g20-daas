@@ -156,6 +156,8 @@ permission_query_conditions = {
     "WebODM Task": "webodm_core.permissions.get_task_permission_query_conditions",
     "WebODM Preset": "webodm_core.permissions.get_preset_permission_query_conditions",
     "WebODM Settings": "webodm_core.permissions.get_settings_permission_query_conditions",
+    "WebODM Plugin Setting": "webodm_core.permissions.get_plugin_setting_permission_query_conditions",
+    "WebODM Plugin Run": "webodm_core.permissions.get_plugin_run_permission_query_conditions",
 }
 
 has_permission = {
@@ -163,6 +165,8 @@ has_permission = {
     "WebODM Task": "webodm_core.permissions.has_task_permission",
     "WebODM Preset": "webodm_core.permissions.has_preset_permission",
     "WebODM Settings": "webodm_core.permissions.has_settings_permission",
+    "WebODM Plugin Setting": "webodm_core.permissions.has_plugin_setting_permission",
+    "WebODM Plugin Run": "webodm_core.permissions.has_plugin_run_permission",
 }
 
 doc_events = {
@@ -170,6 +174,8 @@ doc_events = {
     "WebODM Task": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Preset": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Settings": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
+    "WebODM Plugin Setting": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
+    "WebODM Plugin Run": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
 }
 
 # Scheduled Tasks
@@ -180,6 +186,9 @@ scheduler_events = {
         "*/1 * * * *": [
             "webodm_core.webodm_core.processing.task_runner.process_pending_tasks",
             "webodm_core.webodm_core.processing.task_runner.update_running_tasks",
+        ],
+        "*/5 * * * *": [
+            "webodm_core.plugins.sync.sync_catalog_safe",
         ],
     },
 }

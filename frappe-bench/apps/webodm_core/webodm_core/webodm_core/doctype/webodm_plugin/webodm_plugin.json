@@ -1,22 +1,35 @@
 {
  "actions": [],
- "autoname": "field:plugin_name",
+ "autoname": "field:plugin_id",
  "creation": "2024-01-01 00:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "plugin_name",
+  "plugin_id",
+  "label",
   "version",
-  "enabled",
   "description",
-  "settings"
+  "output_kind",
+  "render_kind",
+  "inputs",
+  "platform_enabled",
+  "available",
+  "params_schema"
  ],
  "fields": [
   {
-   "fieldname": "plugin_name",
+   "fieldname": "plugin_id",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Plugin Name",
+   "label": "Plugin ID",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label",
    "reqd": 1
   },
   {
@@ -25,21 +38,54 @@
    "label": "Version"
   },
   {
-   "default": "0",
-   "fieldname": "enabled",
-   "fieldtype": "Check",
-   "in_list_view": 1,
-   "label": "Enabled"
-  },
-  {
    "fieldname": "description",
    "fieldtype": "Text",
    "label": "Description"
   },
   {
-   "fieldname": "settings",
-   "fieldtype": "JSON",
-   "label": "Plugin Settings"
+   "default": "raster",
+   "fieldname": "output_kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Output Kind",
+   "options": "raster\nvector",
+   "read_only": 1
+  },
+  {
+   "fieldname": "render_kind",
+   "fieldtype": "Data",
+   "label": "Render Kind",
+   "read_only": 1
+  },
+  {
+   "description": "Required task inputs, e.g. [{\"name\": \"raster\", \"datasets\": [\"dsm\", \"dtm\"]}].",
+   "fieldname": "inputs",
+   "fieldtype": "Code",
+   "label": "Inputs",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "description": "Platform-wide kill switch. When unchecked the plugin is unavailable to every organization.",
+   "fieldname": "platform_enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Platform Enabled"
+  },
+  {
+   "default": "1",
+   "description": "Set to 0 when the operation is no longer returned by the geospatial catalog.",
+   "fieldname": "available",
+   "fieldtype": "Check",
+   "label": "Available"
+  },
+  {
+   "fieldname": "params_schema",
+   "fieldtype": "Code",
+   "label": "Params Schema",
+   "options": "JSON",
+   "read_only": 1
   }
  ],
  "modified": "2024-01-01 00:00:00.000000",
@@ -71,11 +117,20 @@
    "role": "Administrator",
    "share": 1,
    "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WebODM User",
+   "share": 1
   }
  ],
- "search_fields": "plugin_name",
- "sort_field": "creation",
- "sort_order": "DESC",
+ "search_fields": "label",
+ "sort_field": "label",
+ "sort_order": "ASC",
  "states": [],
- "title_field": "plugin_name"
+ "title_field": "label"
 }

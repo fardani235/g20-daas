@@ -84,3 +84,23 @@ def get_settings_permission_query_conditions(user=None):
 
 def has_settings_permission(doc, ptype, user=None):
     return _org_has_permission(doc, user or frappe.session.user)
+
+
+def get_plugin_setting_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Plugin Setting", user or frappe.session.user)
+
+
+def has_plugin_setting_permission(doc, ptype, user=None):
+    if _is_create(ptype):
+        return True
+    return _org_has_permission(doc, user or frappe.session.user)
+
+
+def get_plugin_run_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Plugin Run", user or frappe.session.user)
+
+
+def has_plugin_run_permission(doc, ptype, user=None):
+    if _is_create(ptype):
+        return True
+    return _org_has_permission(doc, user or frappe.session.user)

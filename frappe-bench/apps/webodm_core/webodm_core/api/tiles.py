@@ -9,6 +9,8 @@ never needs to know about Frappe's File storage or permissions.
 import frappe
 import requests
 
+from webodm_core.plugins.files import abs_path_for_file_url
+
 # Dataset name -> (Task field holding the raster, tile render "kind").
 _DATASETS = {
     "orthophoto": ("orthophoto", "orthophoto"),
@@ -39,14 +41,7 @@ def _resolve_raster_path(task_name: str, dataset: str) -> str:
     if not file_url:
         frappe.throw(f"Task has no {dataset}", frappe.DoesNotExistError)
 
-    file_doc = frappe.get_doc("File", {"file_url": file_url}, ignore_permissions=True)
-    import os
-    from frappe.utils import get_bench_path
-
-    p = file_doc.get_full_path()
-    if not os.path.isabs(p):
-        p = os.path.normpath(os.path.join(get_bench_path(), "sites", p.lstrip("./")))
-    return p
+    return abs_path_for_file_url(file_url)
 
 
 @frappe.whitelist(allow_guest=False)
@@ -106,6 +101,54 @@ def serve(task_name: str, dataset: str, z: int, x: int, y: int):
         frappe.log_error(f"tile fetch failed {dataset} {z}/{x}/{y}: {e}", "WebODM Tiles")
         return _png_response(_EMPTY_PNG)
 
+    return _png_response(resp.content)
+
+
+def _resolve_run_raster_path(run_name: str):
+    """Resolve a plugin run's raster output to an absolute path + render kind.
+
+    Enforces read permission on the run, so a member of another organization
+    cannot tile someone else's output by guessing the run id.
+    """
+    run = frappe.get_doc("WebODM Plugin Run", run_name)
+    run.check_permission("read")
+    if run.output_kind != "raster":
+        frappe.throw(f"Run {run_name} does not have a raster output")
+    if not run.output_file:
+        frappe.throw(f"Run {run_name} has no output", frappe.DoesNotExistError)
+    return abs_path_for_file_url(run.output_file), (run.render_kind or "dem")
+
+
+@frappe.whitelist(allow_guest=False)
+def run_info(run_name: str):
+    """Tiling info for a plugin run's raster output."""
+    path, _kind = _resolve_run_raster_path(run_name)
+    try:
+        resp = requests.get(
+            f"{_geospatial_url().rstrip('/')}/tiles/info",
+            params={"path": path},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        frappe.throw(f"Geospatial service unavailable: {e}")
+
+
+@frappe.whitelist(allow_guest=False)
+def serve_run(run_name: str, z: int, x: int, y: int):
+    """Proxy one XYZ tile of a plugin run's raster output."""
+    path, kind = _resolve_run_raster_path(run_name)
+    try:
+        resp = requests.get(
+            f"{_geospatial_url().rstrip('/')}/tiles/tile/{int(z)}/{int(x)}/{int(y)}.png",
+            params={"path": path, "kind": kind},
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        frappe.log_error(f"plugin tile fetch failed {run_name} {z}/{x}/{y}: {e}", "WebODM Tiles")
+        return _png_response(_EMPTY_PNG)
     return _png_response(resp.content)
 
 
