@@ -340,6 +340,13 @@
     </Dialog>
 
     <Dialog v-model:open="showRunDialog" :title="`Run ${runPluginDoc?.label || ''}`">
+      <div v-if="runPluginDoc?.models?.length" class="mb-3 space-y-1.5">
+        <Label for="run-model">Model</Label>
+        <Select id="run-model" :model-value="selectedModelId" @update:model-value="chooseModel">
+          <option v-for="m in runPluginDoc.models" :key="m.id" :value="m.id">{{ m.label }}</option>
+          <option value="">Custom (type a model below)</option>
+        </Select>
+      </div>
       <PluginParamsForm
         v-if="runPluginDoc"
         :schema="runPluginDoc.params_schema"
@@ -400,6 +407,7 @@ import {
   shouldRenderVector,
 } from '@/lib/plugins'
 import { detectionStyle, detectionLegend } from '@/lib/detections'
+import { applyModelChoice, matchingModel } from '@/lib/knownModels'
 
 const route = useRoute()
 const router = useRouter()
@@ -526,6 +534,16 @@ function openRunDialog(plugin) {
   // settings, so the dialog never opens blank and users don't invent values.
   runParams.value = { ...schemaDefaults(plugin.params_schema), ...(plugin.settings || {}) }
   showRunDialog.value = true
+}
+
+const selectedModelId = computed(() => {
+  const model = matchingModel(runPluginDoc.value?.models, runParams.value)
+  return model ? model.id : ''
+})
+
+function chooseModel(id) {
+  const model = (runPluginDoc.value?.models || []).find(m => m.id === id)
+  if (model) runParams.value = applyModelChoice(runParams.value, model)
 }
 
 async function startPluginRun() {

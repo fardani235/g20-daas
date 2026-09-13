@@ -73,6 +73,13 @@
     </div>
 
     <Dialog v-model:open="showModal" :title="`Configure ${editing?.label || ''}`" class="sm:max-w-lg">
+      <div v-if="editing?.models?.length" class="mb-3 space-y-1.5">
+        <Label for="plugin-model">Model</Label>
+        <Select id="plugin-model" :model-value="selectedModelId" @update:model-value="chooseModel">
+          <option v-for="m in editing.models" :key="m.id" :value="m.id">{{ m.label }}</option>
+          <option value="">Custom (type a model below)</option>
+        </Select>
+      </div>
       <PluginParamsForm v-if="editing" :schema="editing.params_schema" v-model="draftSettings" />
       <template #footer>
         <Button variant="ghost" @click="showModal = false">Cancel</Button>
@@ -83,13 +90,14 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RefreshCw, Settings2 } from 'lucide-vue-next'
-import { Badge, Button, Dialog } from '@/components/ui'
+import { Badge, Button, Dialog, Label, Select } from '@/components/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import PluginParamsForm from '@/components/PluginParamsForm.vue'
 import { toast } from '@/lib/toast'
 import { listPlugins, savePluginSetting, schemaDefaults } from '@/lib/plugins'
+import { applyModelChoice, matchingModel } from '@/lib/knownModels'
 import { whoami } from '@/lib/presets'
 
 const plugins = ref([])
@@ -149,6 +157,16 @@ function openConfig(plugin) {
   // Schema defaults first, then any saved organization overrides.
   draftSettings.value = { ...schemaDefaults(plugin.params_schema), ...(plugin.settings || {}) }
   showModal.value = true
+}
+
+const selectedModelId = computed(() => {
+  const model = matchingModel(editing.value?.models, draftSettings.value)
+  return model ? model.id : ''
+})
+
+function chooseModel(id) {
+  const model = (editing.value?.models || []).find(m => m.id === id)
+  if (model) draftSettings.value = applyModelChoice(draftSettings.value, model)
 }
 
 async function saveConfig() {
