@@ -14,6 +14,7 @@
   "inputs",
   "timeout_seconds",
   "needs_validation",
+  "models",
   "platform_enabled",
   "available",
   "params_schema"
@@ -81,6 +82,14 @@
    "fieldname": "needs_validation",
    "fieldtype": "Check",
    "label": "Needs Validation",
+   "read_only": 1
+  },
+  {
+   "description": "Curated model choices offered to the UI: id, label, model, labels, family, label_offset, recommended params.",
+   "fieldname": "models",
+   "fieldtype": "Code",
+   "label": "Models",
+   "options": "JSON",
    "read_only": 1
   },
   {

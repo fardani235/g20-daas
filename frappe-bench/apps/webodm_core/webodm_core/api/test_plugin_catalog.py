@@ -1,5 +1,7 @@
 """Catalog sync tests: create, idempotency, removal, unreachable, scheduler hook."""
 
+import json
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
@@ -184,6 +186,13 @@ class TestPluginCatalogSync(FrappeTestCase):
         self.assertEqual(
             frappe.db.get_value("WebODM Plugin", "test-sync-new", "needs_validation"), 0
         )
+
+    def test_sync_stores_curated_models(self):
+        models = [{"id": "coco", "model": "yolov8n.onnx", "labels": "coco.txt",
+                   "family": "yolo", "label_offset": 0}]
+        sync.upsert_catalog([{**NEW_OP, "models": models}])
+        stored = frappe.db.get_value("WebODM Plugin", "test-sync-new", "models")
+        self.assertEqual(json.loads(stored)[0]["id"], "coco")
 
     def test_scheduler_registers_catalog_sync(self):
         import webodm_core.hooks as hooks

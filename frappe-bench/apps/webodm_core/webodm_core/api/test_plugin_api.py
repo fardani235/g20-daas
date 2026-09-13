@@ -50,6 +50,11 @@ class TestPluginApi(FrappeTestCase):
             "platform_enabled": 1,
             "available": 1,
             "params_schema": json.dumps(SCHEMA),
+            "models": json.dumps([{
+                "id": "coco", "label": "COCO", "model": "yolov8n.onnx",
+                "labels": "coco.txt", "family": "yolo", "label_offset": 0,
+                "recommended": {"tile_size": 640},
+            }]),
         }).insert(ignore_permissions=True)
 
         cls.owner = _user("plugin_api_owner@example.com")
@@ -156,6 +161,12 @@ class TestPluginApi(FrappeTestCase):
         entry = self._entry()
         self.assertEqual(entry["settings"]["model"], "custom.onnx")
         self.assertEqual(entry["settings"]["labels"], "custom.txt")
+
+    def test_list_includes_curated_models(self):
+        self._as(self.owner)
+        models = self._entry()["models"]
+        self.assertEqual(models[0]["id"], "coco")
+        self.assertEqual(models[0]["family"], "yolo")
 
     def test_valid_settings_stored(self):
         self._as(self.owner)

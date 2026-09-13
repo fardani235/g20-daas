@@ -83,7 +83,7 @@ def list_plugins():
         fields=[
             "name", "label", "description", "version",
             "output_kind", "render_kind", "inputs", "platform_enabled", "available",
-            "params_schema",
+            "params_schema", "models",
         ],
         order_by="label",
         ignore_permissions=True,
@@ -118,6 +118,7 @@ def list_plugins():
             "settings": _parse_json(setting.settings, {}) if setting else {},
             "params_schema": _parse_json(p.params_schema, {}),
             "inputs": _parse_json(p.inputs, []),
+            "models": _parse_json(p.models, []),
         })
     return result
 
