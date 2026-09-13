@@ -192,6 +192,12 @@ def test_catalog_exposes_detection_operation():
     assert op["timeout_seconds"] == 1800
     assert op["needs_validation"] is True
     assert "confidence" in op["params_schema"]["properties"]
+    # A curated model list is offered to the UI.
+    model_ids = {m["id"] for m in op["models"]}
+    assert {"coco", "visdrone", "deepforest-tree"} <= model_ids
+    deepforest = next(m for m in op["models"] if m["id"] == "deepforest-tree")
+    assert deepforest["family"] == "torchvision"
+    assert deepforest["recommended"]["tile_size"] == 256
 
 
 def test_validate_unknown_op_is_404():

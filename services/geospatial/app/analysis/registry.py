@@ -55,6 +55,9 @@ class AnalysisOp:
     handler: AnalysisHandler
     timeout_seconds: int | None = None
     validator: AnalysisValidator | None = None
+    # Optional catalog of known models for UIs: each entry names a model, its
+    # labels, family, label offset, and recommended parameters.
+    models: list[dict] | None = None
 
     def catalog_entry(self) -> dict:
         """JSON-serializable catalog description of this operation."""
@@ -69,6 +72,7 @@ class AnalysisOp:
             "inputs": self.inputs,
             "timeout_seconds": self.timeout_seconds,
             "needs_validation": self.validator is not None,
+            "models": self.models or [],
         }
 
 

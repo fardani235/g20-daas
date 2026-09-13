@@ -32,7 +32,7 @@ def test_catalog_matches_registered_ops():
         assert set(entry) >= {
             "op_id", "label", "description", "version",
             "params_schema", "output_kind", "render_kind", "inputs",
-            "timeout_seconds", "needs_validation",
+            "timeout_seconds", "needs_validation", "models",
         }
 
 
