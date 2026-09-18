@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { Badge, Button } from '@/components/ui'
+import SurveyFlight from '@/components/SurveyFlight.vue'
 import {
   ArrowRight,
   Box,
@@ -19,6 +20,11 @@ import {
 } from 'lucide-vue-next'
 
 const mobileMenuOpen = ref(false)
+const heroPhase = ref('mission · survey grid')
+
+function onHeroPhase({ header }) {
+  heroPhase.value = header
+}
 
 const pipeline = [
   {
@@ -256,19 +262,10 @@ onMounted(() => {
               <span class="size-2.5 rounded-full bg-slate-700" />
               <span class="size-2.5 rounded-full bg-slate-700" />
               <span class="size-2.5 rounded-full bg-slate-700" />
-              <span class="ml-2 text-xs text-slate-500">orthophoto · EPSG:32615</span>
+              <span class="ml-2 truncate text-xs text-slate-500">{{ heroPhase }}</span>
             </div>
             <div class="relative aspect-[4/3]">
-              <img
-                src="/images/background.png"
-                alt="Georeferenced orthophoto rendered as map tiles"
-                class="size-full object-cover"
-              />
-              <div class="absolute inset-x-4 bottom-4 rounded-lg border border-slate-700 bg-slate-950/80 px-4 py-3 backdrop-blur">
-                <p class="text-xs uppercase tracking-wide text-slate-500">Measured area</p>
-                <p class="mt-0.5 font-mono text-lg text-primary">2,539 × 2,444 px</p>
-                <p class="text-xs text-slate-400">georeferenced output resolution</p>
-              </div>
+              <SurveyFlight @phase="onHeroPhase" />
             </div>
           </div>
         </div>
@@ -304,8 +301,10 @@ onMounted(() => {
           the reconstruction; you measure the result.
         </p>
         <div class="relative mt-14">
-          <!-- Connecting line -->
-          <div class="absolute left-0 right-0 top-6 hidden h-0.5 bg-border md:block" />
+          <!-- Connecting line with a pulse travelling through the pipeline -->
+          <div class="absolute left-0 right-0 top-6 hidden h-0.5 overflow-hidden bg-border md:block">
+            <div class="pipeline-pulse absolute inset-y-0 w-1/4 bg-gradient-to-r from-transparent via-primary to-transparent" />
+          </div>
           <ol class="relative grid gap-6 md:grid-cols-4">
             <li
               v-for="(stage, i) in pipeline"
@@ -557,5 +556,28 @@ onMounted(() => {
 .fade-up.animate-in {
   opacity: 1;
   transform: translateY(0);
+}
+
+@keyframes pipeline-flow {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+
+.pipeline-pulse {
+  animation: pipeline-flow 2.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up {
+    opacity: 1;
+    transform: none;
+  }
+  .pipeline-pulse {
+    display: none;
+  }
 }
 </style>
