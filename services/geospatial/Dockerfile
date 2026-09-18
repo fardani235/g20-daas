@@ -45,6 +45,17 @@ COPY models/coco.txt /opt/webodm/models/coco.txt
 COPY models/visdrone.txt /opt/webodm/models/visdrone.txt
 COPY models/tree.txt /opt/webodm/models/tree.txt
 
+# Default semantic-segmentation model: a MIT-licensed SegFormer exported from
+# Pranilllllll/segformer-satellite-segementation (7 satellite land-use classes).
+# The exported graph accepts [0,1] RGB and returns per-class probabilities at
+# input resolution, matching the segmentation op's contract. The upstream repo
+# publishes no ONNX, so the export is committed and verified by checksum.
+ENV SEGMENTATION_DEFAULT_MODEL=segformer-satellite-landcover.onnx
+ENV SEGMENTATION_DEFAULT_LABELS=satellite-landcover.txt
+COPY models/segformer-satellite-landcover.onnx /opt/webodm/models/segformer-satellite-landcover.onnx
+COPY models/satellite-landcover.txt /opt/webodm/models/satellite-landcover.txt
+RUN echo "e2351ed70749afcab18e3039110dd5b4d49152a87430d146db68060c4a12ff09  /opt/webodm/models/segformer-satellite-landcover.onnx" | sha256sum -c -
+
 EXPOSE 5000
 
 # Multiple workers so one blocking request can't stall the service, and no

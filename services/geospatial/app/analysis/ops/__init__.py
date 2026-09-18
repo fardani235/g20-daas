@@ -1,3 +1,8 @@
 """Importing this package registers every analysis operation in the registry."""
 
-from app.analysis.ops import contours, hillshade, object_detection  # noqa: F401
+from app.analysis.ops import (  # noqa: F401
+    contours,
+    hillshade,
+    object_detection,
+    semantic_segmentation,
+)
