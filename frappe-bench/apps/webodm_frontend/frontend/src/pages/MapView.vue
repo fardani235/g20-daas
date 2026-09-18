@@ -407,6 +407,7 @@ import {
   shouldRenderVector,
 } from '@/lib/plugins'
 import { detectionStyle, detectionLegend } from '@/lib/detections'
+import { segmentationStyle, segmentationLegend } from '@/lib/segmentation'
 import { applyModelChoice, matchingModel } from '@/lib/knownModels'
 
 const route = useRoute()
@@ -742,23 +743,35 @@ async function loadRunOverlays(taskName) {
         if (!shouldRenderVector(count)) {
           if (!warnedLargeRuns.has(run.name)) {
             warnedLargeRuns.add(run.name)
+            const hint = run.render_kind === 'segmentation'
+              ? 're-run with a larger minimum segment area'
+              : 're-run with a coarser interval'
             toast.error(
               `${label}: ${count.toLocaleString()} features is too large to display. ` +
-              'Download it or re-run with a coarser interval.',
+              `Download it, or ${hint}.`,
             )
           }
           continue
         }
-        const isDetections = run.render_kind === 'detections'
+        const style = run.render_kind === 'detections'
+          ? detectionStyle
+          : run.render_kind === 'segmentation'
+            ? segmentationStyle
+            : { color: '#2563eb', weight: 1.5 }
+        const legend = run.render_kind === 'detections'
+          ? detectionLegend(geojson.features)
+          : run.render_kind === 'segmentation'
+            ? segmentationLegend(geojson.features)
+            : null
         const layer = L.geoJSON(geojson, {
           renderer: L.canvas(),  // canvas avoids per-feature DOM/SVG overhead
           smoothFactor: 2,
-          style: isDetections ? detectionStyle : { color: '#2563eb', weight: 1.5 },
+          style,
         })
         overlayLayers[key] = layer
         overlays.value.push({
           key, label, visible: false, opacity: 100, kind: 'vector',
-          legend: isDetections ? detectionLegend(geojson.features) : null,
+          legend,
         })
         const bounds = layer.getBounds()
         if (bounds && bounds.isValid()) extendDataBounds(bounds)
