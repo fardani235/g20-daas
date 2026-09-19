@@ -1,0 +1,163 @@
+{
+ "actions": [],
+ "autoname": "field:plugin_id",
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "plugin_id",
+  "label",
+  "version",
+  "description",
+  "output_kind",
+  "render_kind",
+  "inputs",
+  "timeout_seconds",
+  "needs_validation",
+  "models",
+  "platform_enabled",
+  "available",
+  "params_schema"
+ ],
+ "fields": [
+  {
+   "fieldname": "plugin_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Plugin ID",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label",
+   "reqd": 1
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Data",
+   "label": "Version"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Text",
+   "label": "Description"
+  },
+  {
+   "default": "raster",
+   "fieldname": "output_kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Output Kind",
+   "options": "raster\nvector",
+   "read_only": 1
+  },
+  {
+   "fieldname": "render_kind",
+   "fieldtype": "Data",
+   "label": "Render Kind",
+   "read_only": 1
+  },
+  {
+   "description": "Required task inputs, e.g. [{\"name\": \"raster\", \"datasets\": [\"dsm\", \"dtm\"]}].",
+   "fieldname": "inputs",
+   "fieldtype": "Code",
+   "label": "Inputs",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Operation-specific run timeout in seconds; 0 uses the default.",
+   "fieldname": "timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Timeout (seconds)",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Validate with the analysis service before creating a run (e.g. model availability).",
+   "fieldname": "needs_validation",
+   "fieldtype": "Check",
+   "label": "Needs Validation",
+   "read_only": 1
+  },
+  {
+   "description": "Curated model choices offered to the UI: id, label, model, labels, family, label_offset, recommended params.",
+   "fieldname": "models",
+   "fieldtype": "Code",
+   "label": "Models",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "description": "Platform-wide kill switch. When unchecked the plugin is unavailable to every organization.",
+   "fieldname": "platform_enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Platform Enabled"
+  },
+  {
+   "default": "1",
+   "description": "Set to 0 when the operation is no longer returned by the geospatial catalog.",
+   "fieldname": "available",
+   "fieldtype": "Check",
+   "label": "Available"
+  },
+  {
+   "fieldname": "params_schema",
+   "fieldtype": "Code",
+   "label": "Params Schema",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Plugin",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WebODM User",
+   "share": 1
+  }
+ ],
+ "search_fields": "label",
+ "sort_field": "label",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "label"
+}

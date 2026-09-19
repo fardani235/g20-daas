@@ -1,0 +1,187 @@
+"""Tile proxy: resolves a task's raster to an absolute path and proxies tile /
+info requests to the geospatial FastAPI service.
+
+Keeping the proxy in Frappe means tile URLs are same-origin and session-authed
+(Leaflet <img> requests carry the session cookie), and the geospatial service
+never needs to know about Frappe's File storage or permissions.
+"""
+
+import frappe
+import requests
+
+from webodm_core.plugins.files import abs_path_for_file_url
+
+# Dataset name -> (Task field holding the raster, tile render "kind").
+_DATASETS = {
+    "orthophoto": ("orthophoto", "orthophoto"),
+    "dsm": ("dsm", "dsm"),
+    "dtm": ("dtm", "dtm"),
+}
+
+
+def _geospatial_url() -> str:
+    return (
+        frappe.conf.get("geospatial_url")
+        or frappe.conf.get("webodm_geospatial_url")
+        or "http://127.0.0.1:5000"
+    )
+
+
+def _resolve_raster_path(task_name: str, dataset: str) -> str:
+    if dataset not in _DATASETS:
+        frappe.throw(f"Unknown dataset: {dataset}")
+
+    field, _kind = _DATASETS[dataset]
+    # get_doc does NOT check permissions on its own, so enforce read access for
+    # the session user explicitly — otherwise any authenticated user could read
+    # another user's rasters (tiles/info/volume) by supplying their task id.
+    task = frappe.get_doc("WebODM Task", task_name)
+    task.check_permission("read")
+    file_url = task.get(field)
+    if not file_url:
+        frappe.throw(f"Task has no {dataset}", frappe.DoesNotExistError)
+
+    return abs_path_for_file_url(file_url)
+
+
+@frappe.whitelist(allow_guest=False)
+def info(task_name: str, dataset: str = "orthophoto"):
+    """Return tiling info (bounds, zoom range, band stats) for a task raster."""
+    path = _resolve_raster_path(task_name, dataset)
+    try:
+        resp = requests.get(
+            f"{_geospatial_url().rstrip('/')}/tiles/info",
+            params={"path": path},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        frappe.throw(f"Geospatial service unavailable: {e}")
+
+
+# 1x1 transparent PNG, served when the geospatial service is unreachable so the
+# map degrades to empty tiles instead of a wall of broken-image / error responses.
+_EMPTY_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "890000000d49444154789c626001000000050001a5f645400000000049454e44ae426082"
+)
+
+
+def _png_response(content: bytes):
+    # Return a real image/png (not Frappe's octet-stream "binary" type) so the
+    # browser treats it as an inline map tile.
+    from werkzeug.wrappers import Response
+
+    return Response(
+        content,
+        mimetype="image/png",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@frappe.whitelist(allow_guest=False)
+def serve(task_name: str, dataset: str, z: int, x: int, y: int):
+    """Proxy a single XYZ tile PNG from the geospatial service.
+
+    A tile request that fails (service down, transient error) returns a
+    transparent PNG rather than an HTTP error, so a single bad tile never breaks
+    the map view — the layer just shows blank where tiles are missing.
+    """
+    path = _resolve_raster_path(task_name, dataset)
+    _field, kind = _DATASETS[dataset]
+    try:
+        resp = requests.get(
+            f"{_geospatial_url().rstrip('/')}/tiles/tile/{int(z)}/{int(x)}/{int(y)}.png",
+            params={"path": path, "kind": kind},
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        frappe.log_error(f"tile fetch failed {dataset} {z}/{x}/{y}: {e}", "WebODM Tiles")
+        return _png_response(_EMPTY_PNG)
+
+    return _png_response(resp.content)
+
+
+def _resolve_run_raster_path(run_name: str):
+    """Resolve a plugin run's raster output to an absolute path + render kind.
+
+    Enforces read permission on the run, so a member of another organization
+    cannot tile someone else's output by guessing the run id.
+    """
+    run = frappe.get_doc("WebODM Plugin Run", run_name)
+    run.check_permission("read")
+    if run.output_kind != "raster":
+        frappe.throw(f"Run {run_name} does not have a raster output")
+    if not run.output_file:
+        frappe.throw(f"Run {run_name} has no output", frappe.DoesNotExistError)
+    return abs_path_for_file_url(run.output_file), (run.render_kind or "dem")
+
+
+@frappe.whitelist(allow_guest=False)
+def run_info(run_name: str):
+    """Tiling info for a plugin run's raster output."""
+    path, _kind = _resolve_run_raster_path(run_name)
+    try:
+        resp = requests.get(
+            f"{_geospatial_url().rstrip('/')}/tiles/info",
+            params={"path": path},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        frappe.throw(f"Geospatial service unavailable: {e}")
+
+
+@frappe.whitelist(allow_guest=False)
+def serve_run(run_name: str, z: int, x: int, y: int):
+    """Proxy one XYZ tile of a plugin run's raster output."""
+    path, kind = _resolve_run_raster_path(run_name)
+    try:
+        resp = requests.get(
+            f"{_geospatial_url().rstrip('/')}/tiles/tile/{int(z)}/{int(x)}/{int(y)}.png",
+            params={"path": path, "kind": kind},
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        frappe.log_error(f"plugin tile fetch failed {run_name} {z}/{x}/{y}: {e}", "WebODM Tiles")
+        return _png_response(_EMPTY_PNG)
+    return _png_response(resp.content)
+
+
+VOLUME_BASE_METHODS = ("triangulate", "plane", "average", "highest", "lowest")
+DEFAULT_VOLUME_BASE_METHOD = "triangulate"
+
+
+@frappe.whitelist(allow_guest=False)
+def volume(task_name, polygon, method=None):
+    """Compute stockpile/earthwork volume for a polygon over the task's DSM.
+
+    ``polygon`` is a GeoJSON Polygon (EPSG:4326), sent as a JSON string. ``method``
+    selects the base surface (see ``VOLUME_BASE_METHODS``); it defaults to
+    ``triangulate``, matching WebODM's measure plugin. Resolves the task's DSM
+    (throws if absent) and forwards to the geospatial service.
+    """
+    path = _resolve_raster_path(task_name, "dsm")
+    poly = frappe.parse_json(polygon) if isinstance(polygon, str) else polygon
+
+    base_method = (method or DEFAULT_VOLUME_BASE_METHOD).strip()
+    if base_method not in VOLUME_BASE_METHODS:
+        frappe.throw(
+            f"Invalid volume base method: {base_method}. "
+            f"Expected one of {', '.join(VOLUME_BASE_METHODS)}."
+        )
+
+    try:
+        resp = requests.post(
+            f"{_geospatial_url().rstrip('/')}/volume",
+            json={"path": path, "polygon": poly, "method": base_method},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        frappe.throw(f"Geospatial service unavailable: {e}")
