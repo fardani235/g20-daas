@@ -19,7 +19,7 @@
 - Switching basemap must never drop overlays or measurements.
 - Import alias `@` resolves to `frontend/src` (configured in `vite.config.js` and to be mirrored in `vitest.config.js`).
 
-Paths in this plan are relative to the repo root `/home/ridwan/workspaces/frappe-webodm/`. The frontend app root is `frappe-bench/apps/webodm_frontend/frontend/`; the backend app root is `frappe-bench/apps/webodm_core/`.
+Paths in this plan are relative to the repo root `/home/ridwan/workspace/g20-daas/`. The frontend app root is `frappe-bench/apps/webodm_frontend/frontend/`; the backend app root is `frappe-bench/apps/webodm_core/`.
 
 ---
 

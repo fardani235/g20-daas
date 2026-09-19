@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Path layout (verified):** app-level modules (`permissions.py`, `hooks.py`, `tenancy.py`) live at the OUTER `webodm_core/` → import as `webodm_core.<mod>`. API + tests live at `webodm_core/api/` → import as `webodm_core.api.<mod>`. DocTypes live at the INNER `webodm_core/webodm_core/doctype/` → `webodm_core.webodm_core.doctype.*`. Do not confuse the two `webodm_core/` levels.
-- Test runner: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module <dotted.module>`.
+- Test runner: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module <dotted.module>`.
 - Tests use `frappe.tests.utils.FrappeTestCase`; non-admin users must have role `WebODM User` (Administrator/System Manager bypass all scoping and hide leaks).
 - Custom endpoints must NEVER trust an `organization` value from the request payload — org is always derived from the acting user via `tenancy.require_org()`.
 - Deny-by-default: a user with no org membership resolves to `None` and sees zero rows / gets `OrgContextError` (403, code `no_organization`).
@@ -86,7 +86,7 @@ class TestOrganizationModel(FrappeTestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_model`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_model`
 Expected: FAIL — DocType `WebODM Organization` does not exist.
 
 - [ ] **Step 3: Create the DocType JSON**
@@ -145,13 +145,13 @@ class WebODMOrganization(Document):
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_model`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_model`
 Expected: PASS (both tests). If migrate is needed first: `bench --site webodm.local migrate`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/webodm_core/doctype/webodm_organization webodm_core/api/test_organization_model.py
 git commit -m "feat: add WebODM Organization DocType with slug autoname"
 ```
@@ -198,7 +198,7 @@ class TestMembershipModel(FrappeTestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_membership_model`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_membership_model`
 Expected: FAIL — DocType `WebODM Org Membership` does not exist.
 
 - [ ] **Step 3: Create the DocType JSON**
@@ -252,13 +252,13 @@ class WebODMOrgMembership(Document):
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_membership_model`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_membership_model`
 Expected: PASS — second membership insert raises `ValidationError` (duplicate `user`).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/webodm_core/doctype/webodm_org_membership webodm_core/api/test_membership_model.py
 git commit -m "feat: add WebODM Org Membership with unique-user one-org invariant"
 ```
@@ -347,7 +347,7 @@ class TestTenancy(FrappeTestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_tenancy`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_tenancy`
 Expected: FAIL — `ModuleNotFoundError: webodm_core.tenancy`.
 
 - [ ] **Step 3: Implement `tenancy.py`**
@@ -416,13 +416,13 @@ def is_platform_admin(user=None):
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_tenancy`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_tenancy`
 Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/tenancy.py webodm_core/api/test_tenancy.py
 git commit -m "feat: add tenancy.py org-context chokepoint (deny-by-default)"
 ```
@@ -502,7 +502,7 @@ class TestStamping(FrappeTestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_stamping`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_stamping`
 Expected: FAIL — `organization` field / stamping hook do not exist.
 
 - [ ] **Step 3: Add the `organization` field to each DocType JSON**
@@ -557,13 +557,13 @@ doc_events = {
 
 - [ ] **Step 6: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_stamping`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_stamping`
 Expected: PASS (3 tests). **Watch:** `migrate` re-runs `patches/seed_system_presets.py`, which inserts `system=1` presets as Administrator (no org). The `_is_platform_global` skip in `stamp_organization` must let those through — if migrate fails with `OrgContextError`, the hook's system-preset carve-out is wrong.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/tenancy_hooks.py webodm_core/hooks.py \
   webodm_core/webodm_core/doctype/webodm_project/webodm_project.json \
   webodm_core/webodm_core/doctype/webodm_task/webodm_task.json \
@@ -650,7 +650,7 @@ class TestIsolation(FrappeTestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_isolation`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_isolation`
 Expected: FAIL — `member_a` currently sees B's project (still owner-scoped, and cross-org owner check absent) OR both users share owner. Confirm the `assertNotIn` fails.
 
 - [ ] **Step 3: Rewrite `permissions.py`**
@@ -739,13 +739,13 @@ has_permission = {
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_isolation`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_isolation`
 Expected: PASS (2 tests).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/permissions.py webodm_core/hooks.py webodm_core/api/test_isolation.py
 git commit -m "feat: org-scope Project/Task/Preset permission hooks (deny-by-default)"
 ```
@@ -794,7 +794,7 @@ git commit -m "feat: org-scope Project/Task/Preset permission hooks (deny-by-def
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_isolation`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_isolation`
 Expected: `test_no_org_user_denied_on_endpoint` FAILS (upload_images doesn't call require_org yet, raises a different error). `test_owner_b_cannot_read_task_progress_of_a` should already PASS (proves org-scoped has_permission works through the existing `_get_task_checked`).
 
 - [ ] **Step 3: Add `require_org()` to `upload_images`**
@@ -807,13 +807,13 @@ In `webodm_core/api/task.py`, at the top of `upload_images()` (before reading fi
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_isolation`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_isolation`
 Expected: PASS (all isolation tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/task.py webodm_core/api/test_isolation.py
 git commit -m "test: prove cross-org IDOR denial; require_org on upload_images"
 ```
@@ -890,7 +890,7 @@ class TestPerOrgSettings(FrappeTestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_settings`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_settings`
 Expected: FAIL — Settings is still a Single; `save` still admin-role gated not org gated.
 
 - [ ] **Step 3: Convert the Settings DocType JSON**
@@ -988,13 +988,13 @@ Add Settings to `doc_events`:
 
 - [ ] **Step 6: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_settings`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_settings`
 Expected: PASS (3 tests).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/webodm_core/doctype/webodm_settings webodm_core/api/settings.py \
   webodm_core/permissions.py webodm_core/hooks.py webodm_core/api/test_settings.py
 git commit -m "feat: per-org WebODM Settings (Single -> DocType, admin-gated writes)"
@@ -1059,7 +1059,7 @@ class TestPlatformCaps(FrappeTestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_platform_settings`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_platform_settings`
 Expected: FAIL — `WebODM Platform Settings` does not exist.
 
 - [ ] **Step 3: Create the Single DocType**
@@ -1121,13 +1121,13 @@ In `save`, before the `for k, v` loop:
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_platform_settings`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_platform_settings`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/webodm_core/doctype/webodm_platform_settings webodm_core/api/settings.py webodm_core/api/test_platform_settings.py
 git commit -m "feat: WebODM Platform Settings single; clamp per-org caps"
 ```
@@ -1166,7 +1166,7 @@ class TestInvitationModel(FrappeTestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_invitation_model`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_invitation_model`
 Expected: FAIL — DocType does not exist.
 
 - [ ] **Step 3: Create JSON**
@@ -1226,13 +1226,13 @@ class WebODMOrgInvitation(Document):
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_invitation_model`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local migrate && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_invitation_model`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/webodm_core/doctype/webodm_org_invitation webodm_core/api/test_invitation_model.py
 git commit -m "feat: add WebODM Org Invitation DocType (token + 7-day expiry)"
 ```
@@ -1301,7 +1301,7 @@ class TestOrganizationAPI(FrappeTestCase):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_api`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_api`
 Expected: FAIL — `webodm_core.api.organization` does not exist.
 
 - [ ] **Step 3: Implement `api/organization.py`**
@@ -1360,13 +1360,13 @@ def remove_member(user):
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_api`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_api`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/organization.py webodm_core/api/test_organization_api.py
 git commit -m "feat: organization API (create/get/list/remove members)"
 ```
@@ -1418,7 +1418,7 @@ git commit -m "feat: organization API (create/get/list/remove members)"
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_api`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_api`
 Expected: FAIL — `invite_member`/`accept_invitation` do not exist.
 
 - [ ] **Step 3: Add endpoints to `api/organization.py`**
@@ -1461,13 +1461,13 @@ def accept_invitation(token):
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_api`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_organization_api`
 Expected: PASS (5 tests total).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/organization.py webodm_core/api/test_organization_api.py
 git commit -m "feat: org invitation API (invite/accept with expiry + one-org guard)"
 ```
@@ -1516,7 +1516,7 @@ describe('organization lib', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/lib/organization.test.js`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/lib/organization.test.js`
 Expected: FAIL — `organization.js` does not exist.
 
 - [ ] **Step 3: Implement `lib/organization.js`**
@@ -1560,13 +1560,13 @@ export const listMembers = () => get('webodm_core.api.organization.list_members'
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/lib/organization.test.js`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/lib/organization.test.js`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/lib/organization.js frontend/src/lib/organization.test.js
 git commit -m "feat: frontend organization API wrappers"
 ```
@@ -1673,13 +1673,13 @@ router.beforeEach(async (to, from, next) => {
 
 - [ ] **Step 4: Build to verify compilation**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vite build`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vite build`
 Expected: Build succeeds (Onboarding.vue compiles, no import errors).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Onboarding.vue frontend/src/main.js
 git commit -m "feat: onboarding gate blocks tenant routes until org exists"
 ```
@@ -1746,23 +1746,23 @@ class TestPresetOrgIsolation(FrappeTestCase):
 
 - [ ] **Step 2: Run the preset test**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_presets`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_presets`
 Expected: PASS (existing tests + the new isolation test). If existing preset tests assumed owner-scoping and now break because they create presets without an org context, update those tests to create an org + membership in `setUp` and `frappe.set_user(member)` before inserting.
 
 - [ ] **Step 3: Run the FULL backend suite**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core`
 Expected: All tests PASS. Investigate and fix any test that assumed the old owner-scoped or Single-Settings behavior (notably `test_task_permissions.py`, `test_task.py`, `test_settings.py`): each now needs an org + membership for its non-admin users and `frappe.set_user(member)` before inserting tenant docs, plus `frappe.local.webodm_org_cache = {}` after switching users.
 
 - [ ] **Step 4: Run the full frontend test suite**
 
-Run: `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vitest run`
+Run: `cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vitest run`
 Expected: All PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/test_presets.py
 git commit -m "test: verify preset org-isolation; green full suite"
 ```

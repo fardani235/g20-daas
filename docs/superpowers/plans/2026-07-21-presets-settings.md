@@ -17,7 +17,7 @@
 - Frontend calls use the existing pattern: `fetch('/api/method/...')`, `X-Frappe-CSRF-Token` header from `window.csrf_token` when present, and unwrap Frappe's `{message: ...}` envelope.
 - Whitelisted endpoints use `@frappe.whitelist(allow_guest=False)` and read POST bodies via `frappe.form_dict` / `frappe.request.data` (JSON) exactly as existing `api/task.py` endpoints do.
 - DRY, YAGNI, TDD, frequent commits. Out of scope: Plugins/Landing/Invoices pages, per-project defaults, preset import/export, server-side validation of options against the live catalog, catalog caching.
-- Repo: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core` (branch `main`) and `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend` (branch `main`). Frappe tests run from `/home/ridwan/workspaces/frappe-webodm/frappe-bench` via `bench --site webodm.local run-tests --module <mod>`. Frontend tests run from `.../webodm_frontend/frontend` via `npm test -- --run`.
+- Repo: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core` (branch `main`) and `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend` (branch `main`). Frappe tests run from `/home/ridwan/workspace/g20-daas/frappe-bench` via `bench --site webodm.local run-tests --module <mod>`. Frontend tests run from `.../webodm_frontend/frontend` via `npm test -- --run`.
 
 ---
 
@@ -48,8 +48,8 @@
 ## Task 1: `node_client.get_options()`
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/node_client.py`
-- Test: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/test_node_client.py` (create)
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/node_client.py`
+- Test: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/test_node_client.py` (create)
 
 **Interfaces:**
 - Consumes: existing `NodeODMClient._get(path)` (returns parsed JSON, raises `NodeODMError`).
@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run (from `/home/ridwan/workspaces/frappe-webodm/frappe-bench`):
+Run (from `/home/ridwan/workspace/g20-daas/frappe-bench`):
 ```bash
 bench --site webodm.local run-tests --module webodm_core.webodm_core.processing.test_node_client
 ```
@@ -103,7 +103,7 @@ Expected: PASS — 1 test OK.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/webodm_core/processing/node_client.py webodm_core/webodm_core/processing/test_node_client.py
 git commit -m "feat: add NodeODMClient.get_options() for the ODM option catalog"
 ```
@@ -115,9 +115,9 @@ git commit -m "feat: add NodeODMClient.get_options() for the ODM option catalog"
 **Why:** `_node_task_id` is currently stored as a key **inside** `processing_options` and read at 4 sites. Once presets make `processing_options` a JSON **list**, `opts.get("_node_task_id")` breaks. This task moves the node task id to a dedicated `node_task_id` field on WebODM Task so options can be any shape.
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_task/webodm_task.json`
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/task_runner.py`
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/task.py`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_task/webodm_task.json`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/task_runner.py`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/task.py`
 
 **Interfaces:**
 - Produces: `WebODM Task.node_task_id` (Data field). Written in `task_runner.dispatch_task` after `create_task`; read in `task_runner.poll_task`, `api.task.cancel_task`, `api.task.get_task_console`, `api.task.get_task_progress`.
@@ -137,7 +137,7 @@ In `webodm_task.json`, add `"node_task_id"` to `field_order` immediately after `
 
 - [ ] **Step 2: Apply the schema change**
 
-Run (from `/home/ridwan/workspaces/frappe-webodm/frappe-bench`):
+Run (from `/home/ridwan/workspace/g20-daas/frappe-bench`):
 ```bash
 bench --site webodm.local migrate
 ```
@@ -220,7 +220,7 @@ with:
 
 - [ ] **Step 7: Verify no stale references remain**
 
-Run (from `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core`):
+Run (from `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core`):
 ```bash
 grep -rn "_node_task_id\|NODE_TASK_ID_KEY" --include=*.py webodm_core | grep -v __pycache__
 ```
@@ -228,7 +228,7 @@ Expected: **no output** (all references removed).
 
 - [ ] **Step 8: Run the existing suites to confirm no regression**
 
-Run (from `/home/ridwan/workspaces/frappe-webodm/frappe-bench`):
+Run (from `/home/ridwan/workspace/g20-daas/frappe-bench`):
 ```bash
 bench --site webodm.local run-tests --module webodm_core.api.test_task
 bench --site webodm.local run-tests --module webodm_core.webodm_core.processing.test_task_runner
@@ -238,7 +238,7 @@ Expected: both PASS (test_task 6/6, test_task_runner 9/9).
 - [ ] **Step 9: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/webodm_core/doctype/webodm_task/webodm_task.json webodm_core/webodm_core/processing/task_runner.py webodm_core/api/task.py
 git commit -m "refactor: store node task id in its own Task field so options can be a list"
 ```
@@ -248,8 +248,8 @@ git commit -m "refactor: store node task id in its own Task field so options can
 ## Task 3: `_build_node_options` accepts a list (pass-through)
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/task_runner.py`
-- Test: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/test_task_runner.py`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/task_runner.py`
+- Test: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/webodm_core/processing/test_task_runner.py`
 
 **Interfaces:**
 - Consumes: `task.processing_options` (may be a dict — legacy — or a list — preset path).
@@ -270,7 +270,7 @@ Append to `test_task_runner.py` (inside the existing `TestBuildNodeOptions` clas
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run (from `/home/ridwan/workspaces/frappe-webodm/frappe-bench`):
+Run (from `/home/ridwan/workspace/g20-daas/frappe-bench`):
 ```bash
 bench --site webodm.local run-tests --module webodm_core.webodm_core.processing.test_task_runner
 ```
@@ -320,7 +320,7 @@ Expected: PASS — 11 tests (9 existing + 2 new).
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/webodm_core/processing/task_runner.py webodm_core/webodm_core/processing/test_task_runner.py
 git commit -m "feat: _build_node_options passes list-shaped preset options through verbatim"
 ```
@@ -330,7 +330,7 @@ git commit -m "feat: _build_node_options passes list-shaped preset options throu
 ## Task 4: WebODM Settings — new processing fields
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_settings/webodm_settings.json`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_settings/webodm_settings.json`
 
 **Interfaces:**
 - Produces: `WebODM Settings.default_preset` (Link → WebODM Preset), `WebODM Settings.auto_start_processing` (Check, default 0).
@@ -368,7 +368,7 @@ And add these field objects to `fields` (after the `max_project_count` object):
 
 - [ ] **Step 2: Apply the schema change**
 
-Run (from `/home/ridwan/workspaces/frappe-webodm/frappe-bench`):
+Run (from `/home/ridwan/workspace/g20-daas/frappe-bench`):
 ```bash
 bench --site webodm.local migrate
 ```
@@ -376,7 +376,7 @@ Expected: migrate completes without error.
 
 - [ ] **Step 3: Verify the fields exist**
 
-Run (from `/home/ridwan/workspaces/frappe-webodm/frappe-bench`):
+Run (from `/home/ridwan/workspace/g20-daas/frappe-bench`):
 ```bash
 bench --site webodm.local execute frappe.client.get_list --kwargs "{'doctype':'DocField','filters':{'parent':'WebODM Settings','fieldname':['in',['default_preset','auto_start_processing']]},'fields':['fieldname']}"
 ```
@@ -385,7 +385,7 @@ Expected: output lists both `default_preset` and `auto_start_processing`.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/webodm_core/doctype/webodm_settings/webodm_settings.json
 git commit -m "feat: add default_preset and auto_start_processing to WebODM Settings"
 ```
@@ -395,8 +395,8 @@ git commit -m "feat: add default_preset and auto_start_processing to WebODM Sett
 ## Task 5: `api/settings.py` — get/save
 
 **Files:**
-- Create: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/settings.py`
-- Test: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/test_settings.py`
+- Create: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/settings.py`
+- Test: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/test_settings.py`
 
 **Interfaces:**
 - Consumes: WebODM Settings single doc (with fields from Task 4).
@@ -498,7 +498,7 @@ Expected: PASS — 3 tests OK.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/settings.py webodm_core/api/test_settings.py
 git commit -m "feat: add settings get/save API for WebODM Settings"
 ```
@@ -508,8 +508,8 @@ git commit -m "feat: add settings get/save API for WebODM Settings"
 ## Task 6: `api/presets.py` — options/list/save/delete
 
 **Files:**
-- Create: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/presets.py`
-- Test: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/test_presets.py`
+- Create: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/presets.py`
+- Test: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/test_presets.py`
 
 **Interfaces:**
 - Consumes: `NodeODMClient.get_options()` (Task 1); WebODM Preset DocType (`preset_name`, `owner`, `system`, `options`).
@@ -693,7 +693,7 @@ Expected: PASS — 5 tests OK.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/presets.py webodm_core/api/test_presets.py
 git commit -m "feat: add presets API (options proxy, list, save, delete) with permission rules"
 ```
@@ -703,7 +703,7 @@ git commit -m "feat: add presets API (options proxy, list, save, delete) with pe
 ## Task 7: Auto-start hook in `upload_images`
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/task.py`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/task.py`
 
 **Interfaces:**
 - Consumes: `WebODM Settings.auto_start_processing` (Task 4); the existing `frappe.enqueue(... task_runner.process_task ...)` dispatch used by `process_task`.
@@ -711,7 +711,7 @@ git commit -m "feat: add presets API (options proxy, list, save, delete) with pe
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/test_task.py` (add the import at the top if absent, and a new test class at the end):
+Append to `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/test_task.py` (add the import at the top if absent, and a new test class at the end):
 ```python
 class TestAutoStart(unittest.TestCase):
     def test_auto_start_helper_enqueues_when_enabled(self):
@@ -765,7 +765,7 @@ Expected: PASS — 8 tests (6 existing + 2 new).
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/task.py webodm_core/api/test_task.py
 git commit -m "feat: auto-start processing after upload when enabled in settings"
 ```
@@ -775,8 +775,8 @@ git commit -m "feat: auto-start processing after upload when enabled in settings
 ## Task 8: Frontend `lib/presets.js` fetch wrappers
 
 **Files:**
-- Create: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/lib/presets.js`
-- Test: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/lib/presets.test.js`
+- Create: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/lib/presets.js`
+- Test: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/lib/presets.test.js`
 
 **Interfaces:**
 - Produces: `listPresets()`, `savePreset(payload)`, `deletePreset(name)`, `fetchOptions()`, `getSettings()`, `saveSettings(fields)` — all async, returning the unwrapped `message`. Consumed by Presets.vue, Settings.vue, MapView.vue.
@@ -884,7 +884,7 @@ Expected: PASS — 3 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/lib/presets.js frontend/src/lib/presets.test.js
 git commit -m "feat: add presets/settings fetch wrappers"
 ```
@@ -894,8 +894,8 @@ git commit -m "feat: add presets/settings fetch wrappers"
 ## Task 9: Frontend `composables/useOdmOptions.js`
 
 **Files:**
-- Create: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/composables/useOdmOptions.js`
-- Test: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/composables/useOdmOptions.test.js`
+- Create: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/composables/useOdmOptions.js`
+- Test: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/composables/useOdmOptions.test.js`
 
 **Interfaces:**
 - Consumes: `fetchOptions` from `@/lib/presets` (Task 8).
@@ -978,7 +978,7 @@ Expected: PASS — 4 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/composables/useOdmOptions.js frontend/src/composables/useOdmOptions.test.js
 git commit -m "feat: add useOdmOptions composable (catalog loader + field-type mapping)"
 ```
@@ -988,7 +988,7 @@ git commit -m "feat: add useOdmOptions composable (catalog loader + field-type m
 ## Task 10: `Settings.vue` — real load/save + default preset + auto-start
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/pages/Settings.vue`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/pages/Settings.vue`
 
 **Interfaces:**
 - Consumes: `getSettings`, `saveSettings`, `listPresets` from `@/lib/presets`.
@@ -1127,7 +1127,7 @@ Expected: all suites pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Settings.vue
 git commit -m "feat: wire Settings page to backend with default preset + auto-start"
 ```
@@ -1137,7 +1137,7 @@ git commit -m "feat: wire Settings page to backend with default preset + auto-st
 ## Task 11: `Presets.vue` — real CRUD + dynamic options form
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/pages/Presets.vue`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/pages/Presets.vue`
 
 **Interfaces:**
 - Consumes: `listPresets`, `savePreset`, `deletePreset` from `@/lib/presets`; `useOdmOptions` (Task 9).
@@ -1325,7 +1325,7 @@ Expected: all suites pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Presets.vue
 git commit -m "feat: wire Presets page to backend with dynamic ODM options form"
 ```
@@ -1335,7 +1335,7 @@ git commit -m "feat: wire Presets page to backend with dynamic ODM options form"
 ## Task 12: `MapView.vue` upload dialog — preset picker + dynamic form + auto-start
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/pages/MapView.vue`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/pages/MapView.vue`
 
 **Interfaces:**
 - Consumes: `listPresets`, `getSettings` from `@/lib/presets`; `useOdmOptions` (Task 9). Existing: `outputOpts` (removed), `uploadFiles`, `route`, `toast`, `Button`, `FeatherIcon`.
@@ -1465,7 +1465,7 @@ Expected: all suites pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/MapView.vue
 git commit -m "feat: upload dialog uses preset picker + dynamic ODM options form"
 ```

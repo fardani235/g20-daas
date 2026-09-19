@@ -17,7 +17,7 @@
 These bind **every** task. Read them before starting any task.
 
 1. **Repo:** `webodm_frontend`. All frontend paths in this plan are relative to
-   `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend`
+   `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend`
    unless the path starts with `webodm_frontend/`.
 2. **All 43 existing vitest tests must stay green in every task.** They are pure
    logic tests (`format.js`, `mapLayers.js`, `flightPath.js`, `presets.js`,
@@ -56,7 +56,7 @@ plugin bug (verified failing on commits predating this work), so tasks verify
 with a development-mode build, which compiles all sources:
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -67,7 +67,7 @@ npx vite build --mode development
 every build, restore those assets before staging anything:
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short   # must NOT list anything under webodm_frontend/public/frontend
@@ -224,7 +224,7 @@ Pin `tailwind-merge` to the v2 line — v3 targets Tailwind v4 and this repo is
 Tailwind 3.4.
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npm install radix-vue@^1.9.17 class-variance-authority@^0.7.1 clsx@^2.1.1 "tailwind-merge@^2.6.1" lucide-vue-next@^1.0.0
 ```
 
@@ -532,7 +532,7 @@ export default {
 - [ ] **Step 8: Verify the whole suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -546,7 +546,7 @@ and that is expected and fine — they are restyled in Tasks 7–13.
 - [ ] **Step 9: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -557,7 +557,7 @@ Expected: nothing under `webodm_frontend/public/frontend` is listed.
 - [ ] **Step 10: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/package.json frontend/package-lock.json \
         frontend/tailwind.config.js frontend/src/index.css \
         frontend/src/lib/utils.js frontend/src/lib/utils.test.js
@@ -984,7 +984,7 @@ export { default as Textarea } from './textarea/Textarea.vue'
 - [ ] **Step 13: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -998,7 +998,7 @@ Tasks 7–13.
 - [ ] **Step 14: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -1009,7 +1009,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 15: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/components/ui frontend/src/lib/status.js frontend/src/lib/status.test.js
 git commit -m "feat(ui): add core primitives and shared status-variant mapping
 
@@ -1040,7 +1040,7 @@ so migration is a one-line import change per page.
 - [ ] **Step 1: Install vue-sonner**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npm install vue-sonner@^2.0.9
 ```
 
@@ -1098,7 +1098,7 @@ Leave `FrappeUIProvider` in place — it is removed in Task 15.
 - [ ] **Step 5: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -1108,7 +1108,7 @@ Expected: vitest `57 passed`, build exits 0.
 - [ ] **Step 6: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -1119,7 +1119,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/package.json frontend/package-lock.json \
         frontend/src/lib/toast.js frontend/src/App.vue frontend/src/main.js
 git commit -m "feat(ui): add vue-sonner toasts behind a compatible toast facade
@@ -1307,7 +1307,7 @@ export { default as Textarea } from './textarea/Textarea.vue'
 - [ ] **Step 5: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -1317,7 +1317,7 @@ Expected: vitest `57 passed`, build exits 0.
 - [ ] **Step 6: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -1328,7 +1328,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/components/ui
 git commit -m "feat(ui): add accessible Dialog and DropdownMenu on radix-vue
 
@@ -1612,7 +1612,7 @@ Expected: PASS, 18 tests.
 - [ ] **Step 5: Verify the whole suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -1622,7 +1622,7 @@ Expected: vitest `75 passed` (57 + 18 new), build exits 0.
 - [ ] **Step 6: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -1633,7 +1633,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/lib/nav.js frontend/src/lib/nav.test.js
 git commit -m "feat(nav): add route-derived navigation model with tests
 
@@ -1854,7 +1854,7 @@ async function logout() {
 - [ ] **Step 3: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -1875,7 +1875,7 @@ Expected: no output.
 - [ ] **Step 5: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -1886,7 +1886,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/components/AppLayout.vue frontend/src/components/PageHeader.vue
 git commit -m "feat(nav): replace sidebar with top tab bar and secondary project row
 
@@ -2029,7 +2029,7 @@ Expected: no output.
 - [ ] **Step 4: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -2039,7 +2039,7 @@ Expected: vitest `75 passed`, build exits 0.
 - [ ] **Step 5: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -2050,7 +2050,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Dashboard.vue
 git commit -m "refactor(dashboard): migrate to ui primitives and design tokens
 
@@ -2247,7 +2247,7 @@ Expected: no output.
 - [ ] **Step 5: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -2257,7 +2257,7 @@ Expected: vitest `75 passed`, build exits 0.
 - [ ] **Step 6: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -2268,7 +2268,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/NotFound.vue frontend/src/pages/Invoices.vue frontend/src/pages/Plugins.vue
 git commit -m "refactor(pages): migrate NotFound, Invoices, Plugins to ui primitives
 
@@ -2485,7 +2485,7 @@ Expected: no output.
 - [ ] **Step 4: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -2495,7 +2495,7 @@ Expected: vitest `75 passed`, build exits 0.
 - [ ] **Step 5: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -2506,7 +2506,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Login.vue frontend/src/pages/Onboarding.vue
 git commit -m "refactor(auth): migrate Login and Onboarding to ui primitives
 
@@ -2755,7 +2755,7 @@ Expected: no output.
 - [ ] **Step 6: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -2765,7 +2765,7 @@ Expected: vitest `75 passed`, build exits 0.
 - [ ] **Step 7: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -2776,7 +2776,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Projects.vue
 git commit -m "refactor(projects): migrate to ui primitives, replace modals with Dialog
 
@@ -3023,7 +3023,7 @@ Expected: no output.
 - [ ] **Step 7: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -3033,7 +3033,7 @@ Expected: vitest `75 passed`, build exits 0.
 - [ ] **Step 8: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -3044,7 +3044,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 9: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Presets.vue frontend/src/pages/Settings.vue
 git commit -m "refactor(presets,settings): migrate to ui primitives and design tokens
 
@@ -3238,7 +3238,7 @@ Expected: no output.
 - [ ] **Step 6: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -3248,7 +3248,7 @@ Expected: vitest `75 passed`, build exits 0.
 - [ ] **Step 7: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -3259,7 +3259,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Console.vue frontend/src/pages/ModelView.vue
 git commit -m "refactor(task-views): migrate Console and ModelView to ui primitives
 
@@ -3549,7 +3549,7 @@ The measurement composable and layer helpers have unit tests that must still
 pass — they are the guard that this stayed shallow:
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run src/lib/mapLayers.test.js src/lib/flightPath.test.js src/composables/useMeasure.import.test.js
 npx vitest run
 npx vite build --mode development
@@ -3561,7 +3561,7 @@ Then confirm you did not restructure map internals — this diff must show
 template/import changes only, no changes to Leaflet calls:
 
 ```bash
-git -C /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend \
+git -C /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend \
   diff -- frontend/src/pages/MapView.vue | grep -E "^[+-].*\b(L\.|map\.|tileLayer|addLayer|removeLayer|setView|fitBounds)" || echo "NO LEAFLET LOGIC TOUCHED"
 ```
 
@@ -3571,7 +3571,7 @@ deep — revert those hunks (Global Constraint 9).
 - [ ] **Step 10: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -3582,7 +3582,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 11: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/MapView.vue frontend/src/main.js
 git commit -m "refactor(mapview): shallow migration to ui primitives, full-bleed layout
 
@@ -4002,7 +4002,7 @@ Expected: one match. No parallax was introduced (Global Constraint 8).
 - [ ] **Step 4: Verify the suite and the build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -4012,7 +4012,7 @@ Expected: vitest `75 passed`, build exits 0.
 - [ ] **Step 5: Restore the clobbered build output**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -4023,7 +4023,7 @@ Expected: nothing under `webodm_frontend/public/frontend` listed.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Landing.vue
 git commit -m "feat(landing): redesign as DaaS marketing page led by the pipeline
 
@@ -4061,7 +4061,7 @@ reported either way.
 Before removing anything, prove nothing still imports it:
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 grep -rn "frappe-ui" src/
 ```
 
@@ -4164,7 +4164,7 @@ export default defineConfig({
 up by the frappe-ui plugin and no source file imports from them.
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npm uninstall frappe-ui unplugin-icons @iconify-json/lucide
 ```
 
@@ -4180,7 +4180,7 @@ rm -f components.d.ts auto-imports.d.ts
 - [ ] **Step 7: The gate — repo-wide grep must return zero hits**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 grep -rn "frappe-ui" frontend/src frontend/index.html frontend/vite.config.js \
      frontend/vitest.config.js frontend/tailwind.config.js frontend/package.json
 ```
@@ -4193,7 +4193,7 @@ and config, not the lockfile.)
 - [ ] **Step 8: Verify the suite and the development build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run
 npx vite build --mode development
 ```
@@ -4205,7 +4205,7 @@ Expected: vitest `75 passed`, build exits 0.
 This is the payoff check. Run it and record the actual result:
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vite build
 echo "PRODUCTION BUILD EXIT CODE: $?"
 ```
@@ -4224,7 +4224,7 @@ failure of this task.
 Both builds above wrote to the tracked asset directory:
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend
 git clean -fdq webodm_frontend/public/frontend
 git status --short
@@ -4236,7 +4236,7 @@ or deleted — nothing under `webodm_frontend/public/frontend`.
 - [ ] **Step 11: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/package.json frontend/package-lock.json frontend/vite.config.js \
         frontend/src/main.js frontend/src/App.vue
 git rm --cached -q frontend/components.d.ts frontend/auto-imports.d.ts 2>/dev/null || true
@@ -4257,11 +4257,11 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 Run the whole gate one more time from a clean tree and record the results:
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npx vitest run                      # expect: 75 passed (43 original + 32 new)
 npx vite build                      # expect: exit 0 — the blocker is gone
 grep -rn "frappe-ui" src/ *.js *.json *.html   # expect: no output
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -- webodm_frontend/public/frontend && git clean -fdq webodm_frontend/public/frontend
 ```
 

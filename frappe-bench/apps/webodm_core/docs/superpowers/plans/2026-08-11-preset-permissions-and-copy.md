@@ -15,8 +15,8 @@
 - **Backend enforcement must not weaken.** `save()` and `delete()` keep raising `frappe.PermissionError` with their current messages. The new flags are advisory UI hints only.
 - **"Admin" means `tenancy.is_platform_admin()`** — the System Manager *or* Administrator role. Never compare against the literal string `"Administrator"`.
 - **`list_presets()` returns a flat list.** Do not wrap it in an envelope; `lib/presets.js` and its tests depend on the current shape.
-- **Backend test command:** `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module <dotted.module.path>`
-- **Frontend test command:** `cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vitest run <path>`
+- **Backend test command:** `cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module <dotted.module.path>`
+- **Frontend test command:** `cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vitest run <path>`
 - **No `@vue/test-utils` in this project.** Component tests mount with `createApp` into a detached jsdom node — follow `src/components/OdmOptionsForm.test.js` exactly.
 - Spec: `apps/webodm_core/docs/superpowers/specs/2026-08-11-preset-permissions-and-copy-design.md`
 
@@ -122,7 +122,7 @@ Then add the cross-org negative case to `class TestPresetOrgIsolation`, which al
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_presets
+cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_presets
 ```
 
 Expected: FAIL — `KeyError: 'can_write'` on the flag tests, and `AttributeError: module ... has no attribute '_can_modify'` on the isolation test.
@@ -211,7 +211,7 @@ Leave the `system and not tenancy.is_platform_admin()` guard at the top of `save
 - [ ] **Step 6: Run the full preset module to verify pass and no regression**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_presets
+cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_presets
 ```
 
 Expected: PASS, including the pre-existing `test_non_admin_cannot_create_system_preset` and the org-isolation tests.
@@ -219,7 +219,7 @@ Expected: PASS, including the pre-existing `test_non_admin_cannot_create_system_
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/presets.py webodm_core/api/test_presets.py
 git commit -m "feat(presets): surface per-row can_write/can_delete capability flags
 
@@ -307,7 +307,7 @@ class TestWhoami(FrappeTestCase):
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_session
+cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_session
 ```
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'webodm_core.api.session'`.
@@ -351,7 +351,7 @@ def whoami():
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_session
+cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core --module webodm_core.api.test_session
 ```
 
 Expected: PASS (3 tests).
@@ -359,7 +359,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/session.py webodm_core/api/test_session.py
 git commit -m "feat(api): add whoami session endpoint
 
@@ -379,7 +379,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - [ ] **Step 1: Run the whole backend suite**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench --site webodm.local run-tests --app webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench && bench --site webodm.local run-tests --app webodm_core
 ```
 
 Expected: PASS. Pay attention to `test_isolation.py`, `test_stamping.py`, and `test_tenancy.py` — `_can_modify` calls `get_current_org()`, which is request-cached, so a stale cache would surface there.
@@ -403,7 +403,7 @@ If anything fails, fix it before starting Task 4. Do not proceed with a red suit
 - [ ] **Step 1: Create the frontend branch**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git checkout -b feat/preset-permissions-and-copy
 ```
 
@@ -430,7 +430,7 @@ import { listPresets, savePreset, fetchOptions, whoami } from '@/lib/presets'
 - [ ] **Step 3: Run the test to verify it fails**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/lib/presets.test.js
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/lib/presets.test.js
 ```
 
 Expected: FAIL with `whoami is not a function`.
@@ -446,7 +446,7 @@ export const whoami = () => get('webodm_core.api.session.whoami')
 - [ ] **Step 5: Run the test to verify it passes**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/lib/presets.test.js
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/lib/presets.test.js
 ```
 
 Expected: PASS (4 tests).
@@ -454,7 +454,7 @@ Expected: PASS (4 tests).
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/lib/presets.js frontend/src/lib/presets.test.js
 git commit -m "feat(lib): add whoami fetch wrapper
 
@@ -621,7 +621,7 @@ describe('Presets page', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/pages/Presets.test.js
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/pages/Presets.test.js
 ```
 
 Expected: FAIL — the first test fails because Edit/Delete render unconditionally today, and the copy test fails because no Copy button exists.
@@ -766,7 +766,7 @@ Finally, make `onSave` send the draft's scope instead of the source's:
 - [ ] **Step 6: Run the test to verify it passes**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/pages/Presets.test.js
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vitest run src/pages/Presets.test.js
 ```
 
 Expected: PASS (5 tests).
@@ -774,7 +774,7 @@ Expected: PASS (5 tests).
 - [ ] **Step 7: Run the full frontend suite and build**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npx vitest run && npm run build
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npx vitest run && npm run build
 ```
 
 Expected: all tests PASS (81 total — 75 pre-existing, plus 1 from Task 4 and 5 from this task) and a clean build.
@@ -782,7 +782,7 @@ Expected: all tests PASS (81 total — 75 pre-existing, plus 1 from Task 4 and 5
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/Presets.vue frontend/src/pages/Presets.test.js
 git commit -m "fix(presets): show only the actions the user may perform
 
@@ -808,7 +808,7 @@ The automated tests cover the rules; this confirms the actual rendered app behav
 - [ ] **Step 1: Start the stack**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench && bench start
+cd /home/ridwan/workspace/g20-daas/frappe-bench && bench start
 ```
 
 If the frontend is served by Vite in dev, also run `cd apps/webodm_frontend/frontend && npm run dev`.

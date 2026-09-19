@@ -31,8 +31,8 @@
 
 Repo roots:
 - Geospatial: `/home/ridwan/workspaces/webodm-geospatial` (venv at `venv/bin/python`, its own git repo).
-- Frappe core app: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core`.
-- Frontend app: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend`.
+- Frappe core app: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core`.
+- Frontend app: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend`.
 
 ---
 
@@ -425,8 +425,8 @@ git commit -m "feat: add POST /volume endpoint"
 ### Task 3: Frappe — `volume` tile-proxy method
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/tiles.py`
-- Create: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/test_tiles.py`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/tiles.py`
+- Create: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/test_tiles.py`
 
 **Interfaces:**
 - Consumes: existing `_resolve_raster_path(task_name, dataset)` (raises `frappe.DoesNotExistError` when the task has no such raster), `_geospatial_url()`, module-level `requests`. The geospatial `POST /volume` from Task 2.
@@ -434,7 +434,7 @@ git commit -m "feat: add POST /volume endpoint"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/test_tiles.py`:
+Create `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/test_tiles.py`:
 ```python
 import unittest
 from unittest.mock import patch, MagicMock
@@ -473,7 +473,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run (from `/home/ridwan/workspaces/frappe-webodm/frappe-bench`):
+Run (from `/home/ridwan/workspace/g20-daas/frappe-bench`):
 ```bash
 bench --site webodm.local run-tests --module webodm_core.api.test_tiles
 ```
@@ -481,7 +481,7 @@ Expected: FAIL — `AttributeError: module 'webodm_core.api.tiles' has no attrib
 
 - [ ] **Step 3: Add the proxy method**
 
-In `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core/webodm_core/api/tiles.py`, append at end of file:
+In `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/api/tiles.py`, append at end of file:
 ```python
 
 
@@ -508,7 +508,7 @@ def volume(task_name, polygon):
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run (from `/home/ridwan/workspaces/frappe-webodm/frappe-bench`):
+Run (from `/home/ridwan/workspace/g20-daas/frappe-bench`):
 ```bash
 bench --site webodm.local run-tests --module webodm_core.api.test_tiles
 ```
@@ -517,7 +517,7 @@ Expected: PASS — 2 tests OK.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_core
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core
 git add webodm_core/api/tiles.py webodm_core/api/test_tiles.py
 git commit -m "feat: add volume tile-proxy method forwarding to geospatial /volume"
 ```
@@ -527,15 +527,15 @@ git commit -m "feat: add volume tile-proxy method forwarding to geospatial /volu
 ### Task 4: Frontend — `formatVolume`
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/lib/format.js`
-- Test: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/lib/format.test.js`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/lib/format.js`
+- Test: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/lib/format.test.js`
 
 **Interfaces:**
 - Produces: `formatVolume({ volume, fill, cut, area }) -> string`. Consumed by `MapView.computeVolume` (Task 6).
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/lib/format.test.js` (add the import at the top and the new describe block):
+Append to `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/lib/format.test.js` (add the import at the top and the new describe block):
 
 At the top, change:
 ```js
@@ -573,7 +573,7 @@ Expected: FAIL — `formatVolume is not a function` / import undefined.
 
 - [ ] **Step 3: Add the implementation**
 
-Append to `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/lib/format.js`:
+Append to `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/lib/format.js`:
 ```js
 
 export function formatVolume({ volume, fill, cut, area } = {}) {
@@ -598,7 +598,7 @@ Expected: PASS — the three new `formatVolume` assertions plus the existing dis
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/lib/format.js frontend/src/lib/format.test.js
 git commit -m "feat: add formatVolume readout formatter"
 ```
@@ -610,8 +610,8 @@ git commit -m "feat: add formatVolume readout formatter"
 Extend the draw engine with a `volume` mode: draws a polygon exactly like `area`, but on finish calls an injected async `onVolume` callback and shows the returned string (with a "Computing…" interim state).
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/composables/useMeasure.js`
-- Test: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/composables/useMeasure.import.test.js`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/composables/useMeasure.js`
+- Test: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/composables/useMeasure.import.test.js`
 
 **Interfaces:**
 - Consumes: `formatDistance`, `formatArea` (existing); an optional `onVolume(latlngs: L.LatLng[]) -> Promise<string>` passed by the caller.
@@ -619,7 +619,7 @@ Extend the draw engine with a `volume` mode: draws a polygon exactly like `area`
 
 - [ ] **Step 1: Update the import smoke test**
 
-Replace the contents of `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/composables/useMeasure.import.test.js` with:
+Replace the contents of `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/composables/useMeasure.import.test.js` with:
 ```js
 import { describe, it, expect } from 'vitest'
 import { useMeasure } from '@/composables/useMeasure'
@@ -654,7 +654,7 @@ Run the command; if both tests already pass, that is acceptable here — the mea
 
 - [ ] **Step 3: Rewrite `useMeasure.js` with volume mode**
 
-Replace the entire contents of `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/composables/useMeasure.js` with:
+Replace the entire contents of `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/composables/useMeasure.js` with:
 ```js
 import { reactive } from 'vue'
 import L from 'leaflet'
@@ -828,7 +828,7 @@ Expected: PASS — both interface tests green (imports resolve, `onVolume` optio
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/composables/useMeasure.js frontend/src/composables/useMeasure.import.test.js
 git commit -m "feat: add volume mode to useMeasure (async onVolume + stale-result guard)"
 ```
@@ -840,7 +840,7 @@ git commit -m "feat: add volume mode to useMeasure (async onVolume + stale-resul
 Add the Volume toolbar button (disabled when the task has no DSM), the `computeVolume` backend call, and the `currentTask`/`hasDsm` state. Verified by SFC compile + symbol check + manual browser check.
 
 **Files:**
-- Modify: `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend/src/pages/MapView.vue`
+- Modify: `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend/src/pages/MapView.vue`
 
 **Interfaces:**
 - Consumes: `useMeasure(getMap, { onVolume })` (Task 5); `formatVolume` (Task 4); the whitelisted `webodm_core.api.tiles.volume` (Task 3). Existing symbols: `selectedTask` (task **name** string), `currentImages`, `toast`, `FeatherIcon`, `Button`, `map`.
@@ -989,7 +989,7 @@ With the geospatial service running (`venv/bin/uvicorn app.main:app --port 5000`
 - [ ] **Step 10: Commit**
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend
 git add frontend/src/pages/MapView.vue
 git commit -m "feat: MapView volume measurement (toolbar button + backend call)"
 ```

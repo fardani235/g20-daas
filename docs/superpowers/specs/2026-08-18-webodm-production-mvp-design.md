@@ -297,7 +297,7 @@ For MVP: local backups only are required. S3 is a "set env var and it works" upg
 
 ```bash
 # On the old host:
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench
+cd /home/ridwan/workspace/g20-daas/frappe-bench
 bench --site webodm.local backup --with-files --with-private-files
 
 # Copy to compose root:

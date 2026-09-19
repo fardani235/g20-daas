@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the dev-only `docker-compose.yml` at `/home/ridwan/workspaces/frappe-webodm/` with a production-grade MVP stack: Caddy + Frappe split per process + 2 Redis + Postgres/PostGIS + Geospatial + NodeODM + backup, all behind Docker secrets and segmented networks.
+**Goal:** Replace the dev-only `docker-compose.yml` at `/home/ridwan/workspace/g20-daas/` with a production-grade MVP stack: Caddy + Frappe split per process + 2 Redis + Postgres/PostGIS + Geospatial + NodeODM + backup, all behind Docker secrets and segmented networks.
 
 **Architecture:** Single-root docker-compose with 12 services split into 3 network tiers (frontend/backend/data). One Frappe image, multi-role via `FRAPPE_ROLE` env. Caddy terminates TLS via DNS-01 ACME (Cloudflare or Route53). Site init is a one-shot idempotent container. Backup runs as a cron container.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Workspace root:** `/home/ridwan/workspaces/frappe-webodm/` — all new files relative to here unless noted.
+- **Workspace root:** `/home/ridwan/workspace/g20-daas/` — all new files relative to here unless noted.
 - **Frappe version:** 16.26.3 (match `frappe-bench/sites/apps.json`).
 - **Python:** 3.14 (required by Frappe v16).
 - **Image name:** `webodm-frappe:16.26.3` (locally built, not pushed to a registry).
@@ -1633,7 +1633,7 @@ You have an existing Frappe bench installed on the host (the legacy `docker-comp
 
 ```bash
 # If using Procfile-based dev:
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench
+cd /home/ridwan/workspace/g20-daas/frappe-bench
 # Stop gunicorn / socketio / worker / scheduler / watch processes
 # Easiest: kill the supervisord process if used, or pkill -f 'bench serve'
 pkill -f 'bench serve' || true
@@ -1645,7 +1645,7 @@ pkill -f 'bench socketio' || true
 ### 2. Take a backup on the host
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench
+cd /home/ridwan/workspace/g20-daas/frappe-bench
 bench --site webodm.local backup --with-files --with-private-files
 ls -l sites/webodm.local/private/backups/
 ```
@@ -1657,7 +1657,7 @@ Note the latest timestamped files:
 ### 3. Copy the backup into the compose stack's migration area
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm
+cd /home/ridwan/workspace/g20-daas
 mkdir -p migration
 cp frappe-bench/sites/webodm.local/private/backups/<timestamp>-webodm-local-* migration/
 ls -l migration/
@@ -1723,7 +1723,7 @@ If migration fails, the host-side bench is untouched (you only `pkill`ed its pro
 
 ```bash
 # On the host:
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench
+cd /home/ridwan/workspace/g20-daas/frappe-bench
 bench serve --port 8080 &
 bench worker &
 bench schedule &

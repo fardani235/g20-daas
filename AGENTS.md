@@ -37,7 +37,7 @@
   - istable: 1 (child table)
 
 ### DocType file locations
-- `/home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/<name>/`
+- `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/<name>/`
 - Each has: `__init__.py`, `<name>.json` (schema), `<name>.py` (controller)
 
 ### Infrastructure
@@ -130,15 +130,15 @@ docker start webodm-nodeodm  # NodeODM on 3000
 redis-server --port 13000 --daemonize yes
 redis-server --port 11000 --daemonize yes
 # Frappe web server
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/sites && gunicorn -b 127.0.0.1:8080 -w 4 frappe.app:application
+cd /home/ridwan/workspace/g20-daas/frappe-bench/sites && gunicorn -b 127.0.0.1:8080 -w 4 frappe.app:application
 # Vite dev server
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend && npm run dev
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend && npm run dev
 ```
 
 ## How to start services
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench
+cd /home/ridwan/workspace/g20-daas/frappe-bench
 source env/bin/activate
 
 # PostgreSQL (Docker)
@@ -152,7 +152,7 @@ redis-server --port 11000 --daemonize yes
 cd sites && gunicorn -b 127.0.0.1:8080 -w 4 frappe.app:application
 
 # Vite dev server (from frontend/ dir)
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench/apps/webodm_frontend/frontend
+cd /home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/frontend
 npm run dev
 ```
 

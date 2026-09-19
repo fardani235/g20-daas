@@ -31,7 +31,7 @@ the compose stack will fail healthchecks or hit port conflicts.
 
 ```bash
 # If you used bench start (Procfile / honcho):
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench
+cd /home/ridwan/workspace/g20-daas/frappe-bench
 pkill -f 'bench serve'   || true
 pkill -f 'bench worker'  || true
 pkill -f 'bench schedule' || true
@@ -54,7 +54,7 @@ ss -ltnp | grep -E ':(8000|9000) ' || echo "OK: ports 8000/9000 are free"
 ### 2. Take a backup on the host
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench
+cd /home/ridwan/workspace/g20-daas/frappe-bench
 source env/bin/activate
 bench --site webodm.local backup --with-files
 ls -l sites/webodm.local/private/backups/
@@ -74,7 +74,7 @@ The compose stack's `frappe-init` restore path expects backups under
 bind-mounted host directory and `docker cp` them in.
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm
+cd /home/ridwan/workspace/g20-daas
 mkdir -p migration
 TS=20260819_004608                # <- the timestamp from Step 2
 cp frappe-bench/sites/webodm.local/private/backups/${TS}-webodm-local-database.sql.gz \
@@ -128,7 +128,7 @@ inside a container that has access to that same volume AND has the `bench`
 CLI on PATH — the `frappe-init` image is the right one (it has both).
 
 ```bash
-cd /home/ridwan/workspaces/frappe-webodm
+cd /home/ridwan/workspace/g20-daas
 TS=20260819_004608                # the timestamp captured in Step 2
 
 # Start frappe-init as a long-running container (not `run --rm`) so we can
@@ -269,7 +269,7 @@ the `frappe-bench/sites/` directory still exists on disk). To roll back:
 docker compose --profile init down
 
 # On the host:
-cd /home/ridwan/workspaces/frappe-webodm/frappe-bench
+cd /home/ridwan/workspace/g20-daas/frappe-bench
 source env/bin/activate
 bench serve --port 8000 &
 bench worker --queue default,long,short &
