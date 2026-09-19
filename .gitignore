@@ -17,3 +17,23 @@ migration/
 *.bak
 .idea/
 .vscode/
+
+# Runtime / generated artifacts
+*.rdb
+*.sess
+logs/
+frappe-bench/config/
+frappe-bench/patches.txt
+frappe-bench/sites/apps.json
+frappe-bench/sites/common_site_config.json
+frappe-bench/sites/*/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local agent / tooling caches
+.opencode/
+.claude/
+.superpowers/
+.backups/
+.playwright-mcp/
