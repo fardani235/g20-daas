@@ -1122,7 +1122,7 @@ cd ~/webodm-deploy
 docker compose exec backup /usr/local/bin/backup.sh
 
 # Check backup files
-ls -la /var/lib/docker/volumes/webodm_backup_storage/_data/
+ls -la /var/lib/docker/volumes/g20-daas_backup_storage/_data/
 ```
 
 ### 12.3 Backup Verification
@@ -1142,7 +1142,7 @@ cd ~/webodm-deploy
 docker compose down
 
 # 2. Remove data volumes (DANGEROUS - only in disaster)
-docker volume rm webodm_postgres_data webodm_frappe_sites webodm_frappe_data
+docker volume rm g20-daas_postgres_data g20-daas_frappe_sites g20-daas_frappe_data
 
 # 3. Recreate volumes
 docker compose up -d postgres redis-cache redis-queue
@@ -1355,7 +1355,7 @@ cd ~/webodm-deploy
 docker compose down -v
 
 # 2. Remove all data (IRREVERSIBLE)
-docker volume rm $(docker volume ls -q | grep webodm)
+docker volume rm $(docker volume ls -q | grep g20-daas)
 
 # 3. Pull images
 docker compose pull

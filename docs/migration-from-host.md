@@ -115,7 +115,7 @@ force-recreate, delete the `frappe_sites` named volume first:
 
 ```bash
 docker compose down
-docker volume rm webodm_frappe_sites
+docker volume rm g20-daas_frappe_sites
 docker compose up -d postgres redis-cache redis-queue
 docker compose run --rm frappe-init
 ```

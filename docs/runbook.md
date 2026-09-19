@@ -1,8 +1,9 @@
 # WebODM Docker Compose — Operational Runbook
 
 Day-to-day operations for the WebODM Frappe + Vue + Geospatial stack run entirely
-in Docker Compose. The compose project is named `webodm` and the project root is
-the repo root (where `docker-compose.yml` lives).
+in Docker Compose. The compose project is named `g20-daas` and the project root is
+the repo root (where `docker-compose.yml` lives). Override the project name with
+the `COMPOSE_PROJECT_NAME` env var when running more than one stack on a host.
 
 ## Service map
 
@@ -263,7 +264,7 @@ can lock the system in. Reset:
 
 ```bash
 docker compose down
-docker volume rm webodm_frappe_sites
+docker volume rm g20-daas_frappe_sites
 docker compose up -d postgres redis-cache redis-queue
 docker compose run --rm frappe-init
 docker compose up -d

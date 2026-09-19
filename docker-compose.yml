@@ -1,4 +1,4 @@
-name: webodm
+name: g20-daas
 
 x-frappe-image: &frappe-image
   image: ghcr.io/fardani235/webodm-frappe:${FRAPPE_VERSION:-16.26.3}
