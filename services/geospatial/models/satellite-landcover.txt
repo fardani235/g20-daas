@@ -1,0 +1,7 @@
+background
+residential_area
+road
+river
+forest
+unused_land
+agricultural_area
