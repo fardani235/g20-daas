@@ -9,6 +9,7 @@ export default {
     extend: {
       fontFamily: {
         sans: [
+          '"Plus Jakarta Sans"',
           '-apple-system',
           'BlinkMacSystemFont',
           'Segoe UI',
@@ -17,7 +18,21 @@ export default {
           'Arial',
           'sans-serif',
         ],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        display: [
+          '"Space Grotesk"',
+          '"Plus Jakarta Sans"',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Segoe UI',
+          'sans-serif',
+        ],
+        mono: [
+          '"JetBrains Mono"',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'monospace',
+        ],
       },
       colors: {
         background: 'hsl(var(--background) / <alpha-value>)',
@@ -74,10 +89,27 @@ export default {
           from: { opacity: '0', transform: 'translateY(12px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        'radar-sweep': {
+          from: { transform: 'rotate(0deg)' },
+          to: { transform: 'rotate(360deg)' },
+        },
+        'scan-line': {
+          '0%': { transform: 'translateY(0%)', opacity: '0.9' },
+          '50%': { opacity: '1' },
+          '100%': { transform: 'translateY(100%)', opacity: '0.2' },
+        },
+        'pulse-ring': {
+          '0%': { transform: 'scale(0.95)', opacity: '0.8' },
+          '50%': { transform: 'scale(1.15)', opacity: '0.4' },
+          '100%': { transform: 'scale(0.95)', opacity: '0.8' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.3s ease-out both',
         'slide-up': 'slide-up 0.4s ease-out both',
+        'radar-sweep': 'radar-sweep 8s linear infinite',
+        'scan-line': 'scan-line 3s ease-in-out infinite',
+        'pulse-ring': 'pulse-ring 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
     },
   },
