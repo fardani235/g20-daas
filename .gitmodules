@@ -1,0 +1,3 @@
+[submodule "frappe-bench/apps/frappe"]
+	path = frappe-bench/apps/frappe
+	url = https://github.com/frappe/frappe.git
