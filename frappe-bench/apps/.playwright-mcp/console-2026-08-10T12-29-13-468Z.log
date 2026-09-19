@@ -1,2 +1,0 @@
-[     578ms] [ERROR] Failed to load resource: the server responded with a status of 403 (FORBIDDEN) @ http://127.0.0.1:8081/api/method/webodm_core.api.csrf.get_token:0
-[     625ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8081/favicon.ico:0
