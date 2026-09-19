@@ -18,7 +18,7 @@ admin.{$SITE_DOMAIN} {
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "geolocation=(), microphone=(), camera=()"
-        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com; connect-src 'self' wss://admin.{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none'"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; connect-src 'self' wss://admin.{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'"
         -Server
     }
 
@@ -58,7 +58,7 @@ admin.{$SITE_DOMAIN} {
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "geolocation=(), microphone=(), camera=()"
-        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com; connect-src 'self' wss://{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none'"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; connect-src 'self' wss://{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'"
         -Server
     }
 
