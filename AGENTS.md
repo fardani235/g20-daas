@@ -37,15 +37,16 @@
   - istable: 1 (child table)
 
 ### DocType file locations
-- `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/<name>/`
+- `/home/ridwan/workspace/g20-daas/frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/<name>/`
 - Each has: `__init__.py`, `<name>.json` (schema), `<name>.py` (controller)
+- Note: all DocTypes live in `webodm_core`; `webodm_frontend` has no DocTypes.
 
 ### Infrastructure
 - PostgreSQL: Docker container `webodm-db` (postgis/postgis:16-3.4) on port 5432
 - DB: `webodm` (user: `webodm`, password: `webodm`)
 - Redis: cache (13000), queue (11000)
 - `common_site_config.json`: `root_login: postgres`, `root_password: postgres`
-- `site_config.json`: 4 apps installed (`frappe`, `webodm_core`, `webodm_frontend`, `webodm_geospatial`), `webserver_port: 8080`, `max_file_size: 209715200` (200MB)
+- `site_config.json`: 3 apps installed (`frappe`, `webodm_core`, `webodm_frontend`), `webserver_port: 8080`, `max_file_size: 10737418240` (10GB)
 
 ## Phase 3: Frontend Pages + Upload Pipeline + GPS Fix
 
@@ -69,15 +70,18 @@
 - **DB columns**: `latitude`/`longitude` are nullable Float (manually `ALTER COLUMN DROP NOT NULL, DROP DEFAULT` since `bench migrate` didn't alter existing cols).
 
 ### Phase 2 Extended DocTypes (added 2026-07-13)
-- **WebODM Project Tag** — child table for project tags (webodm_frontend)
-- **WebODM Processing Node** — NodeODM/MicMac/ODX/LGT node registry, hostname/port/engine/queue/max_images (webodm_core)
-- **WebODM Preset** — named processing option presets, system/user scope (webodm_frontend)
-- **WebODM Settings** — Single DocType, global config (basemap, limits, notifications) (webodm_frontend)
-- **WebODM Theme** — Light/Dark/System themes with name + type selector (webodm_frontend)
-- **WebODM Basemap** — TMS/WMS tile sources with URL, zoom, attribution (webodm_frontend)
-- **WebODM Plugin** — plugin registry with name/version/enabled/settings (webodm_core)
-- **WebODM Redirect** — cluster routing path/URL mappings (webodm_core)
-- **Dataset Config** — task dataset metadata, type/file/crs/bounds (webodm_geospatial)
+All DocTypes below live in `webodm_core` (the `webodm_frontend` app has no DocTypes).
+- **WebODM Project Tag** — child table for project tags
+- **WebODM Processing Node** — NodeODM/MicMac/ODX/LGT node registry, hostname/port/engine/queue/max_images
+- **WebODM Preset** — named processing option presets, system/user scope
+- **WebODM Settings** — Single DocType, global config (basemap, limits, notifications)
+- **WebODM Theme** — Light/Dark/System themes with name + type selector
+- **WebODM Basemap** — TMS/WMS tile sources with URL, zoom, attribution
+- **WebODM Plugin** — plugin registry with name/version/enabled/settings
+- **WebODM Redirect** — cluster routing path/URL mappings
+- **Dataset Config** — removed 2026-08-15 along with the `webodm_geospatial` Frappe app;
+  task dataset metadata now lives on `WebODM Task` (epsg/wkt/extent fields) and the
+  standalone `services/geospatial` service
 
 ### Theme Switcher (frontend)
 - `composables/useTheme.js` — persists to localStorage, cycles Light→Dark→System, `dark` class on `<html>`, listens to `prefers-color-scheme`
@@ -185,18 +189,18 @@ npm run dev
 - `frappe-bench/sites/common_site_config.json`
 
 ### DocTypes
-- `frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/webodm_project/`
-- `frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/webodm_task/`
-- `frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/webodm_task_image/`
-- `frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/webodm_project_tag/`
-- `frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/webodm_preset/`
-- `frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/webodm_settings/`
-- `frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/webodm_theme/`
-- `frappe-bench/apps/webodm_frontend/webodm_frontend/webodm_frontend/doctype/webodm_basemap/`
+All DocTypes live in `webodm_core`:
+- `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_project/`
+- `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_task/`
+- `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_task_image/`
+- `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_project_tag/`
+- `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_preset/`
+- `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_settings/`
+- `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_theme/`
+- `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_basemap/`
 - `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_processing_node/`
 - `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_plugin/`
 - `frappe-bench/apps/webodm_core/webodm_core/webodm_core/doctype/webodm_redirect/`
-- `frappe-bench/apps/webodm_geospatial/webodm_geospatial/webodm_geospatial/doctype/dataset_config/`
 
 ## Phase 4: Docker Compose Stack Fixes (2026-08-27)
 

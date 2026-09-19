@@ -9,7 +9,7 @@ processing.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                     nginx (:8080)                         │
+│            Caddy (:80, :443) — TLS termination            │
 └────────┬──────────────┬────────────────┬────────────────┘
          │              │                │
 ┌────────▼───────┐ ┌────▼────────┐ ┌─────▼──────────────┐
@@ -28,15 +28,20 @@ processing.
 └────────────────┘
 ```
 
-### Repositories
+### Repository layout
 
-| Directory | Purpose |
+This is a monorepo. `webodm_core`, `webodm_frontend`, and the geospatial service
+are tracked directly in this repository; `frappe` is the only external app (a git
+submodule).
+
+| Path | Purpose |
 |---|---|
 | `frappe-bench/` | Frappe Bench environment (v16.26.3) |
-| `frappe-bench/apps/webodm_core/` | Core DocTypes + business logic |
+| `frappe-bench/apps/frappe/` | Frappe framework (submodule, upstream `frappe/frappe`) |
+| `frappe-bench/apps/webodm_core/` | All DocTypes, business logic, and API |
 | `frappe-bench/apps/webodm_frontend/` | Vue 3 SPA + Frappe page hooks |
-| `frappe-bench/apps/webodm_geospatial/` | Thin DocTypes for tile config |
-| [webodm-geospatial](../webodm-geospatial/) | Standalone FastAPI tile/export service |
+| `services/geospatial/` | Standalone FastAPI tile/analysis service |
+| `infra/` | Caddy, backup, and image build assets |
 
 ## Tech Stack
 
@@ -101,7 +106,7 @@ bench start
 ```bash
 cd apps/webodm_frontend/frontend
 npm run dev
-# Runs on http://localhost:5173, proxies /api to Frappe
+# Runs on http://localhost:8081, proxies /api to Frappe
 ```
 
 ### Build Frontend
@@ -115,7 +120,7 @@ npm run build
 ### Geospatial Service
 
 ```bash
-cd /path/to/webodm-geospatial
+cd services/geospatial
 
 # Create venv and install
 python3 -m venv venv
@@ -135,15 +140,18 @@ docker compose up -d
 ## Project Structure
 
 ```
-frappe-webodm/
+g20-daas/
 ├── .env                          # Environment variables
 ├── docker-compose.yml            # Full stack orchestration
-├── Procfile                      # bench start process definitions
 ├── README.md                     # This file
 ├── SPEC.md                       # Specification document
 ├── TRD.md                        # Technical requirements document
+├── docs/                         # Runbook, deployment guide, migration
+├── infra/                        # Caddy, backup, image build assets
+├── services/geospatial/          # Standalone FastAPI geospatial service
 │
 └── frappe-bench/                 # Frappe Bench root
+    ├── Procfile                  # bench start process definitions
     ├── apps/
     │   ├── frappe/               # Frappe framework v16.26.3
     │   ├── webodm_core/          # DocTypes + business logic
@@ -170,9 +178,6 @@ frappe-webodm/
     │   │       ├── hooks.py       # Frappe hooks (page registration)
     │   │       └── public/        # Built frontend assets
     │   │
-    │   └── webodm_geospatial/    # Thin DocTypes for tile config
-    │       └── webodm_geospatial/
-    │
     ├── sites/
     │   ├── common_site_config.json
     │   └── webodm.local/
@@ -182,20 +187,23 @@ frappe-webodm/
     ├── config/                   # Redis configs
     └── logs/                     # Log files
 
-webodm-geospatial/                # Separate workspace
+services/geospatial/              # Standalone FastAPI service
 ├── app/
 │   ├── main.py                   # FastAPI entrypoint
 │   ├── routers/
 │   │   ├── tiles.py              # TMS tile endpoints
-│   │   ├── export.py             # Raster export endpoints
-│   │   └── pointcloud.py         # Point cloud endpoints
+│   │   ├── export.py             # Raster export + COG endpoints
+│   │   ├── pointcloud.py         # Point cloud endpoints
+│   │   ├── analysis.py           # Analysis plugin endpoints
+│   │   └── volume.py             # Volume measurement endpoints
 │   ├── models/task.py            # Pydantic models
 │   └── utils/
 │       ├── raster.py             # GDAL/rasterio helpers
 │       └── storage.py            # File path resolution
 ├── Dockerfile
 ├── docker-compose.yml
-└── requirements.txt
+├── requirements.txt
+└── tests/
 ```
 
 ## Key Commands

@@ -14,7 +14,7 @@ back at any point (see [Rollback](#rollback)).
 
 - Host-side `frappe-bench/` directory still exists (check `ls frappe-bench/sites/`).
 - The Docker Compose stack is configured at the repo root (this directory).
-- `docker compose --profile init config --quiet` exits 0 (compose file is valid).
+- `docker compose config --quiet` exits 0 (compose file is valid).
 - You have shell access as the user that owns `frappe-bench/`.
 
 The backup file format is the one produced by `bench backup --with-files` (database dump
@@ -88,14 +88,14 @@ ls -l migration/
 ### 4. Bring up only the data tier first
 
 ```bash
-docker compose --profile init up -d postgres redis-cache redis-queue
-docker compose --profile init ps   # all three should be 'Up (healthy)'
+docker compose up -d postgres redis-cache redis-queue
+docker compose ps   # all three should be 'Up (healthy)'
 ```
 
 Wait ~10 seconds for healthchecks to flip from `starting` to `healthy`:
 
 ```bash
-docker compose --profile init ps --format '{{.Service}}\t{{.Status}}' \
+docker compose ps --format '{{.Service}}\t{{.Status}}' \
   | grep -E 'postgres|redis'
 ```
 
@@ -106,7 +106,7 @@ docker compose --profile init ps --format '{{.Service}}\t{{.Status}}' \
 > that's what we're migrating from.
 
 ```bash
-docker compose --profile init run --rm frappe-init
+docker compose run --rm frappe-init
 ```
 
 This creates an empty `webodm.local` site and installs `webodm_core` and `webodm_frontend`.
@@ -114,10 +114,10 @@ The idempotency guard in `infra/frappe/init.sh` will skip on a re-run — if you
 force-recreate, delete the `frappe_sites` named volume first:
 
 ```bash
-docker compose --profile init down
+docker compose down
 docker volume rm webodm_frappe_sites
-docker compose --profile init up -d postgres redis-cache redis-queue
-docker compose --profile init run --rm frappe-init
+docker compose up -d postgres redis-cache redis-queue
+docker compose run --rm frappe-init
 ```
 
 ### 6. Restore the backup into the empty site
@@ -133,25 +133,25 @@ TS=20260819_004608                # the timestamp captured in Step 2
 
 # Start frappe-init as a long-running container (not `run --rm`) so we can
 # `docker cp` into it AND `docker exec` bench restore.
-docker compose --profile init up -d frappe-init
+docker compose up -d frappe-init
 
 # Copy the four backup files into the container. The container's
 # /workspace/frappe-bench/sites/webodm.local/private/backups/ already exists
 # (Step 5 created it during bench new-site).
-docker compose --profile init cp migration/${TS}-webodm-local-database.sql.gz \
+docker compose cp migration/${TS}-webodm-local-database.sql.gz \
   frappe-init:/workspace/frappe-bench/sites/webodm.local/private/backups/
-docker compose --profile init cp migration/${TS}-webodm-local-files.tar \
+docker compose cp migration/${TS}-webodm-local-files.tar \
   frappe-init:/workspace/frappe-bench/sites/webodm.local/private/backups/
-docker compose --profile init cp migration/${TS}-webodm-local-private-files.tar \
+docker compose cp migration/${TS}-webodm-local-private-files.tar \
   frappe-init:/workspace/frappe-bench/sites/webodm.local/private/backups/
-docker compose --profile init cp migration/${TS}-webodm-local-site_config_backup.json \
+docker compose cp migration/${TS}-webodm-local-site_config_backup.json \
   frappe-init:/workspace/frappe-bench/sites/webodm.local/private/backups/
 
 # Now run the restore via docker exec into the same container. The restore
 # wipes the empty site created in Step 5 and replaces it with the backed-up one.
 # Note: --with-private-files is implicit in modern bench restore when --with-files
 # is passed (Frappe v13+ bundles both into --with-files from --with-files).
-docker compose --profile init exec -T frappe-init \
+docker compose exec -T frappe-init \
   bench --site webodm.local restore \
     /workspace/frappe-bench/sites/webodm.local/private/backups/${TS}-webodm-local-database.sql.gz \
     --with-private-files /workspace/frappe-bench/sites/webodm.local/private/backups/${TS}-webodm-local-private-files.tar
@@ -159,14 +159,14 @@ docker compose --profile init exec -T frappe-init \
 
 (`bench restore` errors out if you try to restore into a non-empty site. If you see
 "IntegrityError" or "table already exists", drop the application DB first via
-`docker compose --profile init exec -T postgres psql -U webodm -d postgres -c "DROP DATABASE webodm;"`
+`docker compose exec -T postgres psql -U webodm -d postgres -c "DROP DATABASE webodm;"`
 and re-run `frappe-init` from Step 5.)
 
 Stop the disposable `frappe-init` container so it doesn't block the long-running
 `frappe-web`'s `depends_on: service_completed_successfully` check at startup:
 
 ```bash
-docker compose --profile init stop frappe-init
+docker compose stop frappe-init
 ```
 
 ### 7. Update `site_config.json` to point at the container DB
@@ -177,15 +177,15 @@ and override:
 
 ```bash
 # Inspect the restored config to see what hostname / port the backup wrote:
-docker compose --profile init run --rm --no-deps frappe-init \
+docker compose run --rm --no-deps frappe-init \
   python3 -c "import json,sys; print(json.dumps(json.load(open('/workspace/frappe-bench/sites/webodm.local/site_config.json'))))"
 
 # If db_host is anything other than 'postgres', fix it:
-docker compose --profile init run --rm --no-deps frappe-init \
+docker compose run --rm --no-deps frappe-init \
   bench --site webodm.local set-config db_host postgres
 
 # Same for db_port (should be 5432):
-docker compose --profile init run --rm --no-deps frappe-init \
+docker compose run --rm --no-deps frappe-init \
   bench --site webodm.local set-config db_port 5432
 ```
 
@@ -210,18 +210,18 @@ flood of catch-up jobs. Run `bench migrate` to clear them, then start the stack:
 
 ```bash
 # Migrate from inside frappe-init (the disposable container has bench on PATH).
-docker compose --profile init run --rm --no-deps frappe-init \
+docker compose run --rm --no-deps frappe-init \
   bench --site webodm.local migrate
 
 # Now bring up the long-running services.
-docker compose --profile init up -d frappe-web frappe-worker frappe-scheduler frappe-socketio
+docker compose up -d frappe-web frappe-worker frappe-scheduler frappe-socketio
 ```
 
 `frappe-web` has a healthcheck on `http://localhost:8000/api/method/ping`; wait
 until it flips to `(healthy)`:
 
 ```bash
-docker compose --profile init ps frappe-web
+docker compose ps frappe-web
 # ... Up X minutes (healthy)
 ```
 
@@ -229,7 +229,7 @@ docker compose --profile init ps frappe-web
 
 ```bash
 # Direct probe to the web container (bypasses Caddy, no TLS):
-docker compose --profile init exec -T frappe-web \
+docker compose exec -T frappe-web \
   curl -fsS http://localhost:8000/api/method/ping
 # {"message":"pong"}
 
@@ -242,16 +242,16 @@ Login at `https://webodm.local/` with `Administrator` and your existing admin pa
 If you forgot it, reset:
 
 ```bash
-docker compose --profile init exec -T frappe-web \
+docker compose exec -T frappe-web \
   bench --site webodm.local set-admin-password 'new-password-here'
 ```
 
 ### 10. Confirm scheduler and worker are picking up jobs
 
 ```bash
-docker compose --profile init logs --tail=100 frappe-scheduler
+docker compose logs --tail=100 frappe-scheduler
 RC=$(cat secrets/redis_cache_password.txt)
-docker compose --profile init exec -T redis-cache \
+docker compose exec -T redis-cache \
   redis-cli -p 13000 -a "$RC" LLEN rq:queue:default
 ```
 
@@ -266,7 +266,7 @@ the `frappe-bench/sites/` directory still exists on disk). To roll back:
 
 ```bash
 # Stop the compose stack (do NOT use -v, that would wipe the host volumes)
-docker compose --profile init down
+docker compose down
 
 # On the host:
 cd /home/ridwan/workspace/g20-daas/frappe-bench

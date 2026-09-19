@@ -77,4 +77,4 @@ task, re-upload the **original** images (with EXIF intact) and reprocess:
 ## Related
 
 - `frappe-bench/apps/webodm_core/README.md` — pipeline + EXIF requirement.
-- `webodm-geospatial/README.md` — COG conversion and tile serving.
+- `services/geospatial/README.md` — COG conversion and tile serving.

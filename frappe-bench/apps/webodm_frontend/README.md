@@ -4,12 +4,12 @@ Vue.js frontend for WebODM Frappe app
 
 ### Installation
 
-You can install this app using the [bench](https://github.com/frappe/bench) CLI:
+`webodm_frontend` lives inside the `g20-daas` monorepo (it is not a standalone
+repo), so it is installed from the monorepo checkout rather than via `bench get-app`:
 
 ```bash
-cd $PATH_TO_YOUR_BENCH
-bench get-app $URL_OF_THIS_REPO --branch HEAD
-bench install-app webodm_frontend
+cd frappe-bench
+bench --site <site> install-app webodm_frontend
 ```
 
 ### Contributing

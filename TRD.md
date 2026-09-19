@@ -96,11 +96,14 @@ Defined in `webodm_frontend/frontend/package.json`:
 
 ## 3. Docker Images
 
-### 3.1 Frappe Image (`frappe/bench:v16`)
+### 3.1 Frappe Image (`ghcr.io/fardani235/webodm-frappe:16.26.3`)
 - Base: Ubuntu 24.04
 - Python 3.14, Node.js, wkhtmltopdf (optional)
-- Pre-installed bench, Frappe framework
+- Pre-installed bench, Frappe framework, `webodm_core` + `webodm_frontend` apps,
+  and the built Vue SPA assets
 - Multi-service image: web, worker, scheduler
+- Built by `frappe-bench/apps/Dockerfile`; the `build:` block in
+  `docker-compose.yml` is commented out, so deploys pull this image from GHCR
 
 ### 3.2 Geospatial Image (Custom)
 - Base: Ubuntu 24.04
@@ -127,8 +130,7 @@ Defined in `webodm_frontend/frontend/package.json`:
   "installed_apps": [
     "frappe",
     "webodm_core",
-    "webodm_frontend",
-    "webodm_geospatial"
+    "webodm_frontend"
   ]
 }
 ```
@@ -140,10 +142,10 @@ Defined in `webodm_frontend/frontend/package.json`:
 | `DB_NAME` | webodm | Database name |
 | `DB_USER` | webodm | Database user |
 | `SITE_NAME` | webodm.local | Frappe site name |
-| `WO_PORT` | 8000 | Web server port |
+| `WO_PORT` | 8080 | Web server port |
 | `ADMIN_PASSWORD` | admin | Frappe admin password |
-| `REDIS_CACHE` | redis://redis:6379 | Redis cache URL |
-| `REDIS_QUEUE` | redis://redis:6379 | Redis queue URL |
+| `REDIS_CACHE` | redis://redis-cache:13000 | Redis cache URL |
+| `REDIS_QUEUE` | redis://redis-queue:11000 | Redis queue URL |
 
 ## 5. Task Processing Requirements
 
@@ -219,7 +221,7 @@ EPSG:4326) is persisted on the task at download time via `/export/cogify`.
 | CSRF protection | Frappe built-in token system |
 | File upload validation | MIME type, size limit (configurable) |
 | Encryption at rest | Disk-level (LUKS) recommended |
-| TLS | Nginx termination recommended |
+| TLS | Caddy termination recommended |
 | Rate limiting | Frappe built-in (login attempts) |
 | Audit logging | Frappe Activity Log DocType |
 | Backups | PostgreSQL pg_dump, asset volume snapshot |

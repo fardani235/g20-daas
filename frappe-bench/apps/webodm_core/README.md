@@ -61,12 +61,12 @@ and how to re-run tasks whose images were uploaded before the fix.
 
 ### Installation
 
-You can install this app using the [bench](https://github.com/frappe/bench) CLI:
+`webodm_core` lives inside the `g20-daas` monorepo (it is not a standalone repo),
+so it is installed from the monorepo checkout rather than via `bench get-app`:
 
 ```bash
-cd $PATH_TO_YOUR_BENCH
-bench get-app $URL_OF_THIS_REPO --branch HEAD
-bench install-app webodm_core
+cd frappe-bench
+bench --site <site> install-app webodm_core
 ```
 
 ### Configuration

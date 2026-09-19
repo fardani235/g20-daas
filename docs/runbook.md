@@ -12,12 +12,12 @@ the repo root (where `docker-compose.yml` lives).
 | `postgres` | `postgis/postgis:16-3.4` | — | Application DB + PostGIS. Only on the `data` and `backend` networks |
 | `redis-cache` | `redis:7-alpine` | — | Frappe's cache (port 13000, auth). Backend + data |
 | `redis-queue` | `redis:7-alpine` | — | Frappe's RQ (port 11000, auth, AOF). Backend + data |
-| `frappe-init` | `webodm-frappe:16.26.3` | — | One-shot bootstrap (`bench new-site webodm.local`). Lives in `profiles: ["init"]` |
+| `frappe-init` | `webodm-frappe:16.26.3` | — | One-shot bootstrap (`bench new-site webodm.local`) |
 | `frappe-web` | `webodm-frappe:16.26.3` | — | Gunicorn on 8000. The web tier |
 | `frappe-worker` | `webodm-frappe:16.26.3` | — | RQ worker for `default,long,short` queues |
 | `frappe-scheduler` | `webodm-frappe:16.26.3` | — | `bench schedule` cron loop |
 | `frappe-socketio` | `webodm-frappe:16.26.3` | — | Node socketio on 9000 (real-time updates) |
-| `geospatial` | `webodm-geospatial` | — | FastAPI tile/export service on 5000 |
+| `geospatial` | `webodm-geospatial:1` | — | FastAPI tile/export service on 5000 |
 | `nodeodm` | `opendronemap/nodeodm:latest` | — | ODM processing engine on 3000 |
 | `backup` | `webodm-backup:1` | — | systemd-cron + bench backup, hourly at 03:00 by default |
 
@@ -47,24 +47,25 @@ $EDITOR .env   # set SITE_DOMAIN, DNS provider token, backup target, etc.
 # 5. Add /etc/hosts entry for the local domain (dev only — production uses real DNS)
 echo "127.0.0.1 ${SITE_DOMAIN}" | sudo tee -a /etc/hosts
 
-# 6. Build the custom images (caddy, frappe, backup, geospatial).
-#    First build takes 10-15 minutes; subsequent builds are incremental.
-docker compose --profile init build
+# 6. Pull the custom images (caddy, frappe, backup, geospatial) from GHCR.
+#    The build: blocks in docker-compose.yml are commented out, so deploys pull
+#    prebuilt images. To rebuild locally, see frappe-bench/apps/Dockerfile.
+docker compose pull caddy frappe-web geospatial backup
 
 # 7. Start the data tier and wait for healthy
-docker compose --profile init up -d postgres redis-cache redis-queue
+docker compose up -d postgres redis-cache redis-queue
 sleep 10
-docker compose --profile init ps --format '{{.Service}}: {{.Status}}' \
+docker compose ps --format '{{.Service}}: {{.Status}}' \
   | grep -E 'postgres|redis'
 
 # 8. Bootstrap the site (one-time). Creates webodm.local + installs apps.
-docker compose --profile init run --rm frappe-init
+docker compose run --rm frappe-init
 
 # 9. Start the rest (web, worker, scheduler, socketio, geospatial, nodeodm, backup, caddy)
-docker compose --profile init up -d
+docker compose up -d
 
 # 10. Watch the TLS bootstrap
-docker compose --profile init logs -f caddy
+docker compose logs -f caddy
 ```
 
 Login at `https://${SITE_DOMAIN}/` with `Administrator` and the password from
@@ -87,33 +88,31 @@ Login at `https://${SITE_DOMAIN}/` with `Administrator` and the password from
 
 ## Day-to-day operations
 
-> **Important:** Always pass `--profile init` to `docker compose` commands. The
-> `frappe-init` service is in `profiles: ["init"]` but is referenced by the
-> `web`/`worker`/`scheduler`/`socketio`/`backup` `depends_on` blocks. Without
-> `--profile init`, compose reports
-> `service "frappe-worker" depends on undefined service "frappe-init": invalid compose project`.
+> **Note:** `docker-compose.yml` defines no Compose profiles — every service is
+> always in scope, so `--profile init` is not needed. The `frappe-init` service is
+> a regular one-shot service (`profiles: ["init"]` was removed).
 
 | Task | Command |
 |---|---|
-| Status of all services | `docker compose --profile init ps` |
-| Tail web logs | `docker compose --profile init logs -f --tail=200 frappe-web` |
-| Tail all Frappe logs | `docker compose --profile init logs -f --tail=50 frappe-web frappe-worker frappe-scheduler frappe-socketio` |
-| Restart the web tier | `docker compose --profile init restart frappe-web` |
-| Restart everything | `docker compose --profile init restart` |
-| Open a bench console | `docker compose --profile init exec frappe-web bench --site ${SITE_NAME:-webodm.local} console` |
-| Run `bench doctor` | `docker compose --profile init exec frappe-web bench --site ${SITE_NAME:-webodm.local} doctor` ⚠️ may fail with `AuthenticationError` against the auth-enabled Redis; treat as informational only |
-| Run `bench migrate` | `docker compose --profile init exec frappe-web bench --site ${SITE_NAME:-webodm.local} migrate` |
-| Trigger a backup now | `docker compose --profile init exec backup /usr/local/bin/backup.sh` |
-| List local backups | `docker compose --profile init exec backup ls -l /backups` |
-| Tail backup logs | `docker compose --profile init logs -f --tail=100 backup` |
-| Live tail of cron | `docker compose --profile init exec backup tail -f /var/log/cron.log` |
-| Update custom images | `docker compose --profile init build && docker compose --profile init up -d` |
-| Pull upstream images | `docker compose --profile init pull postgres redis-cache redis-queue nodeodm` |
+| Status of all services | `docker compose ps` |
+| Tail web logs | `docker compose logs -f --tail=200 frappe-web` |
+| Tail all Frappe logs | `docker compose logs -f --tail=50 frappe-web frappe-worker frappe-scheduler frappe-socketio` |
+| Restart the web tier | `docker compose restart frappe-web` |
+| Restart everything | `docker compose restart` |
+| Open a bench console | `docker compose exec frappe-web bench --site ${SITE_NAME:-webodm.local} console` |
+| Run `bench doctor` | `docker compose exec frappe-web bench --site ${SITE_NAME:-webodm.local} doctor` ⚠️ may fail with `AuthenticationError` against the auth-enabled Redis; treat as informational only |
+| Run `bench migrate` | `docker compose exec frappe-web bench --site ${SITE_NAME:-webodm.local} migrate` |
+| Trigger a backup now | `docker compose exec backup /usr/local/bin/backup.sh` |
+| List local backups | `docker compose exec backup ls -l /backups` |
+| Tail backup logs | `docker compose logs -f --tail=100 backup` |
+| Live tail of cron | `docker compose exec backup tail -f /var/log/cron.log` |
+| Update custom images | `docker compose pull && docker compose up -d` (rebuild locally from `frappe-bench/apps/Dockerfile` if you changed app code) |
+| Pull upstream images | `docker compose pull postgres redis-cache redis-queue nodeodm` |
 | Migrate from host install | See [docs/migration-from-host.md](migration-from-host.md) |
 
 ## Healthcheck reference
 
-`docker compose --profile init ps` shows `(healthy)` / `(unhealthy)` next to the
+`docker compose ps` shows `(healthy)` / `(unhealthy)` next to the
 status string for services that have a Docker healthcheck defined. Not every
 service has one — the table below lists which do and which don't.
 
@@ -132,7 +131,7 @@ service has one — the table below lists which do and which don't.
 | `frappe-init` | ❌ | (one-shot, exits 0/1) | — |
 | `backup` | ❌ | (cron container; track via `docker logs`) | — |
 
-Use `docker compose --profile init ps --format '{{.Service}}\t{{.Status}}'` for a
+Use `docker compose ps --format '{{.Service}}\t{{.Status}}'` for a
 quick at-a-glance check. Expect `Up` (no healthcheck) on worker/scheduler/init/backup.
 
 ## Troubleshooting
@@ -140,15 +139,15 @@ quick at-a-glance check. Expect `Up` (no healthcheck) on worker/scheduler/init/b
 ### Frappe can't reach Redis
 
 ```bash
-docker compose --profile init logs redis-cache redis-queue
+docker compose logs redis-cache redis-queue
 ```
 
 Verify password files and connectivity:
 
 ```bash
-docker compose --profile init exec redis-cache \
+docker compose exec redis-cache \
   sh -c 'redis-cli -p 13000 -a "$(cat /run/secrets/redis_cache_password)" ping'
-docker compose --profile init exec redis-queue \
+docker compose exec redis-queue \
   sh -c 'redis-cli -p 11000 -a "$(cat /run/secrets/redis_queue_password)" ping'
 ```
 
@@ -164,7 +163,7 @@ Caddy will fall back to an internal CA for non-FQDNs (e.g. `webodm.local`), whic
 generates a self-signed cert that browsers will reject. For production:
 
 ```bash
-docker compose --profile init logs caddy | grep -iE 'certificate|acme|dns'
+docker compose logs caddy | grep -iE 'certificate|acme|dns'
 ```
 
 Make sure `CLOUDFLARE_API_TOKEN` (or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`)
@@ -172,14 +171,14 @@ is set in `.env` and the token has DNS edit permission for the zone. Restart Cad
 to pick up new env vars:
 
 ```bash
-docker compose --profile init up -d --force-recreate caddy
+docker compose up -d --force-recreate caddy
 ```
 
 ### Frappe web returns 500
 
 ```bash
-docker compose --profile init logs --tail=500 frappe-web
-docker compose --profile init exec frappe-web \
+docker compose logs --tail=500 frappe-web
+docker compose exec frappe-web \
   tail -100 /workspace/frappe-bench/logs/web.error.log
 ```
 
@@ -192,11 +191,11 @@ Common root causes:
 ### Worker not picking up jobs
 
 ```bash
-docker compose --profile init logs --tail=200 frappe-worker
+docker compose logs --tail=200 frappe-worker
 # `redis-cli` is NOT in the Frappe image (slim image); exec into the redis-queue
 # container instead:
 RQ_PW=$(cat secrets/redis_queue_password.txt)
-docker compose --profile init exec -T redis-queue \
+docker compose exec -T redis-queue \
   redis-cli -p 11000 -a "$RQ_PW" LLEN rq:queue:default
 ```
 
@@ -206,8 +205,8 @@ Look for `redis.exceptions` or `ConnectionError` in the worker logs.
 ### SocketIO not connecting
 
 ```bash
-docker compose --profile init logs --tail=100 frappe-socketio
-docker compose --profile init exec frappe-socketio \
+docker compose logs --tail=100 frappe-socketio
+docker compose exec frappe-socketio \
   curl -fsS 'http://localhost:9000/socket.io/?EIO=4&transport=polling' | head -c 200
 ```
 
@@ -218,28 +217,29 @@ containers with `docker ps -a`.
 ### Backup fails
 
 ```bash
-docker compose --profile init logs backup
-docker compose --profile init exec backup /usr/local/bin/backup.sh   # manual trigger
+docker compose logs backup
+docker compose exec backup /usr/local/bin/backup.sh   # manual trigger
 ```
 
 Common failure modes:
 
 - **`docker: command not found`** — the `webodm-backup:1` image is missing the
-  docker CLI. Rebuild: `docker compose --profile init build backup`.
+  docker CLI. Rebuild it from `infra/backup/Dockerfile` (the `build:` block in
+  `docker-compose.yml` is commented out, so `docker compose build` does nothing).
 - **`pg_dump: error: server version mismatch`** — the Frappe image's
   `pg_dump` is older than the postgres server. The shipped image installs
   `postgresql-client-16` from `apt.postgresql.org` to align with Postgres 16.
 - **`No such option: --with-private-files`** — `bench backup` in v16 dropped
   this flag. `--with-files` already includes private files.
 - **`service "frappe-scheduler" depends on undefined service "frappe-init"`** —
-  the backup container shells out to `docker compose exec`, and that exec
-  command must include `--profile init`.
+  this error belonged to the old `profiles: ["init"]` setup, which has been
+  removed. If you still see it, your `docker-compose.yml` is stale — update it.
 
 ### Geospatial service unreachable
 
 ```bash
-docker compose --profile init logs geospatial
-docker compose --profile init exec geospatial \
+docker compose logs geospatial
+docker compose exec geospatial \
   wget -qO- http://localhost:5000/health
 ```
 
@@ -251,8 +251,8 @@ The `geospatial` image expects DATA_DIR=/data and REDIS_URL pointing at
 The `frappe-web` container is unhealthy or restarting. Check:
 
 ```bash
-docker compose --profile init ps frappe-web
-docker compose --profile init logs --tail=50 frappe-web
+docker compose ps frappe-web
+docker compose logs --tail=50 frappe-web
 ```
 
 If `frappe-web` is exiting immediately, the most common cause is a stale
@@ -262,21 +262,21 @@ that's intentional, but it means a corrupt config from a prior failed init
 can lock the system in. Reset:
 
 ```bash
-docker compose --profile init down
+docker compose down
 docker volume rm webodm_frappe_sites
-docker compose --profile init up -d postgres redis-cache redis-queue
-docker compose --profile init run --rm frappe-init
-docker compose --profile init up -d
+docker compose up -d postgres redis-cache redis-queue
+docker compose run --rm frappe-init
+docker compose up -d
 ```
 
 ### Reset the site (destructive)
 
 ```bash
 # WARNING: drops the entire database and all uploaded files.
-docker compose --profile init down -v
-docker compose --profile init up -d postgres redis-cache redis-queue
-docker compose --profile init run --rm frappe-init
-docker compose --profile init up -d
+docker compose down -v
+docker compose up -d postgres redis-cache redis-queue
+docker compose run --rm frappe-init
+docker compose up -d
 ```
 
 This is the only command that deletes the `postgres_data`, `frappe_sites`,
@@ -305,7 +305,7 @@ production stack as part of routine maintenance.
 ### Scaling up
 
 - **Vertical (single host):** bump each service's `deploy.resources.limits` in
-  `docker-compose.yml`. Restart the service (`docker compose --profile init up -d --force-recreate <svc>`).
+  `docker-compose.yml`. Restart the service (`docker compose up -d --force-recreate <svc>`).
 - **Horizontal (multi-host):** split the compose project. Run `postgres` + `redis-*`
   on a dedicated DB host, run `frappe-web` + `frappe-worker` + `frappe-scheduler` on
   app hosts, run `caddy` on edge hosts. The `frappe_sites` and `frappe_data` volumes

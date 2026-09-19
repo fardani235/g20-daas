@@ -103,7 +103,7 @@ Internet
 | postgres | `postgis/postgis:16-3.4` | 5432 | PostgreSQL + PostGIS |
 | redis-cache | `redis:7-alpine` | 13000 | Sessions, cache |
 | redis-queue | `redis:7-alpine` | 11000 | Job queues (RQ) |
-| geospatial | Custom build | 5000 | Raster tile server |
+| geospatial | `ghcr.io/fardani235/webodm-geospatial:1` | 5000 | Raster tile server |
 | nodeodm | `opendronemap/nodeodm:latest` | 3000 | Photogrammetry engine |
 | backup | `webodm-backup:1` | - | Scheduled backups + S3 sync |
 
@@ -337,7 +337,7 @@ admin.{$SITE_DOMAIN} {
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "geolocation=(), microphone=(), camera=()"
-        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com; connect-src 'self' wss://admin.{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none'"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; connect-src 'self' wss://admin.{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'"
         -Server
     }
 
@@ -345,18 +345,18 @@ admin.{$SITE_DOMAIN} {
     @socketio path /socket.io/*
     reverse_proxy @socketio frappe-socketio:9000 {
         header_up Host {host}
-        header_up X-Frappe-Site-Name webodm.local
+        header_up X-Frappe-Site-Name {$SITE_DOMAIN}
     }
 
     # Static assets
     @assets path /assets/** /files/** /public/** /private/files/**
     reverse_proxy @assets frappe-web:8000 {
-        header_up Host webodm.local
+        header_up Host {$SITE_DOMAIN}
     }
 
     # Everything else
     reverse_proxy frappe-web:8000 {
-        header_up Host webodm.local
+        header_up Host {$SITE_DOMAIN}
         header_up X-Real-IP {remote}
         header_up X-Forwarded-For {remote}
         header_up X-Forwarded-Proto {scheme}
@@ -378,7 +378,7 @@ admin.{$SITE_DOMAIN} {
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "geolocation=(), microphone=(), camera=()"
-        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com; connect-src 'self' wss://{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none'"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; connect-src 'self' wss://{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'"
         -Server
     }
 
@@ -424,8 +424,8 @@ admin.{$SITE_DOMAIN} {
 **Key changes from development:**
 - Domains are now `daas.g20tech.site` and `admin.g20tech.site`
 - IP whitelist on admin subdomain
-- `header_up Host webodm.local` on admin subdomain's asset proxy (Frappe site resolution)
-- `header_up X-Frappe-Site-Name webodm.local` on admin SocketIO proxy
+- `header_up Host {$SITE_DOMAIN}` on admin subdomain's asset proxy (Frappe site resolution)
+- `header_up X-Frappe-Site-Name {$SITE_DOMAIN}` on admin SocketIO proxy
 
 ### 5.5 Update Docker Compose
 
@@ -459,7 +459,17 @@ Change to:
 
 ### 5.6 Update Site Configuration
 
-Edit `~/webodm-deploy/frappe-bench/sites/webodm.local/site_config.json`:
+The container's `sites/` directory is the `frappe_sites` **named volume**, not a
+host bind mount, so editing the repo's `frappe-bench/sites/…` on the host has no
+effect on the running container. Edit it through a container instead:
+
+```bash
+docker compose exec frappe-web bench --site webodm.local set-config <key> <value>
+# or edit the file in place:
+docker compose exec frappe-web vi /workspace/frappe-bench/sites/webodm.local/site_config.json
+```
+
+The resulting file should look like:
 
 ```json
 {
@@ -490,7 +500,9 @@ Edit `~/webodm-deploy/frappe-bench/sites/webodm.local/site_config.json`:
 
 ### 5.7 Update Common Site Configuration
 
-Edit `~/webodm-deploy/frappe-bench/sites/common_site_config.json`:
+`common_site_config.json` also lives on the `frappe_sites` volume — edit it the
+same way (`docker compose exec frappe-web vi /workspace/frappe-bench/sites/common_site_config.json`).
+It should look like:
 
 ```json
 {
@@ -609,16 +621,20 @@ sudo fail2ban-client status
 ```bash
 cd ~/webodm-deploy
 
-# Build all images
-docker compose build --no-cache
+# Pull all images
+docker compose pull
 ```
 
-This will build:
+This pulls:
 - `webodm-frappe:16.26.3` (includes bench, apps, and SPA assets)
 - `webodm-caddy:2`
 - `webodm-backup:1`
+- `webodm-geospatial:1`
 
-> **Note:** The Frappe image build takes 10-20 minutes. It installs Python dependencies, builds Frappe desk assets, and builds the Vue SPA.
+> **Note:** The `build:` blocks in `docker-compose.yml` are commented out, so
+> `docker compose build` builds nothing — deploys pull prebuilt GHCR images. To
+> rebuild locally after changing app code, see `frappe-bench/apps/Dockerfile`
+> (and the `services/geospatial` Dockerfile for the geospatial image).
 
 ### 7.2 Start Infrastructure
 
@@ -988,7 +1004,7 @@ The `backup` service writes database backups directly to S3:
 docker compose logs backup
 
 # Trigger manual backup
-docker compose exec backup /backup.sh
+docker compose exec backup /usr/local/bin/backup.sh
 
 # Verify backup in S3
 aws s3 ls s3://your-webodm-data/backups/webodm/ --recursive
@@ -1103,7 +1119,7 @@ BACKUP_SCHEDULE=0 3 * * *
 cd ~/webodm-deploy
 
 # Trigger immediate backup
-docker compose exec backup /backup.sh
+docker compose exec backup /usr/local/bin/backup.sh
 
 # Check backup files
 ls -la /var/lib/docker/volumes/webodm_backup_storage/_data/
@@ -1299,8 +1315,8 @@ docker compose down
 # 2. Revert git changes (if you version control your config)
 git checkout -- docker-compose.yml infra/caddy/Caddyfile .env
 
-# 3. Rebuild and restart
-docker compose build --no-cache
+# 3. Pull images and restart
+docker compose pull
 docker compose up -d
 
 # 4. Verify
@@ -1341,8 +1357,8 @@ docker compose down -v
 # 2. Remove all data (IRREVERSIBLE)
 docker volume rm $(docker volume ls -q | grep webodm)
 
-# 3. Rebuild images
-docker compose build --no-cache
+# 3. Pull images
+docker compose pull
 
 # 4. Start fresh
 docker compose up -d postgres redis-cache redis-queue
@@ -1360,8 +1376,8 @@ docker compose up -d
 | `.env` | Environment variables | Yes |
 | `docker-compose.yml` | Service orchestration | Yes (live_reload, Caddy env, **S3 volume mounts**) |
 | `infra/caddy/Caddyfile` | Reverse proxy + TLS | Yes (domains, whitelist) |
-| `frappe-bench/sites/webodm.local/site_config.json` | Per-site config | Yes (db_host, security) |
-| `frappe-bench/sites/common_site_config.json` | Global config | Yes (live_reload) |
+| `frappe-bench/sites/webodm.local/site_config.json` | Per-site config (on `frappe_sites` named volume) | Yes (db_host, security — via container) |
+| `frappe-bench/sites/common_site_config.json` | Global config (on `frappe_sites` named volume) | Yes (live_reload — via container) |
 | `secrets/*.txt` | Passwords | Yes (generate new) |
 | `~/.passwd-s3fs` | S3 credentials | Yes (new file) |
 | `/etc/fstab` | S3FS persistence | Yes (add mount entry) |
