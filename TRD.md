@@ -40,7 +40,7 @@ Managed by `bench` and `uv`. Core Frappe framework pulls:
 
 ### 2.2 Python Dependencies (Geospatial Service)
 
-Defined in `webodm-geospatial/requirements.txt` (min versions). Tested with the
+Defined in `services/geospatial/requirements.txt` (min versions). Tested with the
 installed versions shown, on Python 3.12:
 
 | Package | Min Version | Tested | Purpose |

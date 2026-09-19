@@ -89,7 +89,7 @@ Periodic:
 | `postgres` | postgis/postgis:16-3.4 | 5432 | DB + PostGIS |
 | `redis-cache` | redis:7-alpine | 13000 | Frappe cache + SocketIO pub/sub |
 | `redis-queue` | redis:7-alpine | 11000 | RQ jobs |
-| `geospatial` | custom build (../webodm-geospatial) | 5000 | FastAPI tile service |
+| `geospatial` | custom build (services/geospatial) | 5000 | FastAPI tile service |
 | `nodeodm` | opendronemap/nodeodm:latest | 3000 | Photogrammetry engine |
 | `backup` | custom build (infra/backup) | — | Daily bench backup |
 

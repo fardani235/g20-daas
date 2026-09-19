@@ -289,3 +289,18 @@ npm run dev
   - Gmail SMTP setup
   - AWS S3 integration with security isolation
   - Backup & disaster recovery procedures
+
+## Phase 7: Monorepo Migration (2026-09-20)
+
+### What changed
+- `webodm_core` and `webodm_frontend` are no longer gitlinks. Their full histories were imported as tracked directories under `frappe-bench/apps/` via `git filter-repo --to-subdirectory-filter`, so per-file `git log`/`git blame` map to the original commits.
+- `webodm-geospatial` was imported from the sibling repo `../webodm-geospatial` into `services/geospatial/` the same way. The standalone service is **not** a Frappe app, so it lives under `services/`, not `frappe-bench/apps/`.
+- `frappe` is the only external app and is now declared in `.gitmodules` (upstream `frappe/frappe`, pinned at v16.26.3).
+- CI (`build-and-push.yml`) no longer clones the private app repos: the Frappe app context is assembled from the monorepo checkout, and the geospatial image builds from `./services/geospatial`.
+- `docker-compose.yml` geospatial build context is now `./services/geospatial`; the Procfile geospatial command runs from `../services/geospatial`.
+- Added `services/geospatial/.dockerignore` so the local ~600 MB `venv/` never enters a build context.
+
+### Gotchas
+- filter-repo rewrote the app commit SHAs; the old GitHub repos (`webodm-core`, `webodm-frontend`, `webodm-geospatial`) hold the pre-migration histories and can be archived.
+- `bench update`'s per-app `git pull` model no longer applies — update by pulling the monorepo and rebuilding the image.
+- Run geospatial tests with `./venv/bin/python -m pytest` from `services/geospatial/`.

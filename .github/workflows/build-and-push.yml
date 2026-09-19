@@ -7,6 +7,10 @@ on:
       - 'infra/**'
       - 'docker-compose.yml'
       - 'frappe-bench/apps/Dockerfile'
+      - 'frappe-bench/apps/webodm_core/**'
+      - 'frappe-bench/apps/webodm_frontend/**'
+      - 'frappe-bench/sites/apps.txt'
+      - 'services/geospatial/**'
       - '.github/workflows/build-and-push.yml'
   workflow_dispatch:
 
@@ -41,23 +45,23 @@ jobs:
           VERSION=${VERSION:-16.26.3}
           echo "frappe_version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Clone apps into build context
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assemble app build context
         run: |
           VERSION=${{ steps.version.outputs.frappe_version }}
           CONTEXT=build-context/frappe-bench
           mkdir -p "$CONTEXT/apps" "$CONTEXT/sites"
 
+          # Upstream Frappe is the only external app; pinned to the release tag.
           git clone --depth 1 --branch "v${VERSION}" \
             https://github.com/frappe/frappe.git "$CONTEXT/apps/frappe"
 
-          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/fardani235/webodm-core.git" \
-            "$CONTEXT/apps/webodm_core"
-          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/fardani235/webodm-frontend.git" \
-            "$CONTEXT/apps/webodm_frontend"
+          # Custom apps live in this monorepo.
+          rsync -a --exclude='node_modules' --exclude='__pycache__' --exclude='.pytest_cache' \
+            frappe-bench/apps/webodm_core/ "$CONTEXT/apps/webodm_core/"
+          rsync -a --exclude='node_modules' --exclude='__pycache__' --exclude='.pytest_cache' \
+            frappe-bench/apps/webodm_frontend/ "$CONTEXT/apps/webodm_frontend/"
 
-          cp frappe-bench/apps/Dockerfile "$CONTEXT/apps/"
+          cp frappe-bench/apps/Dockerfile frappe-bench/apps/.dockerignore "$CONTEXT/apps/"
           cp frappe-bench/sites/apps.txt "$CONTEXT/sites/"
           cp -r infra/ build-context/infra/
 
@@ -157,17 +161,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Clone geospatial repo
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/fardani235/webodm-geospatial.git" /tmp/webodm-geospatial
-
       - name: Build and push webodm-geospatial
         uses: docker/build-push-action@v6
         with:
-          context: /tmp/webodm-geospatial
-          file: /tmp/webodm-geospatial/Dockerfile
+          context: ./services/geospatial
+          file: ./services/geospatial/Dockerfile
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-geospatial:1

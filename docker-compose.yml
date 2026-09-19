@@ -520,7 +520,7 @@ services:
   geospatial:
     image: ghcr.io/fardani235/webodm-geospatial:1
     # build:
-    #   context: ../webodm-geospatial
+    #   context: ./services/geospatial
     #   dockerfile: Dockerfile
     restart: unless-stopped
     environment:
