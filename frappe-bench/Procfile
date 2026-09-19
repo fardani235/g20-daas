@@ -1,0 +1,8 @@
+redis_cache: redis-server config/redis_cache.conf
+redis_queue: redis-server config/redis_queue.conf
+web: bench serve --port 8080
+socketio: bench socketio
+watch: bench watch
+schedule: bench schedule
+worker: bench worker 1>> logs/worker.log 2>> logs/worker.error.log
+geospatial: cd ../../webodm-geospatial && ./venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5000 1>> ../frappe-webodm/frappe-bench/logs/geospatial.log 2>&1
