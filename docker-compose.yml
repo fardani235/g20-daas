@@ -1,7 +1,7 @@
 name: g20-daas
 
 x-frappe-image: &frappe-image
-  image: ghcr.io/fardani235/webodm-frappe:${FRAPPE_VERSION:-16.26.3}
+  image: ghcr.io/fardani235/webodm-frappe:${FRAPPE_VERSION:-16.34.0}
   # To build locally instead of pulling from registry, uncomment below:
   # build:
   #   context: ./frappe-bench/apps
@@ -203,7 +203,7 @@ x-frappe-env-base: &frappe-env-base
   # block. The wrapper reads these to construct FRAPPE_REDIS_CACHE/_QUEUE.
   REDIS_CACHE_PASSWORD_FILE: /run/secrets/redis_cache_password
   REDIS_QUEUE_PASSWORD_FILE: /run/secrets/redis_queue_password
-  FRAPPE_VERSION: ${FRAPPE_VERSION:-16.26.3}
+  FRAPPE_VERSION: ${FRAPPE_VERSION:-16.34.0}
   FRAPPE_BENCH_ROOT: /workspace/frappe-bench
 
 x-frappe-volumes: &frappe-volumes
