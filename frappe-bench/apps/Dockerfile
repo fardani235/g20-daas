@@ -104,6 +104,18 @@ RUN /workspace/frappe-bench/env/bin/pip install --no-cache-dir frappe-bench \
 # which in this layout would resolve to `/` (not `/workspace/frappe-bench`),
 # making `sites/apps.txt` resolve to `/sites/apps.txt` and the yarn build fail
 # with ENOENT.
+# bench's App.setup_details() calls git.Repo(app_path) without searching parent
+# directories, so every app in the bench must itself be a git repository or
+# `bench setup requirements` aborts with InvalidGitRepositoryError. In this
+# monorepo webodm_core/webodm_frontend are tracked directories with no .git of
+# their own, and CI rsyncs them without one, so synthesize a repo for each.
+RUN set -e; for app in webodm_core webodm_frontend; do \
+      cd "/workspace/$app"; \
+      git init -q; \
+      git -c user.email=build@local -c user.name=build add -A; \
+      git -c user.email=build@local -c user.name=build commit -qm "build-context snapshot"; \
+    done
+
 ENV FRAPPE_BENCH_ROOT=/workspace/frappe-bench
 RUN cd /workspace/frappe-bench && \
     bench setup requirements && \
