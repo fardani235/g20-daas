@@ -87,11 +87,11 @@ admin.{$SITE_DOMAIN} {
         header_up Host {host}
     }
 
-    # Geospatial raster tiles (large responses; disable buffering).
-    @tiles path /tiles/*
-    reverse_proxy @tiles geospatial:5000 {
-        flush_interval -1
-    }
+    # NOTE: the geospatial service is intentionally NOT exposed here. It has no
+    # authentication of its own and reads rasters by absolute path, so it must
+    # only ever be reached via the session-authed Frappe proxy
+    # (webodm_core.api.tiles), which resolves task -> path after a permission
+    # check. The service stays on the backend network only.
 
     # Frappe static files (assets, files, public, private).
     # Use ** to match nested paths (e.g. /assets/frappe/dist/css/login.bundle.css).

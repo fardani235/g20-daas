@@ -401,11 +401,9 @@ admin.{$SITE_DOMAIN} {
         header_up Host {host}
     }
 
-    # Geospatial tiles
-    @tiles path /tiles/*
-    reverse_proxy @tiles geospatial:5000 {
-        flush_interval -1
-    }
+    # Do NOT add a route to geospatial:5000 here. The service has no auth of its
+    # own; tiles are served through the session-authed Frappe proxy
+    # (webodm_core.api.tiles), and the service is only on the backend network.
 
     # Static assets
     @assets path /assets/** /files/** /public/** /private/files/**
