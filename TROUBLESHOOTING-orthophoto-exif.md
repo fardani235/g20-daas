@@ -49,11 +49,14 @@ Two independent defenses (either alone is sufficient; both are in place):
        'fieldname':'strip_exif_metadata_from_uploaded_images','value':0}"
    ```
 
-2. **Uploader hardening** — `webodm_core/api/task.py::_save_task_image_file`
-   compares the bytes written to disk against the original upload and, if they
-   differ, rewrites the untouched original and repairs the File's `content_hash`
-   and `file_size`. This keeps task images intact regardless of the global
-   setting, so the bug can't regress if someone re-enables it.
+2. **Uploader bypasses Frappe's file pipeline** — `webodm_core/api/task.py::
+   _save_task_image_file` streams the upload straight to `private/files` and
+   registers the File against the existing blob (`plugins/files.py::
+   save_private_file_from_stream`, using Frappe's `copy_from_existing_file`
+   flag). `File.save_file()` — where the EXIF strip lives — is never invoked
+   for task images, so the global setting cannot affect them. This replaced an
+   earlier write-then-compare-then-rewrite workaround; the bytes on disk are
+   now the upload, full stop, and the image is never held in memory.
 
 ### Verify the fix
 

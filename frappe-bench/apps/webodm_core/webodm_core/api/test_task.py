@@ -136,3 +136,20 @@ class TestEncodeProcessingOptions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestExtractPhotoMetaFromPath(unittest.TestCase):
+    def test_path_source_reads_exif_without_bytes_in_hand(self):
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as fh:
+            fh.write(_jpeg_with_datetime())
+            path = fh.name
+        try:
+            meta = _extract_photo_meta(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(meta["capture_time"], "2024-05-01 10:20:30")
+
+    def test_missing_path_never_raises(self):
+        meta = _extract_photo_meta("/nonexistent/zzz.jpg")
+        self.assertEqual(meta, {"lat": None, "lng": None, "altitude": None, "capture_time": None})

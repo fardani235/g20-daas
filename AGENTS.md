@@ -108,9 +108,9 @@ All DocTypes below live in `webodm_core` (the `webodm_frontend` app has no DocTy
 1. User uploads images → `upload_images` API creates WebODM Task (status=Pending)
 2. Frontend "Start Processing" → `process_task` API → enqueues `process_task` on `long` queue
 3. `process_pending_tasks` (scheduled cron `*/1 * * * *`) also enqueues any lingering Pending tasks
-4. `process_task` job: reads images from Frappe Files → sends to NodeODM via `create_task` → stores `_node_task_id` in `processing_options` JSON → sets status=Running
+4. `process_task` job: resolves image paths from Frappe Files → `NodeODMClient.create_task` drives NodeODM's `/task/new/init` → one `/task/new/upload/{uuid}` per image → `/task/new/commit/{uuid}` (one image in flight at a time) → stores the uuid in the `node_task_id` field → sets status=Running
 5. `update_running_tasks` (cron `*/1 * * * *`) enqueues `poll_task` for each Running task
-6. `poll_task`: queries NodeODM `/task/<uuid>/info` → updates progress → when code=30, downloads assets (orthophoto.tif, dsm.tif, dtm.tif, georeferenced_model.laz) → saves as Frappe Files → sets orthophoto/dsm/dtm/point_cloud fields → sets status=Completed
+6. `poll_task`: queries NodeODM `/task/<uuid>/info` → updates progress → when code=40 (COMPLETED), streams `all.zip` to `sites/<site>/private/processing/<scratch>/`, streams each known member (orthophoto.tif, dsm.tif, dtm.tif, georeferenced_model.laz, model.glb) into `private/files` via `plugins.files.save_private_file_from_stream` → sets orthophoto/dsm/dtm/point_cloud/model fields → COG-ifies rasters via the geospatial service → sets status=Completed → removes the scratch dir
 
 ### Fixes Applied (2026-07-13)
 - `node_client.py task_info()`: fixed URL from `task/<id>` to `task/<id>/info` (NodeODM 2.x API)
@@ -308,3 +308,17 @@ All DocTypes live in `webodm_core`:
 - filter-repo rewrote the app commit SHAs; the old GitHub repos (`webodm-core`, `webodm-frontend`, `webodm-geospatial`) hold the pre-migration histories and can be archived.
 - `bench update`'s per-app `git pull` model no longer applies — update by pulling the monorepo and rebuilding the image.
 - Run geospatial tests with `./venv/bin/python -m pytest` from `services/geospatial/`.
+
+## Phase 8: Streaming data path (2026-09-21)
+
+- `plugins/files.py` gained `save_private_file_from_stream` / `save_private_file_from_path`:
+  stream to `private/files/<name>.part`, md5 on the fly, rename, then register a `File`
+  with `flags.copy_from_existing_file` so Frappe never buffers, re-encodes (EXIF strip)
+  or hash-dedups the blob. All large-file writes (task images, NodeODM assets, plugin
+  outputs) go through it. `abs_path_for_file_doc` is the single path resolver.
+- `NodeODMClient.create_task` takes `(filename, abs_path)` pairs and uses init/upload/commit;
+  `download_asset(task_id, asset, dest_path)` streams to disk. Separate `timeout` (30s,
+  metadata) and `transfer_timeout` ((30, 600), uploads/downloads). HTTP-200 `{error}`
+  bodies from NodeODM now raise `NodeODMError`.
+- `upload_images` streams werkzeug's spooled upload to disk and reads EXIF from the path.
+- Dev-site note: the live stack runs `webodm-frappe:16.34.0` while the repo still pins 16.26.3.

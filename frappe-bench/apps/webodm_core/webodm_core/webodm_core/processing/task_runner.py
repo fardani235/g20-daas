@@ -1,5 +1,16 @@
+import os
+import shutil
+import tempfile
+import zipfile
+
 import frappe
 from frappe.model.document import Document
+
+from webodm_core.plugins.files import (
+    abs_path_for_file_doc,
+    abs_path_for_file_url,
+    save_private_file_from_stream,
+)
 from webodm_core.webodm_core.processing.node_client import NodeODMClient, NodeODMError
 
 # Which downloaded raster fields carry georeferencing worth extracting, and the
@@ -50,22 +61,6 @@ def _geospatial_url() -> str:
         or frappe.conf.get("webodm_geospatial_url")
         or "http://127.0.0.1:5000"
     )
-
-
-def _abs_file_path(file_doc: Document) -> str:
-    """Absolute on-disk path for a File doc.
-
-    ``File.get_full_path()`` returns a bench-relative path (e.g.
-    ``./site/private/files/x.tif``); the geospatial service runs from a different
-    CWD and requires an absolute path, so anchor it at the bench directory.
-    """
-    import os
-    from frappe.utils import get_bench_path
-
-    p = file_doc.get_full_path()
-    if os.path.isabs(p):
-        return p
-    return os.path.normpath(os.path.join(get_bench_path(), "sites", p.lstrip("./")))
 
 
 def _cogify_raster(abs_path: str) -> dict | None:
@@ -160,7 +155,7 @@ def process_task(task_name: str):
     node_opts = _build_node_options(options) if isinstance(options, (dict, list)) else []
 
     try:
-        result = client.create_task(images, node_opts)
+        result = client.create_task(images, node_opts, name=task.title)
     except NodeODMError as e:
         frappe.log_error(f"Failed to create task on node: {e}", "WebODM Processing")
         return
@@ -215,18 +210,25 @@ def _build_node_options(opts: dict | list) -> list[dict]:
     return result
 
 
-def _get_task_images(task: Document) -> list[tuple[str, bytes]]:
+def _get_task_images(task: Document) -> list[tuple[str, str]]:
+    """Resolve the task's images to ``(filename, absolute_path)`` pairs.
+
+    Paths only — the client streams each file from disk one at a time, so the
+    dataset is never held in worker memory.
+    """
     images = []
     for img in task.images:
         if not img.image:
             continue
-        file_doc = frappe.get_doc("File", {"file_url": img.image}, ignore_permissions=True)
-        file_path = file_doc.get_full_path()
         try:
-            with open(file_path, "rb") as f:
-                images.append((img.filename or "image.jpg", f.read()))
-        except (FileNotFoundError, IOError) as e:
-            frappe.log_error(f"Cannot read {file_path}: {e}", "WebODM Processing")
+            path = abs_path_for_file_url(img.image)
+        except frappe.DoesNotExistError:
+            frappe.log_error(f"No File record for {img.image}", "WebODM Processing")
+            continue
+        if not os.path.isfile(path):
+            frappe.log_error(f"Cannot read {path}: file missing on disk", "WebODM Processing")
+            continue
+        images.append((img.filename or os.path.basename(path), path))
     return images
 
 
@@ -301,81 +303,90 @@ def poll_task(task_name: str):
 
 
 def _download_assets(client: NodeODMClient, node_task_id: str, task: Document):
-    import zipfile
-    import io
+    """Fetch all.zip from the node and register each known asset as a File.
+
+    Everything stays on disk: the zip streams to a scratch dir under the site,
+    each member is streamed out of the archive straight into private/files, and
+    the scratch dir is removed at the end. Peak memory is one I/O chunk, not the
+    zip plus the largest asset as before.
+    """
+    scratch_root = frappe.get_site_path("private", "processing")
+    os.makedirs(scratch_root, exist_ok=True)
+    work_dir = tempfile.mkdtemp(prefix=f"{task.name}_", dir=scratch_root)
+    zip_path = os.path.join(work_dir, "all.zip")
 
     try:
-        zip_data = client.download_asset(node_task_id, "all.zip")
-    except NodeODMError:
-        frappe.log_error(f"Failed to download all.zip for {task.name}", "WebODM Processing")
-        task.db_set("status", "Failed")
-        return
+        try:
+            client.download_asset(node_task_id, "all.zip", zip_path)
+        except NodeODMError as e:
+            frappe.log_error(f"Failed to download all.zip for {task.name}: {e}", "WebODM Processing")
+            task.db_set("status", "Failed")
+            return
 
-    asset_map = {
-        "odm_orthophoto/odm_orthophoto.tif": ("orthophoto", "orthophoto.tif"),
-        "odm_dem/dsm.tif": ("dsm", "dsm.tif"),
-        "odm_dem/dtm.tif": ("dtm", "dtm.tif"),
-        "odm_georeferencing/odm_georeferenced_model.laz": ("point_cloud", "georeferenced_model.laz"),
-        "odm_texturing/odm_textured_model_geo.glb": ("model", "model.glb"),
-    }
+        asset_map = {
+            "odm_orthophoto/odm_orthophoto.tif": ("orthophoto", "orthophoto.tif"),
+            "odm_dem/dsm.tif": ("dsm", "dsm.tif"),
+            "odm_dem/dtm.tif": ("dtm", "dtm.tif"),
+            "odm_georeferencing/odm_georeferenced_model.laz": ("point_cloud", "georeferenced_model.laz"),
+            "odm_texturing/odm_textured_model_geo.glb": ("model", "model.glb"),
+        }
 
-    downloaded = 0
-    try:
-        with zipfile.ZipFile(io.BytesIO(zip_data)) as z:
-            for zip_path, (field, filename) in asset_map.items():
-                try:
-                    data = z.read(zip_path)
-                except KeyError:
-                    continue
-
-                file_doc = frappe.get_doc({
-                    "doctype": "File",
-                    "file_name": f"{task.name}_{filename}",
-                    "is_private": 1,
-                    "content": data,
-                    "attached_to_doctype": "WebODM Task",
-                    "attached_to_name": task.name,
-                })
-                file_doc.save(ignore_permissions=True)
-                task.db_set(field, file_doc.file_url)
-                downloaded += 1
-
-                # For georeferenced rasters, convert to COG in place and persist
-                # the extent / EPSG / WKT so the map can locate the layer.
-                if field in RASTER_EXTENT_FIELDS:
-                    georef = _cogify_raster(_abs_file_path(file_doc))
-                    if georef:
-                        extent = georef.get("extent")
-                        if extent:
-                            task.db_set(RASTER_EXTENT_FIELDS[field], frappe.as_json(extent))
-                        # EPSG/WKT describe the task CRS; the orthophoto is the
-                        # canonical source, but fall back to any raster that has it.
-                        if georef.get("epsg") and not task.get("epsg"):
-                            task.db_set("epsg", georef["epsg"])
-                        if georef.get("wkt") and not task.get("wkt"):
-                            task.db_set("wkt", georef["wkt"])
-
-            # Fallback: if model not found as GLB, bundle GLTF files as zip
-            if not task.get("model"):
-                gltf_prefix = "odm_texturing/"
-                model_files = [n for n in z.namelist() if n.startswith(gltf_prefix)]
-                if model_files:
-                    model_buf = io.BytesIO()
-                    with zipfile.ZipFile(model_buf, "w", zipfile.ZIP_DEFLATED) as mz:
-                        for name in model_files:
-                            mz.writestr(name.replace(gltf_prefix, ""), z.read(name))
-                    file_doc = frappe.get_doc({
-                        "doctype": "File",
-                        "file_name": f"{task.name}_model.zip",
-                        "is_private": 1,
-                        "content": model_buf.getvalue(),
-                        "attached_to_doctype": "WebODM Task",
-                        "attached_to_name": task.name,
-                    })
-                    file_doc.save(ignore_permissions=True)
-                    task.db_set("model", file_doc.file_url)
+        downloaded = 0
+        try:
+            with zipfile.ZipFile(zip_path) as z:
+                members = set(z.namelist())
+                for member, (field, filename) in asset_map.items():
+                    if member not in members:
+                        continue
+                    with z.open(member) as src:
+                        file_doc = save_private_file_from_stream(
+                            src,
+                            f"{task.name}_{filename}",
+                            attached_to_doctype="WebODM Task",
+                            attached_to_name=task.name,
+                            ignore_permissions=True,
+                        )
+                    task.db_set(field, file_doc.file_url)
                     downloaded += 1
-    except Exception as e:
-        frappe.log_error(f"Failed to extract assets from zip for {task.name}: {e}", "WebODM Processing")
 
-    task.db_set("status", "Completed" if downloaded > 0 else "Failed")
+                    # For georeferenced rasters, convert to COG in place and persist
+                    # the extent / EPSG / WKT so the map can locate the layer.
+                    if field in RASTER_EXTENT_FIELDS:
+                        georef = _cogify_raster(abs_path_for_file_doc(file_doc))
+                        if georef:
+                            extent = georef.get("extent")
+                            if extent:
+                                task.db_set(RASTER_EXTENT_FIELDS[field], frappe.as_json(extent))
+                            # EPSG/WKT describe the task CRS; the orthophoto is the
+                            # canonical source, but fall back to any raster that has it.
+                            if georef.get("epsg") and not task.get("epsg"):
+                                task.db_set("epsg", georef["epsg"])
+                            if georef.get("wkt") and not task.get("wkt"):
+                                task.db_set("wkt", georef["wkt"])
+
+                # Fallback: if model not found as GLB, bundle GLTF files as zip.
+                if not task.get("model"):
+                    gltf_prefix = "odm_texturing/"
+                    model_files = [n for n in members if n.startswith(gltf_prefix) and not n.endswith("/")]
+                    if model_files:
+                        model_zip = os.path.join(work_dir, "model.zip")
+                        with zipfile.ZipFile(model_zip, "w", zipfile.ZIP_DEFLATED) as mz:
+                            for name in model_files:
+                                with z.open(name) as src, mz.open(name[len(gltf_prefix):], "w") as dst:
+                                    shutil.copyfileobj(src, dst)
+                        with open(model_zip, "rb") as fh:
+                            file_doc = save_private_file_from_stream(
+                                fh,
+                                f"{task.name}_model.zip",
+                                attached_to_doctype="WebODM Task",
+                                attached_to_name=task.name,
+                                ignore_permissions=True,
+                            )
+                        task.db_set("model", file_doc.file_url)
+                        downloaded += 1
+        except Exception as e:
+            frappe.log_error(f"Failed to extract assets from zip for {task.name}: {e}", "WebODM Processing")
+
+        task.db_set("status", "Completed" if downloaded > 0 else "Failed")
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
