@@ -103,6 +103,7 @@ x-frappe-image: &frappe-image
           '    "rebase_on_pull": False,' \
           '    "shallow_clone": True,' \
           '    "background_workers": 1,' \
+          '    "geospatial_url": "http://geospatial:5000",' \
           '    "use_redis_auth": True,' \
           '    "live_reload": True,' \
           '    "root_login": os.environ["FRAPPE_ROOT_USER"],' \

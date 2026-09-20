@@ -65,7 +65,7 @@ RUN mkdir -p \
  && for app in frappe webodm_core webodm_frontend; do ln -sf /workspace/$app /workspace/frappe-bench/apps/$app; done
 COPY --from=sites apps.txt /workspace/frappe-bench/sites/apps.txt
 RUN printf 'frappe\nwebodm_core\nwebodm_frontend\n' > /workspace/frappe-bench/sites/apps.txt \
- && printf '{"frappe_user": "root", "restart_supervisor_on_update": false, "restart_systemd_on_update": false, "serve_default_site": true, "rebase_on_pull": false, "shallow_clone": true, "background_workers": 1, "use_redis_auth": false, "live_reload": true}\n' > /workspace/frappe-bench/sites/common_site_config.json
+ && printf '{"frappe_user": "root", "restart_supervisor_on_update": false, "restart_systemd_on_update": false, "serve_default_site": true, "rebase_on_pull": false, "shallow_clone": true, "background_workers": 1, "use_redis_auth": false, "live_reload": true, "geospatial_url": "http://geospatial:5000"}\n' > /workspace/frappe-bench/sites/common_site_config.json
 
 # Install bench + Frappe + custom apps (editable so bench update works inside the
 # container). `frappe-bench` is a real PyPI package (v5.31.0) that provides the
