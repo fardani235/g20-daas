@@ -86,7 +86,8 @@ app_license = "mit"
 # ------------
 
 # before_install = "webodm_core.install.before_install"
-# after_install = "webodm_core.install.after_install"
+after_install = "webodm_core.install.after_install"
+after_migrate = "webodm_core.install.after_migrate"
 
 # Uninstallation
 # ------------
