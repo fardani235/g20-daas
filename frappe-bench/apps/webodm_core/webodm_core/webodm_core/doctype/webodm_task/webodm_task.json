@@ -26,6 +26,11 @@
   "orthophoto_extent",
   "dsm_extent",
   "dtm_extent",
+  "processing_state_section",
+  "dispatch_attempts",
+  "poll_failures",
+  "next_attempt_at",
+  "last_error",
   "organization"
  ],
  "fields": [
@@ -159,6 +164,41 @@
    "read_only": 1
   },
   {
+   "fieldname": "processing_state_section",
+   "fieldtype": "Section Break",
+   "label": "Processing State",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "dispatch_attempts",
+   "fieldtype": "Int",
+   "label": "Dispatch Attempts",
+   "read_only": 1,
+   "default": "0",
+   "description": "Failed attempts to hand the task to a processing node; reset on success."
+  },
+  {
+   "fieldname": "poll_failures",
+   "fieldtype": "Int",
+   "label": "Consecutive Poll Failures",
+   "read_only": 1,
+   "default": "0",
+   "description": "Consecutive transient errors talking to the node while Running; reset on any successful poll."
+  },
+  {
+   "fieldname": "next_attempt_at",
+   "fieldtype": "Datetime",
+   "label": "Next Dispatch Attempt",
+   "read_only": 1,
+   "description": "Backoff gate: the dispatch sweep skips Queued tasks until this time."
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  },
+  {
    "fieldname": "organization",
    "fieldtype": "Link",
    "label": "Organization",
@@ -168,7 +208,7 @@
    "in_standard_filter": 1
   }
  ],
- "modified": "2024-01-01 00:00:00.000000",
+ "modified": "2026-09-21 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "WebODM Core",
  "name": "WebODM Task",

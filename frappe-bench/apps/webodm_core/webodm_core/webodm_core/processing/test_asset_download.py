@@ -11,7 +11,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from webodm_core.plugins.files import abs_path_for_file_url
 from webodm_core.webodm_core.processing import task_runner
-from webodm_core.webodm_core.processing.node_client import NodeODMError
+from webodm_core.webodm_core.processing.node_client import NodeODMError, NodeODMTransportError
 
 
 def _user(email):
@@ -31,7 +31,9 @@ class _FakeClient:
 
     def download_asset(self, task_id, asset, dest_path):
         if self.zip_bytes is None:
-            raise NodeODMError("Asset not ready")
+            raise NodeODMError("Invalid asset")
+        if self.zip_bytes == b"TRANSPORT":
+            raise NodeODMTransportError("connection reset")
         with open(dest_path, "wb") as fh:
             fh.write(self.zip_bytes)
         return dest_path
@@ -137,11 +139,19 @@ class TestDownloadAssets(FrappeTestCase):
             self.assertEqual(mz.read("tex.png"), b"\x89PNG")
         self.assertEqual(self._scratch_entries(), [])
 
-    def test_download_failure_marks_failed_and_cleans_up(self):
+    def test_node_refusing_download_marks_failed_and_cleans_up(self):
         task_runner._download_assets(_FakeClient(None), "U-DL", self.task)
         t = frappe.get_doc("WebODM Task", self.task.name)
         self.assertEqual(t.status, "Failed")
+        self.assertIn("Invalid asset", t.last_error)
         self.assertFalse(t.orthophoto)
+        self.assertEqual(self._scratch_entries(), [])
+
+    def test_transport_failure_propagates_and_leaves_task_running(self):
+        with self.assertRaises(NodeODMTransportError):
+            task_runner._download_assets(_FakeClient(b"TRANSPORT"), "U-DL", self.task)
+        t = frappe.get_doc("WebODM Task", self.task.name)
+        self.assertEqual(t.status, "Running")
         self.assertEqual(self._scratch_entries(), [])
 
     def test_zip_without_known_assets_is_failed(self):

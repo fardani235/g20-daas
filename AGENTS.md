@@ -322,3 +322,17 @@ All DocTypes live in `webodm_core`:
   bodies from NodeODM now raise `NodeODMError`.
 - `upload_images` streams werkzeug's spooled upload to disk and reads EXIF from the path.
 - Dev-site note: the live stack runs `webodm-frappe:16.34.0` while the repo still pins 16.26.3.
+
+## Phase 9: Retry policy + single writer (2026-09-21)
+
+- `WebODM Task` gained `dispatch_attempts`, `poll_failures`, `next_attempt_at`, `last_error`.
+- `NodeODMTransportError` (no answer from node) vs `NodeODMError` (node answered with an error).
+  Transport errors are retried; application errors are terminal.
+- Dispatch: failures back off 1,2,4… min (cap 30) via `next_attempt_at`; `Failed` after
+  `MAX_DISPATCH_ATTEMPTS` (8). "No images" / node rejected task are immediate `Failed`.
+- Poll: transient errors tolerated for `MAX_POLL_FAILURES` (15) consecutive polls; a
+  successful poll resets the counter. Unknown uuid on the node → `Failed`. all.zip download
+  transport errors leave the task Running for the next poll to retry.
+- `get_task_progress` is read-only (nudges a deduped `poll_task`); `poll_task` is the only
+  writer of processing state. `process_task` API also restarts `Failed` tasks.
+- All enqueues go through `task_runner.enqueue_process/enqueue_poll` (`job_id` + `deduplicate`).

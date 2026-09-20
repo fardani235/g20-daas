@@ -7,7 +7,13 @@ import requests
 
 
 class NodeODMError(Exception):
-    pass
+    """The node answered, but with an application error (``{"error": ...}``,
+    unknown uuid, bad options...). Retrying the same request will not help."""
+
+
+class NodeODMTransportError(NodeODMError):
+    """Could not get an answer from the node (connection refused, timeout,
+    5xx...). Usually transient; callers should back off and retry."""
 
 
 # Metadata calls (info/options/task status) are small and should fail fast.
@@ -52,7 +58,7 @@ class NodeODMClient:
             r.raise_for_status()
             return self._check_error(r.json(), f"GET {path}")
         except requests.RequestException as e:
-            raise NodeODMError(f"GET {path} failed: {e}")
+            raise NodeODMTransportError(f"GET {path} failed: {e}")
 
     def _post(self, path: str, data=None, files=None, timeout=None):
         try:
@@ -62,7 +68,7 @@ class NodeODMClient:
             r.raise_for_status()
             return self._check_error(r.json(), f"POST {path}")
         except requests.RequestException as e:
-            raise NodeODMError(f"POST {path} failed: {e}")
+            raise NodeODMTransportError(f"POST {path} failed: {e}")
 
     def info(self) -> dict:
         return self._get("info")
@@ -125,13 +131,16 @@ class NodeODMClient:
         return self._get(f"task/{task_id}/info")
 
     def task_output(self, task_id: str, line: int = 0) -> list[str]:
-        r = self._session.get(
-            self._url(f"task/{task_id}/output"),
-            params={"line": str(line)},
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
-        return r.json()
+        try:
+            r = self._session.get(
+                self._url(f"task/{task_id}/output"),
+                params={"line": str(line)},
+                timeout=self.timeout,
+            )
+            r.raise_for_status()
+            return self._check_error(r.json(), f"GET task/{task_id}/output")
+        except requests.RequestException as e:
+            raise NodeODMTransportError(f"GET task/{task_id}/output failed: {e}")
 
     def task_cancel(self, task_id: str) -> dict:
         # NodeODM expects the uuid in the body at a flat path (POST /task/cancel),
@@ -172,7 +181,7 @@ class NodeODMClient:
             os.replace(part, dest_path)
             return dest_path
         except requests.RequestException as e:
-            raise NodeODMError(f"Download {asset} failed: {e}")
+            raise NodeODMTransportError(f"Download {asset} failed: {e}")
         finally:
             try:
                 os.remove(part)
