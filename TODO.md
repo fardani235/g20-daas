@@ -199,14 +199,19 @@
 - [ ] Histogram display
 - [ ] Error message display
 
-### ModelView Page 🔄
+### ModelView Page ✅ (textured model viewer), ⬜ (extended)
 - [x] Placeholder page
-- [ ] Potree/Three.js point cloud viewer integration
-- [ ] GLTF/GLB textured model viewer
+- [x] GLTF/GLB textured model viewer (Three.js + Draco; Z-up correction, auto-framing)
+- [x] Toolbar: Rotate / Pan / Zoom modes, zoom, reset, preset views, grid, help
+- [x] Mouse, touch and keyboard navigation; double-click to focus
+- [x] Loading / processing / empty / error / WebGL-unavailable states
+- [x] Large-model handling (streamed download, texture memory budget, render on demand)
+- [x] Fullscreen toggle
+- [x] Asset download button
+- [x] Dataset switcher (other tasks in the project with a model)
+- [ ] Point cloud (LAZ) viewer
 - [ ] Measurement tools (distance, area, volume)
 - [ ] Camera view save/restore
-- [ ] Asset download buttons
-- [ ] Fullscreen toggle
 - [ ] Unit selector
 - [ ] Share button
 

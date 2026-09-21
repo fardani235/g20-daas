@@ -185,7 +185,7 @@ g20-daas/
     │   │   │   │   ├── pages/
     │   │   │   │   │   ├── Dashboard.vue    # Project list
     │   │   │   │   │   ├── MapView.vue      # 2D map (Leaflet)
-    │   │   │   │   │   ├── ModelView.vue    # 3D viewer (Potree)
+    │   │   │   │   │   ├── ModelView.vue    # 3D viewer (Three.js, GLB)
     │   │   │   │   │   └── Console.vue      # Task logs
     │   │   │   │   ├── components/
     │   │   │   │   ├── composables/

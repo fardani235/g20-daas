@@ -76,7 +76,7 @@ const routes = [
     path: '/project/:id/task/:taskId/model',
     name: 'ModelView',
     component: () => import('./pages/ModelView.vue'),
-    meta: { requiresAuth: true, title: '3D Model' },
+    meta: { requiresAuth: true, title: '3D Model', fullBleed: true },
   },
   {
     path: '/project/:id/task/:taskId/console',
