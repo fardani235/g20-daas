@@ -37,6 +37,30 @@ function post(method, body) {
 
 export const listPlugins = () => get('webodm_core.api.plugins.list_plugins')
 export const savePluginSetting = payload => post('webodm_core.api.plugins.save_plugin_setting', payload)
+export const removePlugin = plugin => post('webodm_core.api.plugins.remove_plugin', { plugin })
+
+// Upload a user plugin package (.zip). Multipart, so no JSON content type —
+// the browser sets the boundary itself.
+export function uploadPlugin(file) {
+  const body = new FormData()
+  body.append('file', file, file.name)
+  return fetch('/api/method/webodm_core.api.plugins.upload_plugin', {
+    method: 'POST',
+    headers: headers(),
+    body,
+  }).then(unwrap)
+}
+
+// Whether the caller may upload/remove/enable plugins: organization owners and
+// platform admins (mirrors the backend's _require_org_admin).
+export function canManagePlugins(me) {
+  return !!(me && (me.is_platform_admin || me.org_role === 'Owner'))
+}
+
+// Short badge text for a catalog entry's origin.
+export function pluginTypeLabel(plugin) {
+  return plugin?.plugin_type === 'User' ? 'Custom' : 'System'
+}
 export const runPlugin = payload => post('webodm_core.api.plugins.run_plugin', payload)
 export const listRuns = task => get('webodm_core.api.plugins.list_runs', task ? { task } : undefined)
 export const getRun = name => get('webodm_core.api.plugins.get_run', { name })

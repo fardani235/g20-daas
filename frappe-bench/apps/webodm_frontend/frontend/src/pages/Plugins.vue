@@ -6,6 +6,19 @@
           <RefreshCw />
           Refresh
         </Button>
+        <template v-if="canManage">
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".zip,application/zip"
+            class="hidden"
+            @change="onFileChosen"
+          />
+          <Button :loading="uploading" @click="fileInput?.click()">
+            <Upload />
+            Upload plugin
+          </Button>
+        </template>
       </template>
     </PageHeader>
 
@@ -14,6 +27,7 @@
         <thead>
           <tr class="border-b border-border text-left text-muted-foreground">
             <th class="px-4 py-3 font-medium">Name</th>
+            <th class="px-4 py-3 font-medium">Type</th>
             <th class="px-4 py-3 font-medium">Version</th>
             <th class="px-4 py-3 font-medium">Output</th>
             <th class="px-4 py-3 font-medium">Status</th>
@@ -32,13 +46,18 @@
                 {{ plugin.description }}
               </p>
             </td>
+            <td class="px-4 py-3">
+              <Badge :variant="plugin.plugin_type === 'User' ? 'outline' : 'secondary'">
+                {{ pluginTypeLabel(plugin) }}
+              </Badge>
+            </td>
             <td class="px-4 py-3 text-muted-foreground">{{ plugin.version || '—' }}</td>
             <td class="px-4 py-3 text-muted-foreground capitalize">{{ plugin.output_kind }}</td>
             <td class="px-4 py-3">
               <Badge :variant="statusVariant(plugin)">{{ statusLabel(plugin) }}</Badge>
             </td>
             <td class="px-4 py-3 text-right">
-              <template v-if="isAdmin">
+              <template v-if="canManage">
                 <Button
                   v-if="plugin.available"
                   variant="ghost"
@@ -59,12 +78,23 @@
                   <Settings2 />
                   <span class="sr-only">Configure {{ plugin.label }}</span>
                 </Button>
+                <Button
+                  v-if="plugin.plugin_type === 'User'"
+                  variant="ghost"
+                  size="icon"
+                  class="size-8 text-destructive"
+                  :title="`Remove ${plugin.label}`"
+                  @click="removeTarget = plugin"
+                >
+                  <Trash2 />
+                  <span class="sr-only">Remove {{ plugin.label }}</span>
+                </Button>
               </template>
               <span v-else class="text-xs text-muted-foreground">Admin only</span>
             </td>
           </tr>
           <tr v-if="!plugins.length && !loading">
-            <td colspan="5" class="px-4 py-10 text-center text-muted-foreground">
+            <td colspan="6" class="px-4 py-10 text-center text-muted-foreground">
               No plugins available.
             </td>
           </tr>
@@ -86,27 +116,55 @@
         <Button :loading="saving" @click="saveConfig">Save</Button>
       </template>
     </Dialog>
+
+    <Dialog
+      :open="!!removeTarget"
+      title="Remove plugin"
+      class="sm:max-w-sm"
+      @update:open="value => { if (!value) removeTarget = null }"
+    >
+      <p class="text-sm text-muted-foreground">
+        Remove <strong class="text-foreground">{{ removeTarget?.label }}</strong> from your
+        organization? Its previous runs and their outputs are deleted too. This cannot be undone.
+      </p>
+      <template #footer>
+        <Button variant="ghost" @click="removeTarget = null">Cancel</Button>
+        <Button variant="destructive" :loading="removing" @click="remove">Remove</Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
-import { RefreshCw, Settings2 } from 'lucide-vue-next'
+import { RefreshCw, Settings2, Trash2, Upload } from 'lucide-vue-next'
 import { Badge, Button, Dialog, Label, Select } from '@/components/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import PluginParamsForm from '@/components/PluginParamsForm.vue'
 import { toast } from '@/lib/toast'
-import { listPlugins, savePluginSetting, schemaDefaults } from '@/lib/plugins'
+import {
+  canManagePlugins,
+  listPlugins,
+  pluginTypeLabel,
+  removePlugin,
+  savePluginSetting,
+  schemaDefaults,
+  uploadPlugin,
+} from '@/lib/plugins'
 import { applyModelChoice, matchingModel } from '@/lib/knownModels'
 import { whoami } from '@/lib/presets'
 
 const plugins = ref([])
 const loading = ref(false)
-const isAdmin = ref(false)
+const canManage = ref(false)
 const showModal = ref(false)
 const saving = ref(false)
 const editing = ref(null)
 const draftSettings = ref({})
+const fileInput = ref(null)
+const uploading = ref(false)
+const removeTarget = ref(null)
+const removing = ref(false)
 
 async function refresh() {
   loading.value = true
@@ -121,9 +179,9 @@ async function refresh() {
 
 async function loadAdmin() {
   try {
-    isAdmin.value = !!(await whoami()).is_platform_admin
+    canManage.value = canManagePlugins(await whoami())
   } catch {
-    isAdmin.value = false
+    canManage.value = false
   }
 }
 
@@ -149,6 +207,37 @@ async function toggle(plugin) {
     await refresh()
   } catch (e) {
     toast.error(e.message || 'Failed to update plugin')
+  }
+}
+
+async function onFileChosen(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  uploading.value = true
+  try {
+    const result = await uploadPlugin(file)
+    toast.success(result.created ? `Installed ${result.label}` : `Updated ${result.label} to ${result.version}`)
+    await refresh()
+  } catch (e) {
+    toast.error(e.message || 'Failed to upload plugin')
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function remove() {
+  if (!removeTarget.value) return
+  removing.value = true
+  try {
+    await removePlugin(removeTarget.value.op_id)
+    toast.success('Plugin removed')
+    removeTarget.value = null
+    await refresh()
+  } catch (e) {
+    toast.error(e.message || 'Failed to remove plugin')
+  } finally {
+    removing.value = false
   }
 }
 

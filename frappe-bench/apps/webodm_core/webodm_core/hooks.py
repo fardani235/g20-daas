@@ -151,7 +151,8 @@ after_migrate = "webodm_core.install.after_migrate"
 # -----------
 # Every tenant-owned DocType (anything with an `organization` field, plus
 # WebODM Organization itself) MUST appear in BOTH maps below; enforce
-# organization-scoped access (deny-by-default). System presets are shared.
+# organization-scoped access (deny-by-default). System presets and System
+# plugins are shared; user plugins are org-scoped.
 # api/test_tenant_doctype_coverage.py fails if a DocType is missing here.
 
 permission_query_conditions = {
@@ -159,6 +160,7 @@ permission_query_conditions = {
     "WebODM Task": "webodm_core.permissions.get_task_permission_query_conditions",
     "WebODM Preset": "webodm_core.permissions.get_preset_permission_query_conditions",
     "WebODM Settings": "webodm_core.permissions.get_settings_permission_query_conditions",
+    "WebODM Plugin": "webodm_core.permissions.get_plugin_permission_query_conditions",
     "WebODM Plugin Setting": "webodm_core.permissions.get_plugin_setting_permission_query_conditions",
     "WebODM Plugin Run": "webodm_core.permissions.get_plugin_run_permission_query_conditions",
     "WebODM Organization": "webodm_core.permissions.get_organization_permission_query_conditions",
@@ -171,6 +173,7 @@ has_permission = {
     "WebODM Task": "webodm_core.permissions.has_task_permission",
     "WebODM Preset": "webodm_core.permissions.has_preset_permission",
     "WebODM Settings": "webodm_core.permissions.has_settings_permission",
+    "WebODM Plugin": "webodm_core.permissions.has_plugin_permission",
     "WebODM Plugin Setting": "webodm_core.permissions.has_plugin_setting_permission",
     "WebODM Plugin Run": "webodm_core.permissions.has_plugin_run_permission",
     "WebODM Organization": "webodm_core.permissions.has_organization_permission",

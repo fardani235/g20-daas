@@ -39,6 +39,10 @@ x-frappe-env-base: &frappe-env-base
   REDIS_CACHE_PASSWORD_FILE: /run/secrets/redis_cache_password
   REDIS_QUEUE_PASSWORD_FILE: /run/secrets/redis_queue_password
   GEOSPATIAL_URL: http://geospatial:5000
+  # User plugin sandbox (services/plugin-runner). The sandbox dir must be the
+  # same path in the worker and the runner: both mount `plugin_sandbox` there.
+  PLUGIN_RUNNER_URL: http://plugin-runner:5001
+  PLUGIN_SANDBOX_DIR: /sandbox
   FRAPPE_SOCKETIO_PORT: "9000"
 
 x-frappe-secrets: &frappe-secrets
@@ -245,8 +249,11 @@ services:
       - frappe_sites:/workspace/frappe-bench/sites
       - frappe_logs:/workspace/frappe-bench/logs
       - frappe_data:/data
+      # Staging area for user plugin runs, shared with plugin-runner only.
+      - plugin_sandbox:/sandbox
     networks:
       - backend
+      - sandbox
     depends_on:
       frappe-init:
         condition: service_completed_successfully
@@ -344,6 +351,50 @@ services:
           cpus: "2"
           memory: 2G
 
+  plugin-runner:
+    # Sandbox for user-uploaded analysis plugins (services/plugin-runner).
+    # No published image yet: built from source until CI pushes one, then pin
+    # it like the others with `scripts/pin-images.sh` and drop the build block.
+    image: ghcr.io/fardani235/webodm-plugin-runner:1
+    build:
+      context: ./services/plugin-runner
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SANDBOX_DIR: /sandbox
+      PLUGIN_MAX_CONCURRENT_RUNS: "1"
+      PLUGIN_MEMORY_MB: "2048"
+      PLUGIN_DEFAULT_TIMEOUT: "300"
+      PLUGIN_MAX_TIMEOUT: "3600"
+    volumes:
+      # The ONLY mount: the runner never sees frappe_sites or frappe_data, so a
+      # plugin cannot read another organization's files. Frappe copies inputs in.
+      - plugin_sandbox:/sandbox
+    tmpfs:
+      - /tmp:size=256m
+    # Untrusted code runs here: no capabilities, no privilege escalation,
+    # read-only image filesystem, bounded process count, and the internal-only
+    # `sandbox` network (no route to the internet, DB, Redis, NodeODM or the
+    # geospatial service). Only frappe-worker shares that network.
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - sandbox
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5001/health', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 3G
+          pids: 256
+
   nodeodm:
     image: opendronemap/nodeodm:latest@sha256:cb07d06e21fd6189cfad287c6fedfa0b72568100355635cd9035cb86eed42ee2
     restart: unless-stopped
@@ -396,6 +447,10 @@ networks:
   data:
     driver: bridge
     internal: true
+  # frappe-worker <-> plugin-runner only; internal, so plugins have no egress.
+  sandbox:
+    driver: bridge
+    internal: true
 
 volumes:
   postgres_data:
@@ -405,6 +460,7 @@ volumes:
   frappe_logs:
   frappe_data:
   nodeodm_data:
+  plugin_sandbox:
   backup_storage:
   caddy_data:
   caddy_config:
