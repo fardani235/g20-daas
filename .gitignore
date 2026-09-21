@@ -4,7 +4,7 @@
 .env.*.local
 secrets/
 secrets/*.txt
-
+docs/plugins/examples/*.zip
 # Docker compose override for local dev
 docker-compose.override.yml
 
