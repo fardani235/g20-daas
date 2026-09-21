@@ -85,3 +85,37 @@ describe('plugins lib', () => {
     expect(plugins.latestRunPerPlugin([])).toEqual([])
   })
 })
+
+describe('user plugins', () => {
+  it('uploadPlugin POSTs multipart without a JSON content type', async () => {
+    const file = new File(['zip-bytes'], 'plugin.zip', { type: 'application/zip' })
+    await plugins.uploadPlugin(file)
+    const [url, init] = global.fetch.mock.calls.at(-1)
+    expect(url).toContain('webodm_core.api.plugins.upload_plugin')
+    expect(init.method).toBe('POST')
+    expect(init.body).toBeInstanceOf(FormData)
+    expect(init.body.get('file')).toBeInstanceOf(File)
+    expect(init.headers['Content-Type']).toBeUndefined()
+    expect(init.headers['X-Frappe-CSRF-Token']).toBe('x')
+  })
+
+  it('removePlugin POSTs the plugin id', async () => {
+    await plugins.removePlugin('acme.elevation-mask')
+    const [url, init] = global.fetch.mock.calls.at(-1)
+    expect(url).toContain('webodm_core.api.plugins.remove_plugin')
+    expect(JSON.parse(init.body)).toEqual({ plugin: 'acme.elevation-mask' })
+  })
+
+  it('only org owners and platform admins manage plugins', () => {
+    expect(plugins.canManagePlugins({ org_role: 'Owner' })).toBe(true)
+    expect(plugins.canManagePlugins({ is_platform_admin: true })).toBe(true)
+    expect(plugins.canManagePlugins({ org_role: 'Member' })).toBe(false)
+    expect(plugins.canManagePlugins(null)).toBe(false)
+  })
+
+  it('labels plugin origin', () => {
+    expect(plugins.pluginTypeLabel({ plugin_type: 'User' })).toBe('Custom')
+    expect(plugins.pluginTypeLabel({ plugin_type: 'System' })).toBe('System')
+    expect(plugins.pluginTypeLabel({})).toBe('System')
+  })
+})

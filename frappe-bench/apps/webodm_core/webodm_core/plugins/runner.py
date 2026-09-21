@@ -1,9 +1,14 @@
 """RQ job that executes a ``WebODM Plugin Run``.
 
 Flow: mark Running -> resolve the task's input files to absolute paths -> call
-the geospatial analysis service -> persist the returned artifact as a private
-File -> mark Completed (or Failed). A cancellation that lands while the
-operation is running is honored by discarding the output.
+the analysis backend -> persist the returned artifact as a private File -> mark
+Completed (or Failed). A cancellation that lands while the operation is running
+is honored by discarding the output.
+
+The backend depends on the plugin type: System plugins run in the geospatial
+service (``geospatial.run_operation``), User plugins in the sandboxed plugin
+runner (``sandbox.run_user_plugin``). Both return the same result shape, so
+everything after the call is shared.
 """
 
 import json
@@ -15,6 +20,7 @@ from frappe.utils import get_site_path, now_datetime
 from webodm_core.plugins.files import abs_path_for_file_url as _abs_path_for_file_url
 from webodm_core.plugins.files import save_private_file_from_path
 from webodm_core.plugins.geospatial import GeospatialError, run_operation
+from webodm_core.plugins.sandbox import run_user_plugin
 
 # Task fields that can supply an operation input.
 DATASET_FIELDS = ("orthophoto", "dsm", "dtm", "point_cloud", "model")
@@ -76,10 +82,16 @@ def execute_run(run_name: str):
         os.makedirs(out_dir, exist_ok=True)
         tmp_path = os.path.join(out_dir, f"{run.name}.{ext}")
 
-        result = run_operation(
-            plugin.name, inputs, params, tmp_path,
-            timeout=int(plugin.timeout_seconds or 600),
-        )
+        if plugin.plugin_type == "User":
+            result = run_user_plugin(
+                plugin, inputs, params, tmp_path,
+                timeout=int(plugin.timeout_seconds or 300),
+            )
+        else:
+            result = run_operation(
+                plugin.name, inputs, params, tmp_path,
+                timeout=int(plugin.timeout_seconds or 600),
+            )
 
         # A cancel may have landed while the operation was running.
         run.reload()

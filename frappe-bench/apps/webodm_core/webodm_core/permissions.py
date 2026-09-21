@@ -86,6 +86,30 @@ def has_settings_permission(doc, ptype, user=None):
     return _org_has_permission(doc, user or frappe.session.user)
 
 
+def get_plugin_permission_query_conditions(user=None):
+    user = user or frappe.session.user
+    if is_platform_admin(user):
+        return None
+    org = get_current_org(user)
+    # System plugins (the geospatial catalog) are visible to every org; user
+    # plugins only to the organization that uploaded them.
+    system_clause = "`tabWebODM Plugin`.`plugin_type` = 'System'"
+    if not org:
+        return system_clause
+    return f"({system_clause} OR `tabWebODM Plugin`.`organization` = {frappe.db.escape(org)})"
+
+
+def has_plugin_permission(doc, ptype, user=None):
+    user = user or frappe.session.user
+    if is_platform_admin(user):
+        return True
+    # System rows are code-owned: readable by everyone, written only by the
+    # catalog sync and platform admins. Never fall through to org scoping.
+    if getattr(doc, "plugin_type", "System") != "User":
+        return ptype == "read"
+    return _org_has_permission(doc, user)
+
+
 def get_plugin_setting_permission_query_conditions(user=None):
     return _org_query_conditions("WebODM Plugin Setting", user or frappe.session.user)
 

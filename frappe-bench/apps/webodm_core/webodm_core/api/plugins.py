@@ -1,18 +1,24 @@
-"""Analysis plugin API: catalog listing and per-organization enablement.
+"""Analysis plugin API: catalog listing, per-organization enablement and user
+plugin packages.
 
 Execution endpoints live alongside these in the same module (``run_plugin`` et
 al.). Everything is org-scoped through ``tenancy`` and the platform kill switch
-is enforced here as well as in the data model.
+is enforced here as well as in the data model. A user plugin (``plugin_type ==
+"User"``) is only ever visible to the organization that uploaded it; every
+lookup goes through ``_visible_plugin_row`` so that rule has one home.
 """
 
 import json
 import os
+import tempfile
 
 import frappe
-from frappe.utils import now_datetime, sbool
+from frappe.utils import get_site_path, now_datetime, sbool
 
 from webodm_core import tenancy
+from webodm_core.plugins import package as package_mod
 from webodm_core.plugins import schema as schema_mod
+from webodm_core.plugins.files import save_private_file_from_path
 from webodm_core.plugins.geospatial import (
     GeospatialError,
     GeospatialUnavailable,
@@ -66,6 +72,20 @@ def _plugin_row(plugin: str):
     return frappe.get_doc(_PLUGIN, plugin)
 
 
+def _visible_plugin_row(plugin: str, org: str | None):
+    """Like ``_plugin_row`` but a user plugin of another org reads as unknown.
+
+    Answering "unknown" rather than "forbidden" avoids confirming that a
+    plugin id exists in some other organization. No platform-admin bypass:
+    these endpoints act within the caller's own organization (admins manage
+    other tenants' rows through Desk, where the permission hooks apply).
+    """
+    doc = _plugin_row(plugin)
+    if doc.plugin_type == "User" and doc.organization != org:
+        frappe.throw(f"Unknown plugin: {plugin}", frappe.DoesNotExistError)
+    return doc
+
+
 def _get_or_create_setting(org: str, plugin: str):
     name = frappe.db.get_value(_SETTING, {"organization": org, "plugin": plugin}, "name")
     if name:
@@ -73,21 +93,57 @@ def _get_or_create_setting(org: str, plugin: str):
     return frappe.get_doc({"doctype": _SETTING, "organization": org, "plugin": plugin})
 
 
+_LIST_FIELDS = [
+    "name", "label", "description", "version", "plugin_type", "organization",
+    "output_kind", "render_kind", "inputs", "platform_enabled", "available",
+    "params_schema", "models",
+]
+
+
+def _serialize_plugin(p, setting) -> dict:
+    enabled = bool(setting.enabled) if setting else False
+    return {
+        "name": p.name,
+        "op_id": p.name,
+        "label": p.label,
+        "description": p.description,
+        "version": p.version,
+        "plugin_type": p.plugin_type or "System",
+        "output_kind": p.output_kind,
+        "render_kind": p.render_kind,
+        "platform_enabled": bool(p.platform_enabled),
+        "available": bool(p.available),
+        "enabled": enabled,
+        "runnable": bool(p.platform_enabled and p.available and enabled),
+        "settings": _parse_json(setting.settings, {}) if setting else {},
+        "params_schema": _parse_json(p.params_schema, {}),
+        "inputs": _parse_json(p.inputs, []),
+        "models": _parse_json(p.models, []),
+    }
+
+
 @frappe.whitelist(allow_guest=False)
 def list_plugins():
-    """Return the catalog with the caller's organization enablement merged in."""
+    """Return the catalog with the caller's organization enablement merged in.
+
+    System plugins are listed for everyone; user plugins only for the
+    organization that owns them.
+    """
     org = tenancy.get_current_org()
     plugins = frappe.get_all(
         _PLUGIN,
-        filters={"available": 1},
-        fields=[
-            "name", "label", "description", "version",
-            "output_kind", "render_kind", "inputs", "platform_enabled", "available",
-            "params_schema", "models",
-        ],
-        order_by="label",
+        filters={"available": 1, "plugin_type": "System"},
+        fields=_LIST_FIELDS,
         ignore_permissions=True,
     )
+    if org:
+        plugins += frappe.get_all(
+            _PLUGIN,
+            filters={"available": 1, "plugin_type": "User", "organization": org},
+            fields=_LIST_FIELDS,
+            ignore_permissions=True,
+        )
+    plugins.sort(key=lambda p: (p.label or "").lower())
 
     settings_by_plugin = {}
     if org:
@@ -99,28 +155,7 @@ def list_plugins():
         ):
             settings_by_plugin[row.plugin] = row
 
-    result = []
-    for p in plugins:
-        setting = settings_by_plugin.get(p.name)
-        enabled = bool(setting.enabled) if setting else False
-        result.append({
-            "name": p.name,
-            "op_id": p.name,
-            "label": p.label,
-            "description": p.description,
-            "version": p.version,
-            "output_kind": p.output_kind,
-            "render_kind": p.render_kind,
-            "platform_enabled": bool(p.platform_enabled),
-            "available": bool(p.available),
-            "enabled": enabled,
-            "runnable": bool(p.platform_enabled and p.available and enabled),
-            "settings": _parse_json(setting.settings, {}) if setting else {},
-            "params_schema": _parse_json(p.params_schema, {}),
-            "inputs": _parse_json(p.inputs, []),
-            "models": _parse_json(p.models, []),
-        })
-    return result
+    return [_serialize_plugin(p, settings_by_plugin.get(p.name)) for p in plugins]
 
 
 @frappe.whitelist(allow_guest=False)
@@ -138,7 +173,7 @@ def save_plugin_setting(**kwargs):
     if not (tenancy.is_org_admin() or tenancy.is_platform_admin()):
         frappe.throw("Only organization admins can change plugin settings", frappe.PermissionError)
 
-    plugin_doc = _plugin_row(plugin)
+    plugin_doc = _visible_plugin_row(plugin, org)
     if not plugin_doc.available:
         frappe.throw(f"Plugin '{plugin}' is not available")
 
@@ -162,6 +197,164 @@ def save_plugin_setting(**kwargs):
         "enabled": bool(setting.enabled),
         "settings": _parse_json(setting.settings, {}),
     }
+
+
+# ---------------------------------------------------------------------------
+# User plugins: upload / install / remove
+# ---------------------------------------------------------------------------
+
+def _require_org_admin() -> str:
+    org = tenancy.require_org()
+    if not (tenancy.is_org_admin() or tenancy.is_platform_admin()):
+        frappe.throw("Only organization admins can manage plugins", frappe.PermissionError)
+    return org
+
+
+def _org_slug(org: str) -> str:
+    slug = frappe.db.get_value("WebODM Organization", org, "slug")
+    return slug or frappe.scrub(org).replace("_", "-")
+
+
+def _spool_upload(upload, limit: int) -> str:
+    """Stream a werkzeug upload to a temp file on the site volume; return its path."""
+    out_dir = os.path.abspath(get_site_path("private", "files", "plugin_packages"))
+    os.makedirs(out_dir, exist_ok=True)
+    fd, path = tempfile.mkstemp(prefix="upload-", suffix=".zip", dir=out_dir)
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as out:
+            while True:
+                chunk = upload.stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > limit:
+                    raise package_mod.PackageError(
+                        f"package exceeds {limit // (1024 * 1024)} MB"
+                    )
+                out.write(chunk)
+    except Exception:
+        _remove_quietly(path)
+        raise
+    return path
+
+
+def _remove_quietly(path: str):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def install_user_plugin(package_path: str, org: str) -> dict:
+    """Validate the zip at ``package_path`` and install (or upgrade) it for ``org``.
+
+    The catalog row is ``<org-slug>.<manifest id>``; re-uploading the same id
+    replaces the package and manifest in place and keeps the organization's
+    enablement/settings and run history. ``package_path`` is consumed (moved).
+    """
+    try:
+        manifest = package_mod.inspect_package(package_path)
+    except package_mod.PackageError as e:
+        _remove_quietly(package_path)
+        frappe.throw(f"Invalid plugin package: {e}")
+
+    plugin_id = package_mod.namespaced_id(_org_slug(org), manifest["id"])
+    values = {
+        "plugin_type": "User",
+        "organization": org,
+        "label": manifest["label"],
+        "version": manifest["version"],
+        "description": manifest["description"],
+        "entrypoint": manifest["entrypoint"],
+        "inputs": json.dumps(manifest["inputs"]),
+        "params_schema": json.dumps(manifest["params_schema"]),
+        "output_kind": manifest["output_kind"],
+        "render_kind": manifest["render_kind"],
+        "timeout_seconds": manifest["timeout_seconds"],
+        "needs_validation": 0,
+        "models": None,
+        "available": 1,
+    }
+
+    created = False
+    if frappe.db.exists(_PLUGIN, plugin_id):
+        doc = frappe.get_doc(_PLUGIN, plugin_id)
+        if doc.plugin_type != "User" or doc.organization != org:
+            # Cannot happen with the org-slug namespace, but never overwrite
+            # another tenant's (or the platform's) row.
+            _remove_quietly(package_path)
+            frappe.throw(f"Plugin id '{plugin_id}' is not available")
+        for field, value in values.items():
+            doc.set(field, value)
+        doc.save(ignore_permissions=True)
+        _delete_attachments(_PLUGIN, doc.name)
+    else:
+        doc = frappe.get_doc({"doctype": _PLUGIN, "plugin_id": plugin_id,
+                              "platform_enabled": 1, **values})
+        doc.insert(ignore_permissions=True)
+        created = True
+
+    package_hash = package_mod.sha256_of(package_path)
+    file_doc = save_private_file_from_path(
+        package_path,
+        f"{plugin_id}-{manifest['version']}.zip",
+        attached_to_doctype=_PLUGIN,
+        attached_to_name=doc.name,
+        attached_to_field="package",
+        ignore_permissions=True,
+    )
+    doc.db_set("package", file_doc.file_url)
+    doc.db_set("package_hash", package_hash)
+
+    # The uploading organization obviously wants to use it: enable on first
+    # install, leave an existing choice alone on upgrade.
+    if created:
+        setting = _get_or_create_setting(org, doc.name)
+        setting.enabled = 1
+        setting.save(ignore_permissions=True)
+
+    doc.reload()
+    setting_row = frappe.db.get_value(
+        _SETTING, {"organization": org, "plugin": doc.name},
+        ["enabled", "settings"], as_dict=True,
+    )
+    return {**_serialize_plugin(doc, setting_row), "created": created}
+
+
+@frappe.whitelist(allow_guest=False)
+def upload_plugin():
+    """Upload a plugin package (multipart field ``file``) for the caller's organization."""
+    org = _require_org_admin()
+
+    # Frappe only sets max_content_length for its own upload endpoint.
+    frappe.request.max_content_length = package_mod.MAX_PACKAGE_BYTES + 1024 * 1024
+
+    upload = frappe.request.files.get("file")
+    if upload is None:
+        frappe.throw("No file provided (multipart field 'file')")
+
+    try:
+        path = _spool_upload(upload, package_mod.MAX_PACKAGE_BYTES)
+    except package_mod.PackageError as e:
+        frappe.throw(f"Invalid plugin package: {e}")
+    return install_user_plugin(path, org)
+
+
+@frappe.whitelist(allow_guest=False)
+def remove_plugin(plugin: str):
+    """Uninstall a user plugin: its runs and outputs, settings, package and row."""
+    org = _require_org_admin()
+    doc = _visible_plugin_row(plugin, org)
+    if doc.plugin_type != "User":
+        frappe.throw("System plugins cannot be removed; disable them instead")
+
+    _delete_runs({"plugin": doc.name})
+    for name in frappe.get_all(_SETTING, filters={"plugin": doc.name}, pluck="name"):
+        frappe.delete_doc(_SETTING, name, force=True, ignore_permissions=True)
+    _delete_attachments(_PLUGIN, doc.name)
+    frappe.delete_doc(_PLUGIN, doc.name, force=True, ignore_permissions=True)
+    return {"plugin": doc.name, "removed": True}
 
 
 def _resolve_inputs(task, inputs_spec: list) -> dict:
@@ -197,21 +390,25 @@ def _reject_if_active(plugin: str, task_name: str):
         frappe.throw(f"'{plugin}' is already running on this task; cancel it first")
 
 
+def _delete_attachments(doctype: str, name: str):
+    for file_name in frappe.get_all(
+        "File",
+        filters={"attached_to_doctype": doctype, "attached_to_name": name},
+        pluck="name",
+    ):
+        frappe.delete_doc("File", file_name, force=True, ignore_permissions=True)
+
+
+def _delete_runs(filters: dict):
+    """Delete the runs matching ``filters``, including their output files."""
+    for name in frappe.get_all("WebODM Plugin Run", filters=filters, pluck="name"):
+        _delete_attachments("WebODM Plugin Run", name)
+        frappe.delete_doc("WebODM Plugin Run", name, force=True, ignore_permissions=True)
+
+
 def _delete_previous_runs(plugin: str, task_name: str):
     """Delete prior runs for the same plugin+task, including their output files."""
-    names = frappe.get_all(
-        "WebODM Plugin Run",
-        filters={"plugin": plugin, "task": task_name},
-        pluck="name",
-    )
-    for name in names:
-        for file_name in frappe.get_all(
-            "File",
-            filters={"attached_to_doctype": "WebODM Plugin Run", "attached_to_name": name},
-            pluck="name",
-        ):
-            frappe.delete_doc("File", file_name, force=True, ignore_permissions=True)
-        frappe.delete_doc("WebODM Plugin Run", name, force=True, ignore_permissions=True)
+    _delete_runs({"plugin": plugin, "task": task_name})
 
 
 @frappe.whitelist(allow_guest=False)
@@ -226,7 +423,7 @@ def run_plugin(**kwargs):
         frappe.throw("plugin and task are required")
 
     org = tenancy.require_org()
-    plugin_doc = _plugin_row(plugin)
+    plugin_doc = _visible_plugin_row(plugin, org)
 
     if not plugin_doc.available:
         frappe.throw(f"Plugin '{plugin}' is not available")

@@ -40,7 +40,9 @@ submodule).
 | `frappe-bench/apps/frappe/` | Frappe framework (submodule, upstream `frappe/frappe`) |
 | `frappe-bench/apps/webodm_core/` | All DocTypes, business logic, and API |
 | `frappe-bench/apps/webodm_frontend/` | Vue 3 SPA + Frappe page hooks |
-| `services/geospatial/` | Standalone FastAPI tile/analysis service |
+| `services/geospatial/` | Standalone FastAPI tile/analysis service (hosts the **system** analysis plugins) |
+| `services/plugin-runner/` | Sandbox that executes **user** analysis plugins (uploaded per organization) |
+| `docs/plugins/` | User plugin guide + example plugin |
 | `infra/` | Caddy, backup, and image build assets |
 
 ## Tech Stack
@@ -131,6 +133,22 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 5000
 ```
 
+### Plugin Runner (user plugin sandbox)
+
+```bash
+cd services/plugin-runner
+python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+
+# Sandbox dir must match Frappe's `plugin_sandbox_dir` (default: the site's private/plugin_sandbox)
+SANDBOX_DIR=$PWD/../../frappe-bench/sites/webodm.local/private/plugin_sandbox \
+  uvicorn app.main:app --port 5001
+
+# Run a plugin package locally without the stack
+python -m app.cli ../../docs/plugins/examples/elevation-mask --input raster=dsm.tif --param threshold=120 --output out.tif
+```
+
+See [`docs/plugins/user-plugin-guide.md`](docs/plugins/user-plugin-guide.md) for writing, testing, packaging and installing plugins.
+
 ### Docker Compose (Full Stack)
 
 ```bash
@@ -146,9 +164,10 @@ g20-daas/
 ├── README.md                     # This file
 ├── SPEC.md                       # Specification document
 ├── TRD.md                        # Technical requirements document
-├── docs/                         # Runbook, deployment guide, migration
+├── docs/                         # Runbook, deployment guide, migration, plugin guide
 ├── infra/                        # Caddy, backup, image build assets
 ├── services/geospatial/          # Standalone FastAPI geospatial service
+├── services/plugin-runner/       # Sandbox service for user analysis plugins
 │
 └── frappe-bench/                 # Frappe Bench root
     ├── Procfile                  # bench start process definitions
@@ -204,6 +223,19 @@ services/geospatial/              # Standalone FastAPI service
 ├── docker-compose.yml
 ├── requirements.txt
 └── tests/
+
+services/plugin-runner/           # User plugin sandbox
+├── app/
+│   ├── main.py                   # FastAPI: POST /run, GET /health
+│   ├── sandbox.py                # Package extraction, rlimited subprocess, output georef
+│   └── cli.py                    # `python -m app.cli` — run a plugin locally
+├── Dockerfile
+├── requirements.txt
+└── tests/
+
+docs/plugins/
+├── user-plugin-guide.md          # How to write, test, package, upload, manage plugins
+└── examples/elevation-mask/      # Starter plugin (manifest, entrypoint, tests)
 ```
 
 ## Key Commands

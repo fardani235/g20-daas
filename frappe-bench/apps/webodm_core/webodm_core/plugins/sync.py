@@ -1,11 +1,12 @@
 """Catalog synchronization.
 
 The geospatial service is the source of truth for which analysis operations
-exist; Frappe persists them as ``WebODM Plugin`` catalog rows. Sync is additive
-and non-destructive: new operations are created platform-enabled, operations
-that disappear upstream are marked unavailable (never deleted, so run history
-survives), and a failure to reach the service leaves the previous catalog
-intact.
+exist; Frappe persists them as ``WebODM Plugin`` catalog rows of type System.
+Sync is additive and non-destructive: new operations are created
+platform-enabled, operations that disappear upstream are marked unavailable
+(never deleted, so run history survives), and a failure to reach the service
+leaves the previous catalog intact. User plugins (uploaded packages) are a
+different ``plugin_type`` and are never touched here.
 """
 
 import json
@@ -74,15 +75,17 @@ def upsert_catalog(operations: list[dict]) -> dict:
             doc = frappe.get_doc({
                 "doctype": "WebODM Plugin",
                 "plugin_id": op_id,
+                "plugin_type": "System",
                 "platform_enabled": 1,
                 **values,
             })
             doc.insert(ignore_permissions=True)
 
     # Mark operations that vanished upstream as unavailable without deleting
-    # them, so their runs and outputs remain queryable.
+    # them, so their runs and outputs remain queryable. Only System rows: user
+    # plugins are not in the geospatial catalog by definition.
     unavailable = []
-    for name in frappe.get_all("WebODM Plugin", pluck="name"):
+    for name in frappe.get_all("WebODM Plugin", filters={"plugin_type": "System"}, pluck="name"):
         if name not in seen:
             frappe.db.set_value("WebODM Plugin", name, "available", 0)
             unavailable.append(name)

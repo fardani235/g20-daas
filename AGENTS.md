@@ -356,3 +356,49 @@ All DocTypes live in `webodm_core`:
   deletes them afterwards; `.dockerignore` excludes `**/.git`.
 - Local validation recipe: build `webodm-frappe:local` from the worktree, run compose under
   another project name with an override that swaps the image and disables caddy/backup.
+
+## Phase 11: User plugins + sandbox runner (2026-09-21)
+
+- `WebODM Plugin` now has `plugin_type` (System | User), `organization`, `package`
+  (private zip), `entrypoint`, `package_hash`. System rows are what the geospatial
+  catalog sync writes (sync now filters on `plugin_type=System`); User rows are
+  uploaded per organization and named `<org-slug>.<manifest id>` (so ids never
+  collide across orgs or with system op ids). `WebODM Plugin` is org-scoped via
+  `permissions.get_plugin_permission_query_conditions/has_plugin_permission`
+  (System rows readable by all, like system presets).
+- `api/plugins.py`: `upload_plugin` (multipart `file`, org admin), `remove_plugin`,
+  `install_user_plugin(path, org)` (shared by both), and `_visible_plugin_row` —
+  every lookup goes through it so another org's user plugin reads as "Unknown plugin".
+  First install auto-enables for the uploading org; re-upload of the same id upgrades
+  in place and keeps settings/run history. `list_plugins` returns `plugin_type`.
+- `plugins/package.py` validates the zip + `plugin.json` at upload (limits, traversal,
+  symlinks, entrypoint present, manifest fields). `plugins/sandbox.py` stages a run in
+  `plugin_sandbox_dir` (`runs/<random>` 0777 under a 0711 `runs/`), copies the package
+  and inputs there, POSTs to `plugin_runner_url` `/run`, copies the output back and
+  rmtree's the run dir. `runner.execute_run` dispatches on `plugin_type`.
+- `services/plugin-runner/` (FastAPI, mirrors `services/geospatial`): `POST /run`
+  extracts the package safely and runs `python -E -s -B <entrypoint> request.json` as a
+  child with RLIMIT_AS/CPU/FSIZE/NPROC, scrubbed env, own process group + wall-clock
+  kill; 422 on plugin failure (stderr tail in `detail`), 400 for paths outside
+  `SANDBOX_DIR`. It reads georef (extent/epsg/bounds) from the output so plugins need
+  not. `python -m app.cli <plugin dir|zip> --input k=v --param k=v --output f` runs a
+  plugin locally through the same code path. Tests run with the geospatial venv:
+  `PLUGIN_PYTHON=$PY $PY -m pytest` (rasterio needed for the example plugin).
+- Compose: `plugin-runner` service (non-root, `read_only`, `cap_drop ALL`,
+  `no-new-privileges`, pids limit, tmpfs /tmp) on the new internal `sandbox` network,
+  shared only with `frappe-worker`; both mount the new `plugin_sandbox` volume at
+  `/sandbox`; no `frappe_sites` mount. `PLUGIN_RUNNER_URL`/`PLUGIN_SANDBOX_DIR` env →
+  `plugin_runner_url`/`plugin_sandbox_dir` via `configure_site.py`. The image is not
+  published yet, so compose has an active `build:` block — pin + drop it after CI pushes.
+  CI: `test-plugin-runner` (also runs the example plugin's own pytest) and
+  `plugin-runner-image` jobs.
+- Frontend: `Plugins.vue` gained Upload/Remove (org owners or platform admins, via
+  `canManagePlugins(whoami)` — previously the Enable/Disable buttons were shown to
+  platform admins only although the backend allowed org owners) and a Type badge
+  (System / Custom). `lib/plugins.js`: `uploadPlugin(file)`, `removePlugin`.
+- Docs: `docs/plugins/user-plugin-guide.md` + `docs/plugins/examples/elevation-mask/`
+  (manifest, entrypoint, pytest). Spec: `openspec/specs/user-plugins/spec.md`.
+- Testing the Frappe side from a worktree without a local bench: run the Frappe image
+  with the worktree's `webodm_core` mounted over `/workspace/webodm_core`, a throwaway
+  sites volume and a fresh DB on the running stack's postgres (`FRAPPE_ROLE=init`, then
+  `FRAPPE_ROLE=exec ... frappe --site <site> run-tests --app webodm_core`).

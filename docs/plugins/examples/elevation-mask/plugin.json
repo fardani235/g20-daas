@@ -1,0 +1,31 @@
+{
+  "id": "elevation-mask",
+  "label": "Elevation Mask",
+  "version": "1.0.0",
+  "description": "Mark every DSM/DTM cell above (or below) an elevation threshold.",
+  "entrypoint": "main.py",
+  "inputs": [
+    { "name": "raster", "datasets": ["dsm", "dtm"] }
+  ],
+  "params_schema": {
+    "type": "object",
+    "properties": {
+      "threshold": {
+        "type": "number",
+        "title": "Threshold (m)",
+        "description": "Elevation the mask is compared against, in the raster's units",
+        "default": 100.0
+      },
+      "mode": {
+        "type": "string",
+        "title": "Mode",
+        "enum": ["above", "below"],
+        "default": "above"
+      }
+    },
+    "required": ["threshold"]
+  },
+  "output_kind": "raster",
+  "render_kind": "dem",
+  "timeout_seconds": 300
+}

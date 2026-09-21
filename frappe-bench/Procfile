@@ -6,3 +6,4 @@ watch: bench watch
 schedule: bench schedule
 worker: bench worker 1>> logs/worker.log 2>> logs/worker.error.log
 geospatial: cd ../services/geospatial && ./venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5000 1>> ../../frappe-bench/logs/geospatial.log 2>&1
+plugin_runner: cd ../services/plugin-runner && SANDBOX_DIR=$OLDPWD/sites/webodm.local/private/plugin_sandbox ./venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 5001 1>> ../../frappe-bench/logs/plugin_runner.log 2>&1

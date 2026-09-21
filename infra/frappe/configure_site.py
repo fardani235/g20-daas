@@ -7,7 +7,8 @@ reading only environment variables. Writes:
   (the image bakes them, but the named volume masks that tree).
 - ``sites/common_site_config.json``: postgres superuser login (``bench
   new-site`` needs it), auth-embedded redis URLs, geospatial service URL,
-  ``default_site``. Existing keys not managed here are preserved.
+  plugin runner URL + sandbox dir, ``default_site``. Existing keys not managed
+  here are preserved.
 - ``sites/<SITE_NAME>/site_config.json``: ``max_file_size`` (drone uploads
   exceed Frappe's 25 MB default), only if the site exists.
 
@@ -86,6 +87,10 @@ def common_site_config(site):
         "default_site": site,
         "socketio_port": int(_env("FRAPPE_SOCKETIO_PORT", "9000")),
         "geospatial_url": _env("GEOSPATIAL_URL", "http://geospatial:5000"),
+        # User plugin sandbox (services/plugin-runner); the dir is the shared
+        # `plugin_sandbox` volume, mounted at the same path in the runner.
+        "plugin_runner_url": _env("PLUGIN_RUNNER_URL", "http://plugin-runner:5001"),
+        "plugin_sandbox_dir": _env("PLUGIN_SANDBOX_DIR", "/sandbox"),
         "root_login": _env("FRAPPE_ROOT_USER", "frappe_admin"),
         "root_password": _env("FRAPPE_ROOT_PASSWORD", required=True),
         "use_redis_auth": bool(_env("REDIS_CACHE_PASSWORD") or _env("REDIS_QUEUE_PASSWORD")),
