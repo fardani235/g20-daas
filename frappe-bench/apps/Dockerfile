@@ -106,20 +106,25 @@ RUN /workspace/frappe-bench/env/bin/pip install --no-cache-dir frappe-bench \
 # with ENOENT.
 # bench's App.setup_details() calls git.Repo(app_path) without searching parent
 # directories, so every app in the bench must itself be a git repository or
-# `bench setup requirements` aborts with InvalidGitRepositoryError. In this
-# monorepo webodm_core/webodm_frontend are tracked directories with no .git of
-# their own, and CI rsyncs them without one, so synthesize a repo for each.
-RUN set -e; for app in webodm_core webodm_frontend; do \
-      cd "/workspace/$app"; \
+# `bench setup requirements` aborts with InvalidGitRepositoryError. None of the
+# apps arrive with a usable .git: webodm_core/webodm_frontend are plain
+# monorepo directories, and frappe is a submodule whose .git is a gitlink file
+# pointing outside the build context (.dockerignore drops **/.git anyway).
+# Synthesize a throwaway repo per app for the duration of the bench commands,
+# then remove them so the runtime image does not carry a second copy of the
+# sources as git objects. Nothing at runtime needs git (bench update is not the
+# upgrade path -- rebuild the image instead).
+ENV FRAPPE_BENCH_ROOT=/workspace/frappe-bench
+RUN set -e; for app in frappe webodm_core webodm_frontend; do \
+      cd "/workspace/$app"; rm -rf .git; \
       git init -q; \
       git -c user.email=build@local -c user.name=build add -A; \
       git -c user.email=build@local -c user.name=build commit -qm "build-context snapshot"; \
-    done
-
-ENV FRAPPE_BENCH_ROOT=/workspace/frappe-bench
-RUN cd /workspace/frappe-bench && \
-    bench setup requirements && \
-    bench build --production
+    done \
+ && cd /workspace/frappe-bench \
+ && bench setup requirements \
+ && bench build --production \
+ && rm -rf /workspace/frappe/.git /workspace/webodm_core/.git /workspace/webodm_frontend/.git
 
 # Build the Vue SPA frontend (separate from Frappe desk assets).
 # Output goes to ../webodm_frontend/public/frontend/ via vite.config.js.
@@ -128,10 +133,14 @@ RUN cd /workspace/frappe-bench/apps/webodm_frontend/frontend && \
     npm install && \
     npm run build
 
-# Keep an unmasked copy of the built assets so the runtime entrypoint can
-# refresh the sites/assets volume from the image (otherwise a stale volume
-# serves hashes that no longer exist and CSS 404s).
-RUN cp -a /workspace/frappe-bench/sites/assets /workspace/assets-baked
+# Keep unmasked copies of the built assets and the sites manifests so the
+# runtime entrypoint can seed/refresh the sites volume from the image (a named
+# volume masks /workspace/frappe-bench/sites entirely; a stale volume would
+# otherwise serve asset hashes that no longer exist and CSS 404s).
+RUN cp -a /workspace/frappe-bench/sites/assets /workspace/assets-baked \
+ && mkdir -p /workspace/sites-baked \
+ && cp /workspace/frappe-bench/sites/apps.txt /workspace/sites-baked/ \
+ && { cp /workspace/frappe-bench/sites/apps.json /workspace/sites-baked/ 2>/dev/null || true; }
 
 # -------- Stage 2: runtime --------
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
@@ -177,17 +186,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && node --version
 
 COPY --from=builder /workspace /workspace
-COPY --from=root infra/frappe/entrypoint.sh /workspace/infra/frappe/entrypoint.sh
-COPY --from=root infra/frappe/init.sh /workspace/infra/frappe/init.sh
-COPY --from=root infra/frappe/wsgi.py /workspace/infra/frappe/wsgi.py
-COPY --from=root infra/frappe/prepare_assets.py /workspace/infra/frappe/prepare_assets.py
-RUN cp /workspace/infra/frappe/entrypoint.sh /entrypoint.sh && \
-    cp /workspace/infra/frappe/init.sh /usr/local/bin/frappe-init.sh && \
-    chmod +x /entrypoint.sh /usr/local/bin/frappe-init.sh
+# Runtime scripts (entrypoint, site bootstrap/config, gunicorn WSGI wrapper).
+COPY --from=root --chmod=0755 infra/frappe/entrypoint.sh infra/frappe/init.sh /workspace/infra/frappe/
+COPY --from=root infra/frappe/wsgi.py infra/frappe/prepare_assets.py infra/frappe/configure_site.py /workspace/infra/frappe/
 
+# Roles run from the sites dir (see entrypoint.sh); this is only the default
+# for interactive `docker exec` sessions so `bench` finds the bench.
 WORKDIR /workspace/frappe-bench
 
 EXPOSE 8000 9000
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
-CMD ["frappe-web"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/workspace/infra/frappe/entrypoint.sh"]

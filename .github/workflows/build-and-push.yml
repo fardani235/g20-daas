@@ -1,174 +1,245 @@
-name: Build & Push Docker Images
+name: CI
+
+# Every push/PR: run all three test suites and build every image.
+# On the default branch, images are pushed only after their tests pass.
+#
+# Frappe version comes from the frappe submodule (scripts/frappe-version.sh);
+# the Frappe image is tagged <version>, <version>-<sha7> and latest. After a
+# push, re-pin docker-compose.yml with `scripts/pin-images.sh` (the digest is
+# printed in the job summary).
 
 on:
   push:
     branches: [main, master]
-    paths:
-      - 'infra/**'
-      - 'docker-compose.yml'
-      - 'frappe-bench/apps/Dockerfile'
-      - 'frappe-bench/apps/webodm_core/**'
-      - 'frappe-bench/apps/webodm_frontend/**'
-      - 'frappe-bench/sites/apps.txt'
-      - 'services/geospatial/**'
-      - '.github/workflows/build-and-push.yml'
+  pull_request:
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   OWNER: ${{ github.repository_owner }}
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-frappe:
+  test-frontend:
+    name: webodm_frontend (vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frappe-bench/apps/webodm_frontend/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frappe-bench/apps/webodm_frontend/frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  test-geospatial:
+    name: geospatial (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/geospatial
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/geospatial/requirements.txt
+      - name: System deps (ogr2ogr for vector export)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gdal-bin
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+
+  frappe:
+    name: webodm_core (build image, run tests, push)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+      redis-cache:
+        image: redis:7-alpine
+        ports: ["13000:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 20
+      redis-queue:
+        image: redis:7-alpine
+        ports: ["11000:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 20
     steps:
-      - name: Checkout monorepo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Frappe version (from submodule)
+        id: version
+        run: echo "frappe_version=$(scripts/frappe-version.sh)" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GitHub Container Registry
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (local)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frappe-bench/apps
+          file: ./frappe-bench/apps/Dockerfile
+          build-contexts: |
+            sites=./frappe-bench/sites
+            root=.
+          load: true
+          tags: webodm-frappe:ci
+          cache-from: type=gha,scope=frappe
+          cache-to: type=gha,mode=max,scope=frappe
+
+      - name: Run webodm_core tests inside the image
+        env:
+          # Same env contract as docker-compose.yml, pointed at the job services.
+          CI_ENV: >-
+            -e SITE_NAME=ci.localhost -e DB_HOST=127.0.0.1 -e DB_PORT=5432
+            -e DB_NAME=webodm_ci -e DB_USER=webodm_ci -e DB_PASSWORD=webodm_ci
+            -e ADMIN_PASSWORD=admin -e FRAPPE_ROOT_USER=postgres -e FRAPPE_ROOT_PASSWORD=postgres
+            -e REDIS_CACHE_HOST=127.0.0.1 -e REDIS_CACHE_PORT=13000
+            -e REDIS_QUEUE_HOST=127.0.0.1 -e REDIS_QUEUE_PORT=11000
+            -e GEOSPATIAL_URL=http://127.0.0.1:5000
+        run: |
+          set -euo pipefail
+          docker volume create ci-sites >/dev/null
+          run() { docker run --rm --network host -v ci-sites:/workspace/frappe-bench/sites $CI_ENV "$@"; }
+          run -e FRAPPE_ROLE=init webodm-frappe:ci
+          frappe() { run -e FRAPPE_ROLE=exec webodm-frappe:ci /workspace/frappe-bench/env/bin/python -m frappe.utils.bench_helper frappe --site ci.localhost "$@"; }
+          frappe set-config allow_tests true
+          frappe run-tests --app webodm_core --failfast
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Frappe version
-        id: version
-        run: |
-          VERSION=$(grep 'FRAPPE_VERSION' docker-compose.yml | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          VERSION=${VERSION:-16.26.3}
-          echo "frappe_version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Assemble app build context
-        run: |
-          VERSION=${{ steps.version.outputs.frappe_version }}
-          CONTEXT=build-context/frappe-bench
-          mkdir -p "$CONTEXT/apps" "$CONTEXT/sites"
-
-          # Upstream Frappe is the only external app; pinned to the release tag.
-          git clone --depth 1 --branch "v${VERSION}" \
-            https://github.com/frappe/frappe.git "$CONTEXT/apps/frappe"
-
-          # Custom apps live in this monorepo.
-          rsync -a --exclude='node_modules' --exclude='__pycache__' --exclude='.pytest_cache' \
-            frappe-bench/apps/webodm_core/ "$CONTEXT/apps/webodm_core/"
-          rsync -a --exclude='node_modules' --exclude='__pycache__' --exclude='.pytest_cache' \
-            frappe-bench/apps/webodm_frontend/ "$CONTEXT/apps/webodm_frontend/"
-
-          cp frappe-bench/apps/Dockerfile frappe-bench/apps/.dockerignore "$CONTEXT/apps/"
-          cp frappe-bench/sites/apps.txt "$CONTEXT/sites/"
-          cp -r infra/ build-context/infra/
-
-      - name: Build and push webodm-frappe
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        id: push
         uses: docker/build-push-action@v6
         with:
-          context: ./build-context/frappe-bench/apps
-          file: ./build-context/frappe-bench/apps/Dockerfile
+          context: ./frappe-bench/apps
+          file: ./frappe-bench/apps/Dockerfile
+          build-contexts: |
+            sites=./frappe-bench/sites
+            root=.
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-frappe:${{ steps.version.outputs.frappe_version }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-frappe:${{ steps.version.outputs.frappe_version }}-${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-frappe:latest
           cache-from: type=gha,scope=frappe
-          cache-to: type=gha,mode=max,scope=frappe
-          build-contexts: |
-            sites=./build-context/frappe-bench/sites
-            root=./build-context
 
-  build-caddy:
+      - name: Pin hint
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "### webodm-frappe pushed"
+            echo '```'
+            echo "image: ${REGISTRY}/${OWNER}/webodm-frappe:${{ steps.version.outputs.frappe_version }}@${{ steps.push.outputs.digest }}"
+            echo '```'
+            echo "Re-pin with: \`FRAPPE_VERSION=${{ steps.version.outputs.frappe_version }} scripts/pin-images.sh\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  geospatial-image:
+    name: geospatial (build image, push)
     runs-on: ubuntu-latest
+    needs: test-geospatial
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Checkout monorepo
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./services/geospatial
+          file: ./services/geospatial/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-geospatial:1
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-geospatial:1-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-geospatial:latest
+          cache-from: type=gha,scope=geospatial
+          cache-to: type=gha,mode=max,scope=geospatial
 
-      - name: Build and push webodm-caddy
-        uses: docker/build-push-action@v6
+  caddy-image:
+    name: caddy (build image, push)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
         with:
           context: ./infra/caddy
           file: ./infra/caddy/Dockerfile
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-caddy:2
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-caddy:2-${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-caddy:latest
           cache-from: type=gha,scope=caddy
           cache-to: type=gha,mode=max,scope=caddy
 
-  build-backup:
+  backup-image:
+    name: backup (build image, push)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Checkout monorepo
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push webodm-backup
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: ./infra/backup
           file: ./infra/backup/Dockerfile
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-backup:1
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-backup:1-${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-backup:latest
           cache-from: type=gha,scope=backup
           cache-to: type=gha,mode=max,scope=backup
-
-  build-geospatial:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout monorepo
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push webodm-geospatial
-        uses: docker/build-push-action@v6
-        with:
-          context: ./services/geospatial
-          file: ./services/geospatial/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-geospatial:1
-            ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-geospatial:latest
-          cache-from: type=gha,scope=geospatial
-          cache-to: type=gha,mode=max,scope=geospatial

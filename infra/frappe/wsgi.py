@@ -6,6 +6,9 @@ applies the same static middleware so `/assets/*` and `/files/*` are served
 directly from sites/assets instead of going through the WSGI app for every
 static request.
 
+When ``FRAPPE_SITE`` is set every request is served for that site, whatever
+the Host header says (single-site deployment).
+
 It also adds a SPA fallback: the WebODM frontend is a Vue app using history
 mode with base `/assets/webodm_frontend/frontend/`. Requests for that base that
 do not resolve to a real file are served the app's `index.html` so client-side
@@ -14,6 +17,7 @@ routes (e.g. `/login`, `/map`) work on reload.
 import os
 
 os.environ.setdefault("SITES_PATH", "/workspace/frappe-bench/sites")
+os.environ.setdefault("FRAPPE_BENCH_ROOT", "/workspace/frappe-bench")
 
 # Import frappe.app explicitly so `frappe.app.application` is available.
 # Do NOT call frappe.init() at module level — frappe.app.application handles
@@ -26,6 +30,13 @@ from frappe.middlewares import StaticDataMiddleware
 
 SITES_PATH = os.environ["SITES_PATH"]
 SPA_ASSET_PREFIX = "/assets/webodm_frontend/frontend/"
+
+# This deployment serves exactly one site. Pin it so requests resolve to it
+# regardless of the Host header (container healthchecks hit `localhost`, Caddy
+# fronts both the app domain and the admin subdomain). Same mechanism
+# `frappe.app.serve()` uses for the dev server.
+if os.environ.get("FRAPPE_SITE"):
+    frappe_app._site = os.environ["FRAPPE_SITE"]
 
 
 class SpaFallback:

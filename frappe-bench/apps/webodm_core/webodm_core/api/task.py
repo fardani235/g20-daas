@@ -33,21 +33,20 @@ def process_task():
         frappe.throw("task_name is required")
 
     task = _get_task_checked(task_name, "write")
-    if task.status != "Pending":
-        frappe.throw(f"Task {task_name} is not in Pending state")
+    if task.status not in ("Pending", "Failed"):
+        frappe.throw(f"Task {task_name} cannot be started (status: {task.status})")
 
     # Pending -> Queued is the explicit user handoff. The scheduler sweep only
     # picks up Queued, so this assignment is what actually starts the task;
-    # without it the task sits parked forever.
-    task.db_set("status", "Queued")
-    task.db_set("progress", 1)
+    # without it the task sits parked forever. A Failed task can be restarted:
+    # counters reset so it gets a full set of dispatch attempts again.
+    task.db_set({
+        "status": "Queued", "progress": 1, "node_task_id": None,
+        "dispatch_attempts": 0, "poll_failures": 0, "next_attempt_at": None, "last_error": None,
+    })
 
-    frappe.enqueue(
-        "webodm_core.webodm_core.processing.task_runner.process_task",
-        queue="long",
-        job_name=f"process_{task_name}",
-        task_name=task_name,
-    )
+    from webodm_core.webodm_core.processing.task_runner import enqueue_process
+    enqueue_process(task_name)
 
     return f"Processing started for {task_name}"
 
@@ -215,12 +214,8 @@ def _maybe_autostart(task_name: str):
         # status, so skipping this would make auto-start a silent no-op.
         frappe.db.set_value("WebODM Task", task_name, "status", "Queued")
         frappe.db.commit()
-        frappe.enqueue(
-            "webodm_core.webodm_core.processing.task_runner.process_task",
-            queue="long",
-            job_name=f"process_{task_name}",
-            task_name=task_name,
-        )
+        from webodm_core.webodm_core.processing.task_runner import enqueue_process
+        enqueue_process(task_name)
     except Exception:
         frappe.log_error(f"Auto-start failed for {task_name}", "WebODM Processing")
 
@@ -357,14 +352,23 @@ def get_task_console():
         if isinstance(lines, list):
             result["lines"] = lines
             result["next_line"] = line + len(lines)
-    except (NodeODMError, Exception):
-        pass
+    except NodeODMError as e:
+        # Console is best-effort; the caller keeps its offset and retries.
+        result["error"] = str(e)
 
     return result
 
 
 @frappe.whitelist(allow_guest=False)
 def get_task_progress():
+    """Return the task as the backend knows it.
+
+    Read-only by design. The background ``poll_task`` job is the single writer
+    of processing state; an earlier version of this endpoint also talked to the
+    node and wrote status/progress inline, which raced with the worker and let
+    a UI refresh flip a task's state. If the task is Running, a poll is nudged
+    (deduplicated) so a watched task refreshes faster than the cron cadence.
+    """
     raw = frappe.request.data
     if isinstance(raw, bytes):
         raw = raw.decode()
@@ -374,62 +378,10 @@ def get_task_progress():
         frappe.throw("task_name is required")
 
     task = _get_task_checked(task_name, "read")
-    result = task.as_dict()
-
-    node_task_id = task.node_task_id
-    if node_task_id:
-        from webodm_core.webodm_core.processing.node_client import NodeODMClient
-        nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
-        if nodes:
-            try:
-                client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
-                info = client.task_info(node_task_id)
-                raw_progress = info.get("progress", 0)
-                raw_status = info.get("status", 0)
-                if isinstance(raw_status, dict):
-                    status_code = raw_status.get("code", 0)
-                else:
-                    status_code = raw_status
-
-                result["node_progress"] = raw_progress
-                result["node_status_code"] = status_code
-
-                from webodm_core.webodm_core.processing.task_runner import _status_action
-
-                action = _status_action(raw_status, raw_progress)
-
-                # Sync latest progress to Frappe DB while still in flight.
-                if action == "running" and raw_progress > 0:
-                    pct = max(1, int(raw_progress)) if raw_progress > 1 else max(1, int(raw_progress * 100))
-                    if pct != task.progress:
-                        task.db_set("progress", pct)
-                        task.progress = pct
-                        result["progress"] = pct
-
-                # Surface terminal failure/cancel immediately so the frontend stops
-                # polling and shows the right state instead of a stuck "Running".
-                if action == "failed":
-                    task.db_set("status", "Failed")
-                    result["status"] = "Failed"
-                elif action == "cancelled":
-                    task.db_set("status", "Cancelled")
-                    result["status"] = "Cancelled"
-                elif action == "download":
-                    prog_val = raw_progress if isinstance(raw_progress, (int, float)) else 0
-                    if prog_val >= 100:
-                        task.db_set("progress", 100)
-                        result["progress"] = 100
-
-                # Kick a background poll to download assets / persist the terminal
-                # state, for any non-running node status.
-                if action != "running":
-                    frappe.enqueue(
-                        "webodm_core.webodm_core.processing.task_runner.poll_task",
-                        queue="short",
-                        job_name=f"poll_{task_name}",
-                        task_name=task_name,
-                    )
-            except Exception:
-                pass
-
-    return result
+    if task.status == "Running":
+        from webodm_core.webodm_core.processing.task_runner import enqueue_poll
+        try:
+            enqueue_poll(task_name)
+        except Exception:
+            frappe.log_error(f"Could not enqueue poll for {task_name}", "WebODM Processing")
+    return task.as_dict()

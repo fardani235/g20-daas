@@ -11,7 +11,11 @@ from webodm_core.plugins.files import (
     abs_path_for_file_url,
     save_private_file_from_stream,
 )
-from webodm_core.webodm_core.processing.node_client import NodeODMClient, NodeODMError
+from webodm_core.webodm_core.processing.node_client import (
+    NodeODMClient,
+    NodeODMError,
+    NodeODMTransportError,
+)
 
 # Which downloaded raster fields carry georeferencing worth extracting, and the
 # Task field that should hold each one's EPSG:4326 extent (GeoJSON Polygon).
@@ -29,6 +33,18 @@ NODE_STATUS_RUNNING = 20
 NODE_STATUS_FAILED = 30
 NODE_STATUS_COMPLETED = 40
 NODE_STATUS_CANCELED = 50
+
+# Retry policy. Dispatch failures back off exponentially (1, 2, 4 ... min,
+# capped) and give up after MAX_DISPATCH_ATTEMPTS. While Running, transient
+# poll errors are tolerated for MAX_POLL_FAILURES consecutive polls (~ that many
+# minutes at the cron cadence) before the task is marked Failed.
+MAX_DISPATCH_ATTEMPTS = 8
+DISPATCH_BACKOFF_BASE_SECONDS = 60
+DISPATCH_BACKOFF_CAP_SECONDS = 30 * 60
+MAX_POLL_FAILURES = 15
+
+PROCESS_JOB = "webodm_core.webodm_core.processing.task_runner.process_task"
+POLL_JOB = "webodm_core.webodm_core.processing.task_runner.poll_task"
 
 
 def _status_action(status, progress) -> str:
@@ -87,11 +103,77 @@ def _cogify_raster(abs_path: str) -> dict | None:
 
 def _get_node_tasks_key(task: Document):
     from frappe.utils import get_site_path
-    import os
     return os.path.join(
         get_site_path("private", "processing"),
         task.name.replace(" ", "_"),
     )
+
+
+def enqueue_process(task_name: str):
+    """Enqueue the dispatch job for a task exactly once (dedup by job_id)."""
+    frappe.enqueue(
+        PROCESS_JOB, queue="long", job_id=f"webodm:process:{task_name}",
+        deduplicate=True, task_name=task_name,
+    )
+
+
+def enqueue_poll(task_name: str):
+    """Enqueue the poll job for a task exactly once (dedup by job_id)."""
+    frappe.enqueue(
+        POLL_JOB, queue="short", job_id=f"webodm:poll:{task_name}",
+        deduplicate=True, task_name=task_name,
+    )
+
+
+def _backoff_seconds(attempt: int) -> int:
+    """Exponential backoff for the Nth failed dispatch attempt (1-based)."""
+    return min(DISPATCH_BACKOFF_BASE_SECONDS * 2 ** max(attempt - 1, 0), DISPATCH_BACKOFF_CAP_SECONDS)
+
+
+def _fail(task: Document, error: str):
+    frappe.log_error(f"{task.name}: {error}", "WebODM Processing")
+    task.db_set({"status": "Failed", "progress": 0, "last_error": error[:1000]})
+
+
+def _defer_dispatch(task: Document, error: str):
+    """Record a transient dispatch failure and either schedule a retry or give up."""
+    from frappe.utils import add_to_date, now_datetime
+
+    attempts = int(task.dispatch_attempts or 0) + 1
+    if attempts >= MAX_DISPATCH_ATTEMPTS:
+        _fail(task, f"giving up after {attempts} dispatch attempts: {error}")
+        return
+    delay = _backoff_seconds(attempts)
+    frappe.log_error(
+        f"{task.name}: dispatch attempt {attempts} failed, retrying in {delay}s: {error}",
+        "WebODM Processing",
+    )
+    task.db_set({
+        "dispatch_attempts": attempts,
+        "next_attempt_at": add_to_date(now_datetime(), seconds=delay),
+        "last_error": error[:1000],
+    })
+
+
+def _record_poll_failure(task: Document, error: str):
+    """Tolerate a transient poll error; fail only after MAX_POLL_FAILURES in a row."""
+    failures = int(task.poll_failures or 0) + 1
+    if failures >= MAX_POLL_FAILURES:
+        _fail(task, f"node unreachable for {failures} consecutive polls: {error}")
+        return
+    task.db_set({"poll_failures": failures, "last_error": error[:1000]})
+
+
+def _first_node() -> dict | None:
+    nodes = frappe.get_all(
+        "WebODM Processing Node", filters={}, fields=["name", "hostname", "port", "token"],
+        order_by="creation asc",
+    )
+    return nodes[0] if nodes else None
+
+
+def _client_for(node: dict) -> NodeODMClient:
+    return NodeODMClient(node["hostname"], node["port"], node.get("token"))
 
 
 def process_pending_tasks():
@@ -102,19 +184,22 @@ def process_pending_tasks():
     within a minute of upload and make the Start button and the
     ``auto_start_processing`` setting meaningless. Only an explicit start
     (api.task.process_task or _maybe_autostart) moves Pending -> Queued.
+
+    Tasks whose last dispatch failed carry ``next_attempt_at``; they are skipped
+    until the backoff has elapsed.
     """
+    from frappe.utils import now_datetime
+
+    now = now_datetime()
     tasks = frappe.get_all(
         "WebODM Task",
         filters={"status": "Queued"},
-        pluck="name",
+        fields=["name", "next_attempt_at"],
     )
-    for task_name in tasks:
-        frappe.enqueue(
-            "webodm_core.webodm_core.processing.task_runner.process_task",
-            queue="long",
-            job_name=f"process_{task_name}",
-            task_name=task_name,
-        )
+    for t in tasks:
+        if t.next_attempt_at and t.next_attempt_at > now:
+            continue
+        enqueue_process(t.name)
 
 
 def process_task(task_name: str):
@@ -122,21 +207,16 @@ def process_task(task_name: str):
     if task.status != "Queued":
         return
 
-    nodes = frappe.get_all(
-        "WebODM Processing Node",
-        filters={},
-        fields=["name", "hostname", "port", "token"],
-    )
-    if not nodes:
-        frappe.log_error("No processing nodes available", "WebODM Processing")
+    node = _first_node()
+    if not node:
+        _defer_dispatch(task, "no processing nodes configured")
         return
 
-    client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
-
+    client = _client_for(node)
     try:
-        info = client.info()
+        client.info()
     except NodeODMError as e:
-        frappe.log_error(f"Node connection failed: {e}", "WebODM Processing")
+        _defer_dispatch(task, f"node {node['name']} unreachable: {e}")
         return
 
     task.reload()
@@ -145,7 +225,8 @@ def process_task(task_name: str):
 
     images = _get_task_images(task)
     if not images:
-        frappe.log_error(f"Task {task_name} has no images", "WebODM Processing")
+        # Nothing to send and nothing that a retry could fix.
+        _fail(task, "task has no readable images")
         return
 
     options = task.processing_options or {}
@@ -156,17 +237,23 @@ def process_task(task_name: str):
 
     try:
         result = client.create_task(images, node_opts, name=task.title)
+    except NodeODMTransportError as e:
+        _defer_dispatch(task, f"upload to node failed: {e}")
+        return
     except NodeODMError as e:
-        frappe.log_error(f"Failed to create task on node: {e}", "WebODM Processing")
+        # The node rejected the task (bad options, too many images...). Retrying
+        # the identical request would fail the same way.
+        _fail(task, f"node rejected task: {e}")
         return
 
-    node_task_id = result.get("uuid")
-    if not node_task_id:
-        frappe.log_error(f"No uuid in node response: {result}", "WebODM Processing")
-        return
-
-    task.db_set("node_task_id", node_task_id)
-    task.db_set("status", "Running")
+    task.db_set({
+        "node_task_id": result["uuid"],
+        "status": "Running",
+        "dispatch_attempts": 0,
+        "poll_failures": 0,
+        "next_attempt_at": None,
+        "last_error": None,
+    })
 
 
 def _build_node_options(opts: dict | list) -> list[dict]:
@@ -233,18 +320,8 @@ def _get_task_images(task: Document) -> list[tuple[str, str]]:
 
 
 def update_running_tasks():
-    tasks = frappe.get_all(
-        "WebODM Task",
-        filters={"status": "Running"},
-        pluck="name",
-    )
-    for task_name in tasks:
-        frappe.enqueue(
-            "webodm_core.webodm_core.processing.task_runner.poll_task",
-            queue="short",
-            job_name=f"poll_{task_name}",
-            task_name=task_name,
-        )
+    for task_name in frappe.get_all("WebODM Task", filters={"status": "Running"}, pluck="name"):
+        enqueue_poll(task_name)
 
 
 def poll_task(task_name: str):
@@ -254,24 +331,28 @@ def poll_task(task_name: str):
 
     node_task_id = task.node_task_id
     if not node_task_id:
-        task.db_set("status", "Failed")
+        _fail(task, "Running without a node task id")
         return
 
-    nodes = frappe.get_all(
-        "WebODM Processing Node",
-        filters={},
-        fields=["hostname", "port", "token"],
-    )
-    if not nodes:
+    node = _first_node()
+    if not node:
+        _record_poll_failure(task, "no processing nodes configured")
         return
-
-    client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
+    client = _client_for(node)
 
     try:
         info = client.task_info(node_task_id)
-    except NodeODMError:
-        task.db_set("status", "Failed")
+    except NodeODMTransportError as e:
+        _record_poll_failure(task, str(e))
         return
+    except NodeODMError as e:
+        # The node answered but does not know this task any more (restarted
+        # with cleared data, task removed...). It will not come back.
+        _fail(task, f"node no longer has task {node_task_id}: {e}")
+        return
+
+    if task.poll_failures:
+        task.db_set({"poll_failures": 0, "last_error": None})
 
     raw_status = info.get("status", 0)
     progress = info.get("progress", 0.0)
@@ -280,17 +361,20 @@ def poll_task(task_name: str):
 
     if action == "download":
         task.db_set("progress", 100)
-        _download_assets(client, node_task_id, task)
+        try:
+            _download_assets(client, node_task_id, task)
+        except NodeODMTransportError as e:
+            # Leave the task Running so the next poll retries the download.
+            _record_poll_failure(task, f"asset download failed: {e}")
         return
 
     if action == "failed":
-        task.db_set("status", "Failed")
-        task.db_set("progress", 0)
+        err = raw_status.get("errorMessage") if isinstance(raw_status, dict) else None
+        _fail(task, f"processing failed on node: {err or raw_status}")
         return
 
     if action == "cancelled":
-        task.db_set("status", "Cancelled")
-        task.db_set("progress", 0)
+        task.db_set({"status": "Cancelled", "progress": 0})
         return
 
     # Still running/queued — sync the latest progress percentage.
@@ -305,6 +389,10 @@ def poll_task(task_name: str):
 def _download_assets(client: NodeODMClient, node_task_id: str, task: Document):
     """Fetch all.zip from the node and register each known asset as a File.
 
+    Raises ``NodeODMTransportError`` if the zip could not be fetched (so the
+    caller can retry later); any other failure is terminal and marks the task
+    Failed here.
+
     Everything stays on disk: the zip streams to a scratch dir under the site,
     each member is streamed out of the archive straight into private/files, and
     the scratch dir is removed at the end. Peak memory is one I/O chunk, not the
@@ -318,9 +406,10 @@ def _download_assets(client: NodeODMClient, node_task_id: str, task: Document):
     try:
         try:
             client.download_asset(node_task_id, "all.zip", zip_path)
+        except NodeODMTransportError:
+            raise  # transient: caller keeps the task Running and retries
         except NodeODMError as e:
-            frappe.log_error(f"Failed to download all.zip for {task.name}: {e}", "WebODM Processing")
-            task.db_set("status", "Failed")
+            _fail(task, f"node refused all.zip download: {e}")
             return
 
         asset_map = {
@@ -385,8 +474,12 @@ def _download_assets(client: NodeODMClient, node_task_id: str, task: Document):
                         task.db_set("model", file_doc.file_url)
                         downloaded += 1
         except Exception as e:
-            frappe.log_error(f"Failed to extract assets from zip for {task.name}: {e}", "WebODM Processing")
+            _fail(task, f"failed to extract assets from all.zip: {e}")
+            return
 
-        task.db_set("status", "Completed" if downloaded > 0 else "Failed")
+        if downloaded > 0:
+            task.db_set({"status": "Completed", "last_error": None})
+        else:
+            _fail(task, "all.zip contained none of the expected assets")
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
