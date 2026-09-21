@@ -358,11 +358,14 @@ Frappe's hooks system replaces the original WebODM plugin mechanism.
 - Layer controls (colormap, hillshade, HSV, opacity)
 
 ### 7.3 ModelView (`/webodm/project/{id}/task/{taskId}/model`)
-- Potree/Three.js 3D point cloud viewer
-- GLTF/GLB textured model viewer
-- Measurement tools (distance, area, volume)
-- Camera view save/restore
-- Asset download buttons
+- Three.js textured model viewer (ODM GLB, Draco-compressed; `model.zip` glTF fallback)
+- Models are re-oriented from ODM's Z-up to Y-up and centred; camera auto-frames the whole model
+- Toolbar: Rotate / Pan / Zoom mouse modes, zoom in/out, reset view, preset views (isometric, top, north, east), ground grid, fullscreen, help
+- Mouse, touch and keyboard navigation (arrows/WASD pan, +/- zoom, R reset, 1-4 presets, G grid, F fullscreen, ? help); double-click focuses the orbit on the clicked point
+- Large models: streamed download with progress, textures decoded two at a time and downsampled to a per-device memory budget, render-on-demand loop, adaptive pixel ratio
+- States: loading (phase + progress), processing (polls until the model exists), no model, failed task, not found, download error with retry, WebGL unavailable
+- Dataset switcher between the project's tasks that have a model; download and console links
+- Measurement tools and camera view save/restore are not implemented yet
 
 ### 7.4 Console (`/webodm/project/{id}/task/{taskId}/console`)
 - Real-time task log streaming via SocketIO

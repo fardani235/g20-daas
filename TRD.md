@@ -87,7 +87,7 @@ Defined in `webodm_frontend/frontend/package.json`:
 **Additional planned (Phase 5):**
 | Package | Purpose |
 |---|---|
-| three.js | 3D model rendering (Potree) |
+| three.js | 3D textured-model viewer (GLB + Draco; see `docs/superpowers/specs/2026-09-22-3d-viewer-ux-design.md`) |
 | potree-core | Point cloud viewer |
 | proj4 | Coordinate reprojection |
 | shpjs | Shapefile parsing |
@@ -290,5 +290,5 @@ Single-host deployment with all services on one machine.
 | Task processing performance | Long-running Celery-style jobs | RQ scales horizontally; same Redis locking pattern |
 | Large file uploads (1GB+ drone imagery) | Upload timeouts, memory pressure | Frappe supports chunked uploads; progress tracking |
 | Plugin migration complexity | 20+ plugins need rework | Map one plugin at a time; Frappe hooks more mature |
-| Potree/Three.js integration | Complex 3D library with Vue | Isolated component; no framework conflict |
+| Three.js integration | Complex 3D library with Vue | Scene owned by `useModelViewer` composable; page only binds UI state |
 | Leaflet + Frappe UI style conflicts | CSS collisions | Frappe UI uses Tailwind with prefix; scoped styles |

@@ -57,7 +57,7 @@
 - **MapView.vue** — Leaflet map, sidebar with task list (status badge, image count, progress bar), selected task shows Console/3D Model/Start Processing buttons. Fetches task details including `images` child table. **GPS markers** plotted with popups (thumbnail + filename). Filter: `lat===0 && lng===0` skipped (Frappe ORM defaults null Float to 0.0).
 - **Upload modal** — plain Tailwind modal, file input, POSTs FormData to `/api/method/webodm_core.api.task.upload_images`.
 - **Console.vue** — task detail page, status, progress, resolution, image count, simulated log, Refresh button.
-- **ModelView.vue** — placeholder 3D viewer page.
+- **ModelView.vue** — 3D textured-model viewer (Three.js); see Phase 12.
 - **NotFound.vue** — 404 page + catch-all route `/:pathMatch(.*)*`.
 
 ### Backend API (`webodm_core/api/`)
@@ -402,3 +402,36 @@ All DocTypes live in `webodm_core`:
   with the worktree's `webodm_core` mounted over `/workspace/webodm_core`, a throwaway
   sites volume and a fresh DB on the running stack's postgres (`FRAPPE_ROLE=init`, then
   `FRAPPE_ROLE=exec ... frappe --site <site> run-tests --app webodm_core`).
+
+## Phase 12: 3D viewer UX rework (2026-09-22)
+
+- Split the viewer into three layers: `lib/modelViewer.js` (pure math/mapping:
+  framing, presets, mode→button maps, keyboard map, empty-state text; unit-tested),
+  `composables/useModelViewer.js` (owns renderer/camera/OrbitControls, cancellable
+  load, disposal, camera tweens, `snapshot()` for tests) and `pages/ModelView.vue`
+  (task fetch/poll, toolbar wiring, overlays). Toolbar is `components/ModelToolbar.vue`.
+  Route is `fullBleed`.
+- ODM's `odm_textured_model_geo.glb` is Z-up with a `CESIUM_RTC` centre (three.js
+  ignores the extension, positions are already local). The model is wrapped in a group
+  rotated -90° about X and centred; UTM-scale coordinates (>1e4) are baked into vertex
+  data instead so float32 GPU math stays precise.
+- Large models: the real survey GLB carries five 8192² and ten 4096² JPEG atlases
+  (~2.1 GB decoded). GLTFLoader decodes all images in parallel, which crashed the tab.
+  `lib/textureBudget.js` registers a GLTFLoader plugin that takes over plain textures,
+  reads image headers to size the set, picks a per-side cap that fits a budget derived
+  from `navigator.deviceMemory` (1 GB / 512 MB / 256 MB; 384 MB max on mobile) and
+  decodes two at a time via `createImageBitmap(..., {resizeWidth/Height})`. The chip's
+  tooltip shows the cap. Pixel ratio drops for >1.5M / >4M triangle meshes.
+- Camera: bounding-sphere fit (`framingFor`), eased tweens for toolbar/keyboard moves
+  (damping is switched off for the tween so it lands exactly, then restored),
+  `zoomToCursor`, `maxPolarAngle` just above the ground plane, double-click raycast to
+  re-target. Render loop only draws when controls/tween/requestRender say so.
+- Fixed the frontend error wrapper: `frappeErrorMessage()` in `lib/utils.js` decodes
+  `_server_messages`, so `frappe.throw` text reaches toasts (was "Request failed").
+- Browser checks: `frappe-bench/apps/webodm_frontend/frontend/e2e/model-viewer.e2e.mjs`
+  (Playwright, env-configured) drives login → load → every toolbar/mouse/keyboard action
+  → error/retry → not-found → 6 load/leave cycles → phone viewport, asserting via
+  `window.__modelViewer.snapshot()` (dev builds only). Headless Chrome needs
+  `--use-angle=swiftshader --enable-unsafe-swiftshader`; a 34 MB model reaches ready in
+  ~12 s there.
+
