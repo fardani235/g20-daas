@@ -8,7 +8,7 @@ name: g20-daas
 # (frappe-bench/apps/frappe); `scripts/frappe-version.sh` prints it and CI
 # tags the image with it. After CI publishes a new image, re-pin here.
 x-frappe-image: &frappe-image
-  image: ghcr.io/fardani235/webodm-frappe:16.34.0@sha256:671e3caa25dc187322dbf9a3a0981968fc49bc7e8b651e2fd4bb9899723fed0c
+  image: ghcr.io/fardani235/webodm-frappe:16.34.0@sha256:ab898486b40c15647e63c0f24aea54585ea8b14557e1a526ebc2e093e3464249
   # To build locally instead of pulling from registry, uncomment below:
   # build:
   #   context: ./frappe-bench/apps
@@ -56,7 +56,7 @@ x-frappe-volumes: &frappe-volumes
 
 services:
   caddy:
-    image: ghcr.io/fardani235/webodm-caddy:2@sha256:1f7d0e14860149fabab1a79e7ec4956ce97a01e183ab3262729815d19d4922a5
+    image: ghcr.io/fardani235/webodm-caddy:2@sha256:74b2c20dccaecd782611dda0f041219658bd2b43b4ec55be45ce04e8573cb7c3
     # build:
     #   context: ./infra/caddy
     restart: unless-stopped
@@ -312,7 +312,7 @@ services:
           memory: 1G
 
   geospatial:
-    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:10b4c71ab4e396c8e102e2776264d8386d55ec7fc019feb56efb135c6e81adc5
+    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:c5784eecfb8df17839c041a1b70a2a732130dbe85d55f7fcf81cbae917e2796f
     # build:
     #   context: ./services/geospatial
     #   dockerfile: Dockerfile
@@ -359,7 +359,7 @@ services:
       start_period: 60s
 
   backup:
-    image: ghcr.io/fardani235/webodm-backup:1@sha256:591564285adc98f850b38b4dde4e5dcdc140ab305652426324a5ff35d431f643
+    image: ghcr.io/fardani235/webodm-backup:1@sha256:9cdf00e9fdfb7fdc815e76df9cea1bc7032f7cd6bd5febbe3d8fdecd2145ccca
     # build:
     #   context: ./infra/backup
     restart: unless-stopped
