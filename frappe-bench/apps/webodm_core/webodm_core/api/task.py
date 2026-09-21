@@ -71,10 +71,9 @@ def cancel_task():
 
     node_task_id = task.node_task_id
     if node_task_id:
-        from webodm_core.webodm_core.processing.node_client import NodeODMClient
-        nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
-        if nodes:
-            client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
+        from webodm_core.webodm_core.processing.task_runner import _node_client
+        client = _node_client()
+        if client is not None:
             # Fail loud: if the node doesn't acknowledge the cancel, do NOT mark the
             # task Cancelled — otherwise the UI claims "Cancelled" while ODM keeps
             # running. Surface the error and leave the task in its current state.
@@ -345,26 +344,32 @@ def get_task_console():
         # Task has not been dispatched to a processing node yet — no console yet.
         return result
 
-    nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
-    if not nodes:
+    from webodm_core.webodm_core.processing.task_runner import _node_client
+
+    client = _node_client()
+    if client is None:
         return result
 
-    from webodm_core.webodm_core.processing.node_client import NodeODMClient, NodeODMError
-
     try:
-        client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
         lines = client.task_output(node_task_id, line)
         if isinstance(lines, list):
             result["lines"] = lines
             result["next_line"] = line + len(lines)
-    except (NodeODMError, Exception):
-        pass
+    except Exception as e:
+        # Console is best-effort; the task state is authoritative elsewhere.
+        frappe.log_error(f"Console fetch failed for {task_name}: {e}", "WebODM Processing")
 
     return result
 
 
 @frappe.whitelist(allow_guest=False)
 def get_task_progress():
+    """Current task state, refreshed from the node if it is Running.
+
+    Delegates to ``task_runner.sync_task_with_node`` -- the same code path the
+    scheduler's ``poll_task`` uses -- so there is exactly one state machine.
+    If a background poll holds the per-task lock this returns DB state as-is.
+    """
     raw = frappe.request.data
     if isinstance(raw, bytes):
         raw = raw.decode()
@@ -374,62 +379,20 @@ def get_task_progress():
         frappe.throw("task_name is required")
 
     task = _get_task_checked(task_name, "read")
-    result = task.as_dict()
 
-    node_task_id = task.node_task_id
-    if node_task_id:
-        from webodm_core.webodm_core.processing.node_client import NodeODMClient
-        nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
-        if nodes:
-            try:
-                client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
-                info = client.task_info(node_task_id)
-                raw_progress = info.get("progress", 0)
-                raw_status = info.get("status", 0)
-                if isinstance(raw_status, dict):
-                    status_code = raw_status.get("code", 0)
-                else:
-                    status_code = raw_status
+    if task.status == "Running" and task.node_task_id:
+        from webodm_core.webodm_core.processing.task_runner import sync_task_with_node
 
-                result["node_progress"] = raw_progress
-                result["node_status_code"] = status_code
+        try:
+            synced = sync_task_with_node(task)
+        except Exception:
+            frappe.log_error(f"get_task_progress sync failed for {task_name}", "WebODM Processing")
+            synced = {}
+        task.reload()
+        result = task.as_dict()
+        for k in ("node_progress", "node_status_code"):
+            if k in synced:
+                result[k] = synced[k]
+        return result
 
-                from webodm_core.webodm_core.processing.task_runner import _status_action
-
-                action = _status_action(raw_status, raw_progress)
-
-                # Sync latest progress to Frappe DB while still in flight.
-                if action == "running" and raw_progress > 0:
-                    pct = max(1, int(raw_progress)) if raw_progress > 1 else max(1, int(raw_progress * 100))
-                    if pct != task.progress:
-                        task.db_set("progress", pct)
-                        task.progress = pct
-                        result["progress"] = pct
-
-                # Surface terminal failure/cancel immediately so the frontend stops
-                # polling and shows the right state instead of a stuck "Running".
-                if action == "failed":
-                    task.db_set("status", "Failed")
-                    result["status"] = "Failed"
-                elif action == "cancelled":
-                    task.db_set("status", "Cancelled")
-                    result["status"] = "Cancelled"
-                elif action == "download":
-                    prog_val = raw_progress if isinstance(raw_progress, (int, float)) else 0
-                    if prog_val >= 100:
-                        task.db_set("progress", 100)
-                        result["progress"] = 100
-
-                # Kick a background poll to download assets / persist the terminal
-                # state, for any non-running node status.
-                if action != "running":
-                    frappe.enqueue(
-                        "webodm_core.webodm_core.processing.task_runner.poll_task",
-                        queue="short",
-                        job_name=f"poll_{task_name}",
-                        task_name=task_name,
-                    )
-            except Exception:
-                pass
-
-    return result
+    return task.as_dict()

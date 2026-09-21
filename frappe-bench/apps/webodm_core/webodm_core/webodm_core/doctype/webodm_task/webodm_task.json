@@ -12,6 +12,10 @@
   "resolution",
   "processing_options",
   "node_task_id",
+  "dispatch_attempts",
+  "next_attempt_at",
+  "poll_failures",
+  "last_error",
   "images_section",
   "images",
   "outputs_section",
@@ -75,6 +79,35 @@
    "label": "Node Task ID",
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "fieldname": "dispatch_attempts",
+   "fieldtype": "Int",
+   "label": "Dispatch Attempts",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "Failed attempts to hand this task to a processing node; reset on success."
+  },
+  {
+   "fieldname": "next_attempt_at",
+   "fieldtype": "Datetime",
+   "label": "Next Dispatch Attempt",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "Queued tasks are not swept before this time (exponential backoff)."
+  },
+  {
+   "fieldname": "poll_failures",
+   "fieldtype": "Int",
+   "label": "Consecutive Poll Failures",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
   },
   {
    "collapsible": 1,

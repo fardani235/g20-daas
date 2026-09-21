@@ -20,6 +20,14 @@
       </Button>
     </div>
 
+    <p
+      v-if="task?.last_error && ['Failed', 'Queued'].includes(task?.status)"
+      class="flex-shrink-0 border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive"
+      data-testid="task-last-error"
+    >
+      {{ task.status === 'Queued' ? 'Retrying: ' : '' }}{{ task.last_error }}
+    </p>
+
     <div class="flex flex-shrink-0 flex-wrap gap-2 border-b border-border px-4 py-3">
       <template v-if="artifacts.length">
         <a
