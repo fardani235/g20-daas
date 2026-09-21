@@ -8,7 +8,7 @@ name: g20-daas
 # (frappe-bench/apps/frappe); `scripts/frappe-version.sh` prints it and CI
 # tags the image with it. After CI publishes a new image, re-pin here.
 x-frappe-image: &frappe-image
-  image: ghcr.io/fardani235/webodm-frappe:16.34.0@sha256:2bb87da5910dd7270cf0b87706998b8e5c5d4477539930946f3bdeb26eeaff93
+  image: ghcr.io/fardani235/webodm-frappe:16.34.0@sha256:5e465d9d1da829ae4a173688c2e67f1fca2d69d9788a39ce13e1d0d63fef0b0f
   # To build locally instead of pulling from registry, uncomment below:
   # build:
   #   context: ./frappe-bench/apps
@@ -60,7 +60,7 @@ x-frappe-volumes: &frappe-volumes
 
 services:
   caddy:
-    image: ghcr.io/fardani235/webodm-caddy:2@sha256:33054e0429d9992eb95f32df950968d6a34de74107658b74abcbdc6f619ced2a
+    image: ghcr.io/fardani235/webodm-caddy:2@sha256:267e540e212e1bb8183c97dfd6302c8af82ad4c047d110ffdc8c27fb210ac4f3
     # build:
     #   context: ./infra/caddy
     restart: unless-stopped
@@ -119,7 +119,7 @@ services:
           memory: 2G
 
   redis-cache:
-    image: redis:7-alpine@sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     restart: unless-stopped
     command:
       - sh
@@ -151,7 +151,7 @@ services:
           memory: 512M
 
   redis-queue:
-    image: redis:7-alpine@sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     restart: unless-stopped
     command:
       - sh
@@ -319,7 +319,7 @@ services:
           memory: 1G
 
   geospatial:
-    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:8005f3030b1515354f21b1386fc972d961ed5a760afeb4d2e6c54c2c6e5e2b63
+    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:4cdfa5ac0ce0c4538238db2b9b4d00327c2257d004ce76476d4bbd38d12b6540
     # build:
     #   context: ./services/geospatial
     #   dockerfile: Dockerfile
@@ -355,7 +355,7 @@ services:
     # Sandbox for user-uploaded analysis plugins (services/plugin-runner).
     # No published image yet: built from source until CI pushes one, then pin
     # it like the others with `scripts/pin-images.sh` and drop the build block.
-    image: ghcr.io/fardani235/webodm-plugin-runner:1
+    image: ghcr.io/fardani235/webodm-plugin-runner:1@sha256:00a5a228e0e301791cd32108b8914ead1d3ba7333a235ef079026737a255de69
     build:
       context: ./services/plugin-runner
       dockerfile: Dockerfile
@@ -410,7 +410,7 @@ services:
       start_period: 60s
 
   backup:
-    image: ghcr.io/fardani235/webodm-backup:1@sha256:b5aa6999d42bad769d630dc20666186aa429ee54bbbb5bc778329ebd13d78895
+    image: ghcr.io/fardani235/webodm-backup:1@sha256:dcc1b3e4edde070c4cc96056820d8e860c3f0a5b04fd641a823a2e270ba42fdf
     # build:
     #   context: ./infra/backup
     restart: unless-stopped
