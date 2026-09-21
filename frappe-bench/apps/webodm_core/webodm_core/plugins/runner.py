@@ -13,6 +13,7 @@ import frappe
 from frappe.utils import get_site_path, now_datetime
 
 from webodm_core.plugins.files import abs_path_for_file_url as _abs_path_for_file_url
+from webodm_core.plugins.files import save_private_file_from_path
 from webodm_core.plugins.geospatial import GeospatialError, run_operation
 
 # Task fields that can supply an operation input.
@@ -85,18 +86,15 @@ def execute_run(run_name: str):
         if run.status == "Cancelled":
             return
 
-        with open(tmp_path, "rb") as f:
-            content = f.read()
-
-        file_doc = frappe.get_doc({
-            "doctype": "File",
-            "file_name": f"{run.name}_{plugin.name}.{ext}",
-            "is_private": 1,
-            "content": content,
-            "attached_to_doctype": "WebODM Plugin Run",
-            "attached_to_name": run.name,
-        })
-        file_doc.save(ignore_permissions=True)
+        # The output already lives on the site volume; rename it into
+        # private/files rather than reading a multi-GB raster into memory.
+        file_doc = save_private_file_from_path(
+            tmp_path,
+            f"{run.name}_{plugin.name}.{ext}",
+            attached_to_doctype="WebODM Plugin Run",
+            attached_to_name=run.name,
+            ignore_permissions=True,
+        )
 
         metadata = result.get("metadata", {}) or {}
         run.db_set("output_file", file_doc.file_url)

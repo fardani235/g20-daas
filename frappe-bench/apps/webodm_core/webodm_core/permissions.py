@@ -104,3 +104,48 @@ def has_plugin_run_permission(doc, ptype, user=None):
     if _is_create(ptype):
         return True
     return _org_has_permission(doc, user or frappe.session.user)
+
+
+# Org model doctypes. These are NOT stamped by tenancy_hooks (create_organization
+# and accept_invitation legitimately insert rows for users who have no org yet),
+# so every write path goes through api/organization.py with ignore_permissions
+# and an explicit org. Here we only scope what non-admin users can READ via
+# /api/resource, and we never grant create through the hook -- without this a
+# WebODM User could list every org's members, or (before role perms were
+# tightened) mint an invitation into an arbitrary org and accept it themselves.
+
+
+def get_organization_permission_query_conditions(user=None):
+    # WebODM Organization has no `organization` field: its own name is the org.
+    user = user or frappe.session.user
+    if is_platform_admin(user):
+        return None
+    org = get_current_org(user)
+    if not org:
+        return "1=0"
+    return f"`tabWebODM Organization`.`name` = {frappe.db.escape(org)}"
+
+
+def has_organization_permission(doc, ptype, user=None):
+    user = user or frappe.session.user
+    if is_platform_admin(user):
+        return True
+    org = get_current_org(user)
+    return bool(org) and doc.name == org
+
+
+def get_org_membership_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Org Membership", user or frappe.session.user)
+
+
+def has_org_membership_permission(doc, ptype, user=None):
+    return _org_has_permission(doc, user or frappe.session.user)
+
+
+def get_org_invitation_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Org Invitation", user or frappe.session.user)
+
+
+def has_org_invitation_permission(doc, ptype, user=None):
+    # No _is_create bypass: creation is API-only (invite_member).
+    return _org_has_permission(doc, user or frappe.session.user)

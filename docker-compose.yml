@@ -534,9 +534,10 @@ services:
     volumes:
       - frappe_data:/data
       - frappe_sites:/workspace/frappe-bench/sites
+    # backend only: the service is unauthenticated and is reached exclusively
+    # through the Frappe tile proxy (webodm_core.api.tiles), never from Caddy.
     networks:
       - backend
-      - frontend
     depends_on:
       redis-cache:
         condition: service_healthy

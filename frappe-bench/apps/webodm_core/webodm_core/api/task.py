@@ -1,7 +1,11 @@
 import io
+import os
+
 import frappe
 from PIL import Image
 from PIL.ExifTags import GPSTAGS
+
+from webodm_core.plugins.files import abs_path_for_file_doc, save_private_file_from_stream
 
 
 def _get_task_checked(task_name: str, ptype: str = "read"):
@@ -93,8 +97,12 @@ def _gps_to_decimal(dms, ref):
     return round(decimal, 6)
 
 
-def _extract_photo_meta(content: bytes):
+def _extract_photo_meta(source):
     """Extract georeferencing/timing metadata from an image's EXIF.
+
+    ``source`` is raw ``bytes`` or an on-disk path. Pillow reads only the
+    headers it needs for ``getexif()``, so passing a path never loads the
+    full image into memory.
 
     Returns a dict with keys ``lat``, ``lng``, ``altitude`` (metres, signed),
     and ``capture_time`` (Frappe ``YYYY-MM-DD HH:MM:SS`` string). Every field is
@@ -104,8 +112,8 @@ def _extract_photo_meta(content: bytes):
     meta = {"lat": None, "lng": None, "altitude": None, "capture_time": None}
 
     try:
-        img = Image.open(io.BytesIO(content))
-        exif = img.getexif()
+        with Image.open(io.BytesIO(source) if isinstance(source, bytes) else source) as img:
+            exif = img.getexif()
     except Exception:
         return meta
     if not exif:
@@ -169,51 +177,27 @@ def _extract_photo_meta(content: bytes):
     return meta
 
 
-def _save_task_image_file(content: bytes, file_name: str, task_name: str):
-    """Save an uploaded image as a private File, guaranteeing the on-disk bytes
-    are the untouched original.
+def _save_task_image_file(stream, file_name: str, task_name: str):
+    """Save an uploaded image as a private File with its bytes untouched.
 
-    ODM georeferencing depends on per-image EXIF GPS. Frappe's File save strips
-    EXIF when the ``strip_exif_metadata_from_uploaded_images`` system setting is
+    ODM georeferencing depends on per-image EXIF GPS. Frappe's ``File.save_file``
+    strips EXIF from JPEGs when ``strip_exif_metadata_from_uploaded_images`` is
     on, which removes the geotags and collapses the reconstruction to a tiny
-    local model. We defend against that regardless of the site setting: after
-    saving, if the file written to disk differs from the original upload, we
-    rewrite the original bytes in place and repair the File's hash/size.
+    local model. Streaming the upload straight to disk and registering the File
+    against the existing blob bypasses ``save_file`` entirely, so the setting
+    cannot affect task images — and the file is never held in memory.
     """
-    import os
-    from frappe.utils import get_bench_path
-
-    file_doc = frappe.get_doc({
-        "doctype": "File",
-        "file_name": file_name,
-        "is_private": 1,
-        "content": content,
-        "attached_to_doctype": "WebODM Task",
-        "attached_to_name": task_name,
-    })
-    file_doc.save()
-
-    path = file_doc.get_full_path()
-    if not os.path.isabs(path):
-        path = os.path.normpath(os.path.join(get_bench_path(), "sites", path.lstrip("./")))
-
-    try:
-        with open(path, "rb") as fh:
-            on_disk = fh.read()
-    except OSError:
-        on_disk = content
-
-    if on_disk != content:
-        # Frappe (or a hook) altered the bytes — restore the untouched original
-        # so ODM receives intact EXIF GPS.
-        from frappe.core.doctype.file.utils import get_content_hash
-
-        with open(path, "wb") as fh:
-            fh.write(content)
-        file_doc.db_set("content_hash", get_content_hash(content), update_modified=False)
-        file_doc.db_set("file_size", len(content), update_modified=False)
-
-    return file_doc
+    if hasattr(stream, "seek"):
+        try:
+            stream.seek(0)
+        except (OSError, ValueError):
+            pass
+    return save_private_file_from_stream(
+        stream,
+        file_name,
+        attached_to_doctype="WebODM Task",
+        attached_to_name=task_name,
+    )
 
 
 def _maybe_autostart(task_name: str):
@@ -302,18 +286,18 @@ def upload_images():
     task.save()
 
     for f in files:
-        content = f.read()
-        file_size = len(content)
         file_name = f.filename or f"unnamed_{frappe.generate_hash()[:6]}.jpg"
 
-        file_doc = _save_task_image_file(content, file_name, task.name)
+        # Werkzeug has already spooled large parts to a temp file; stream that
+        # to its final location instead of f.read()-ing it into memory.
+        file_doc = _save_task_image_file(f.stream, file_name, task.name)
 
-        meta = _extract_photo_meta(content)
+        meta = _extract_photo_meta(abs_path_for_file_doc(file_doc))
 
         img_row = {
             "image": file_doc.file_url,
             "filename": file_name,
-            "file_size": file_size,
+            "file_size": file_doc.file_size,
         }
         if meta["lat"] is not None and meta["lng"] is not None:
             img_row["latitude"] = meta["lat"]
