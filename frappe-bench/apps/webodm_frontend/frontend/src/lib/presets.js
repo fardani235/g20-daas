@@ -1,6 +1,8 @@
 // Fetch wrappers for the presets/settings backend. Each returns the unwrapped
 // Frappe `message` payload. POSTs carry the CSRF token like the rest of the app.
 
+import { frappeErrorMessage } from './utils'
+
 function headers(json = false) {
   const h = {}
   if (json) h['Content-Type'] = 'application/json'
@@ -11,7 +13,7 @@ function headers(json = false) {
 async function unwrap(res) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.message || 'Request failed')
+    throw new Error(frappeErrorMessage(err))
   }
   const data = await res.json()
   return data.message !== undefined ? data.message : data

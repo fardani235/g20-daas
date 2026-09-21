@@ -1,5 +1,7 @@
 // Fetch wrappers for user profile and password APIs.
 
+import { frappeErrorMessage } from './utils'
+
 function h(json = false) {
   const headers = {}
   if (json) headers['Content-Type'] = 'application/json'
@@ -10,7 +12,7 @@ function h(json = false) {
 async function unwrap(res) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.message || err._server_messages || 'Request failed')
+    throw new Error(frappeErrorMessage(err))
   }
   const data = await res.json()
   return data.message !== undefined ? data.message : data
