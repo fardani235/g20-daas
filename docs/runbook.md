@@ -13,11 +13,11 @@ the `COMPOSE_PROJECT_NAME` env var when running more than one stack on a host.
 | `postgres` | `postgis/postgis:16-3.4` | — | Application DB + PostGIS. Only on the `data` and `backend` networks |
 | `redis-cache` | `redis:7-alpine` | — | Frappe's cache (port 13000, auth). Backend + data |
 | `redis-queue` | `redis:7-alpine` | — | Frappe's RQ (port 11000, auth, AOF). Backend + data |
-| `frappe-init` | `webodm-frappe:16.26.3` | — | One-shot bootstrap (`bench new-site webodm.local`) |
-| `frappe-web` | `webodm-frappe:16.26.3` | — | Gunicorn on 8000. The web tier |
-| `frappe-worker` | `webodm-frappe:16.26.3` | — | RQ worker for `default,long,short` queues |
-| `frappe-scheduler` | `webodm-frappe:16.26.3` | — | `bench schedule` cron loop |
-| `frappe-socketio` | `webodm-frappe:16.26.3` | — | Node socketio on 9000 (real-time updates) |
+| `frappe-init` | `webodm-frappe:<version>@sha256:…` | — | One-shot bootstrap (`bench new-site webodm.local`) |
+| `frappe-web` | `webodm-frappe:<version>@sha256:…` | — | Gunicorn on 8000. The web tier |
+| `frappe-worker` | `webodm-frappe:<version>@sha256:…` | — | RQ worker for `default,long,short` queues |
+| `frappe-scheduler` | `webodm-frappe:<version>@sha256:…` | — | `bench schedule` cron loop |
+| `frappe-socketio` | `webodm-frappe:<version>@sha256:…` | — | Node socketio on 9000 (real-time updates) |
 | `geospatial` | `webodm-geospatial:1` | — | FastAPI tile/export service on 5000 |
 | `nodeodm` | `opendronemap/nodeodm:latest` | — | ODM processing engine on 3000 |
 | `backup` | `webodm-backup:1` | — | systemd-cron + bench backup, hourly at 03:00 by default |
@@ -78,7 +78,6 @@ Login at `https://${SITE_DOMAIN}/` with `Administrator` and the password from
 |---|---|---|
 | `SITE_DOMAIN` | `webodm.local` | Used by Caddy for TLS issuance. Production must be a real FQDN |
 | `SITE_NAME` | `webodm.local` | The Frappe bench site name |
-| `FRAPPE_VERSION` | `16.26.3` | Image tag for `webodm-frappe:*` |
 | `DB_NAME` / `DB_USER` | `webodm` / `webodm` | Postgres DB + user (password is in `secrets/db_password.txt`) |
 | `CLOUDFLARE_API_TOKEN` | (empty) | If set, Caddy uses DNS-01 via Cloudflare. Required for wildcard certs |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | (empty) | Alternative DNS-01 provider (Route53) |
@@ -86,6 +85,23 @@ Login at `https://${SITE_DOMAIN}/` with `Administrator` and the password from
 | `BACKUP_SCHEDULE` | `0 3 * * *` | 5-field cron expression for the `backup` service |
 | `BACKUP_RETENTION_DAYS` | `14` | Local retention. S3 sync retains forever |
 | `BACKUP_S3_BUCKET` / `_ACCESS_KEY` / `_SECRET_KEY` / `_ENDPOINT` | (empty) | Optional S3-compatible sync target |
+
+## Images, versions and pins
+
+- Every `image:` in `docker-compose.yml` is pinned `tag@sha256:…`. A moved tag
+  never changes what runs. `scripts/pin-images.sh` resolves each tag to its
+  current digest and rewrites the file (`--check` for CI); review the diff and
+  commit.
+- The Frappe version is the `frappe-bench/apps/frappe` submodule pin
+  (`scripts/frappe-version.sh` prints it). CI builds the Frappe image from that
+  checkout and tags it `<version>`, `<version>-<sha>` and `latest`; the job
+  summary prints the `image@digest` line to paste into compose.
+- Upgrade path: bump the submodule, let CI build+test+push, then
+  `FRAPPE_VERSION=<new> scripts/pin-images.sh`.
+- Container startup (secrets → env, redis URLs, site config, role dispatch) is
+  `infra/frappe/entrypoint.sh` + `configure_site.py`, baked into the image. Every
+  role runs from `sites/` (what Frappe expects). Changing them means rebuilding
+  the image.
 
 ## Day-to-day operations
 
@@ -152,11 +168,12 @@ docker compose exec redis-queue \
   sh -c 'redis-cli -p 11000 -a "$(cat /run/secrets/redis_queue_password)" ping'
 ```
 
-If you see `NOAUTH Authentication required`, the `frappe_sites` volume's
-`common_site_config.json` doesn't have the auth-embedded URLs. The wrapper
-entrypoint in `docker-compose.yml` overwrites this on every container start
-**iff** the existing config lacks `root_login`. If you `exec`-bash into the
-container and check the file, it should contain `"redis_cache": "redis://:<pw>@redis-cache:13000"`.
+If you see `NOAUTH Authentication required`, the redis URLs in
+`common_site_config.json` are stale. `infra/frappe/configure_site.py` (run by the
+image entrypoint on every container start) rewrites the managed keys
+(`redis_cache`, `redis_queue`, `root_login`, `geospatial_url`, `default_site`…)
+from the container environment, so restarting the Frappe services fixes it. The
+file should contain `"redis_cache": "redis://:<pw>@redis-cache:13000"`.
 
 ### TLS cert not issued
 
@@ -256,11 +273,10 @@ docker compose ps frappe-web
 docker compose logs --tail=50 frappe-web
 ```
 
-If `frappe-web` is exiting immediately, the most common cause is a stale
-`common_site_config.json` in the `frappe_sites` volume. The wrapper
-entrypoint will refuse to overwrite it if `root_login` is already present —
-that's intentional, but it means a corrupt config from a prior failed init
-can lock the system in. Reset:
+If `frappe-web` is exiting immediately, read its logs: the entrypoint fails
+fast with `[entrypoint] …` / `[configure] …` messages when a secret file or
+required variable is missing. A corrupt `frappe_sites` volume from a failed
+init can be reset with:
 
 ```bash
 docker compose down

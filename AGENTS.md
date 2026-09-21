@@ -336,3 +336,23 @@ All DocTypes live in `webodm_core`:
 - `get_task_progress` is read-only (nudges a deduped `poll_task`); `poll_task` is the only
   writer of processing state. `process_task` API also restarts `Failed` tasks.
 - All enqueues go through `task_runner.enqueue_process/enqueue_poll` (`job_id` + `deduplicate`).
+
+## Phase 10: Deploy plumbing (2026-09-21)
+
+- All startup logic is in the image: `infra/frappe/entrypoint.sh` (secrets → env, redis URLs,
+  role dispatch; every role runs from `sites/`, so no bench-root symlinks) and
+  `infra/frappe/configure_site.py` (idempotent `common_site_config.json` / `site_config.json`).
+  `docker-compose.yml` has no inline shell/Python anymore. `FRAPPE_ROLE=exec <cmd>` runs an
+  arbitrary command with the env prepared (used by CI).
+- `FRAPPE_SITE` (defaults to `SITE_NAME`) pins every request to the one site regardless of
+  Host header (wsgi.py) — replaces the old `localhost` site alias hack.
+- Images are pinned `tag@sha256` in compose; `scripts/pin-images.sh [--check]` refreshes them.
+- Frappe version = the `frappe-bench/apps/frappe` submodule pin; `scripts/frappe-version.sh`.
+  CI checks out the submodule, builds, runs `webodm_core` tests inside the image against
+  service containers, then pushes `<version>`, `<version>-<sha>`, `latest`.
+- CI (`.github/workflows/build-and-push.yml`) runs vitest, pytest and the Frappe suite on
+  every push/PR; pushes happen only on the default branch after tests pass.
+- Frappe image build synthesizes throwaway git repos for all three apps (bench needs them) and
+  deletes them afterwards; `.dockerignore` excludes `**/.git`.
+- Local validation recipe: build `webodm-frappe:local` from the worktree, run compose under
+  another project name with an override that swaps the image and disables caddy/backup.

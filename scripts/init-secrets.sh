@@ -17,7 +17,7 @@ for name in db_password admin_password redis_cache_password redis_queue_password
     else
       openssl rand -base64 32 | tr -d '\n' > "$path"
     fi
-    chmod 644 "$path"
+    chmod 600 "$path"  # readable by the docker daemon (root) only
     echo "GEN: $path"
   fi
 done

@@ -8,6 +8,9 @@ network, and a small real image fixture (``/tmp/opencode/bus_ortho.tif``).
 import json
 from unittest.mock import patch
 
+import os
+import unittest
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
@@ -43,6 +46,7 @@ def _org(name):
     }).insert(ignore_permissions=True).name
 
 
+@unittest.skipUnless(os.path.exists(ORTHO_FIXTURE), f"needs the real raster fixture at {ORTHO_FIXTURE} (dev-host only, not in CI)")
 class TestSemanticSegmentationE2E(FrappeTestCase):
     @classmethod
     def setUpClass(cls):

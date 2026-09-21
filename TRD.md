@@ -96,14 +96,15 @@ Defined in `webodm_frontend/frontend/package.json`:
 
 ## 3. Docker Images
 
-### 3.1 Frappe Image (`ghcr.io/fardani235/webodm-frappe:16.26.3`)
+### 3.1 Frappe Image (`ghcr.io/fardani235/webodm-frappe:<version>`)
 - Base: Ubuntu 24.04
 - Python 3.14, Node.js, wkhtmltopdf (optional)
 - Pre-installed bench, Frappe framework, `webodm_core` + `webodm_frontend` apps,
   and the built Vue SPA assets
 - Multi-service image: web, worker, scheduler
-- Built by `frappe-bench/apps/Dockerfile`; the `build:` block in
-  `docker-compose.yml` is commented out, so deploys pull this image from GHCR
+- Built by CI from `frappe-bench/apps/Dockerfile` with the `frappe` submodule
+  checkout; tagged with the submodule's `__version__`. Deploys pull it from GHCR
+  pinned by digest in `docker-compose.yml`
 
 ### 3.2 Geospatial Image (Custom)
 - Base: Ubuntu 24.04
