@@ -56,7 +56,7 @@ x-frappe-volumes: &frappe-volumes
 
 services:
   caddy:
-    image: ghcr.io/fardani235/webodm-caddy:2@sha256:360bbc38e5b60e6abe614114823d0963bd4406789124bd689768e6c693bb76ac
+    image: ghcr.io/fardani235/webodm-caddy:2@sha256:74b2c20dccaecd782611dda0f041219658bd2b43b4ec55be45ce04e8573cb7c3a992028cc5465ce64298efee2b9cb268ead91ebb
     # build:
     #   context: ./infra/caddy
     restart: unless-stopped
@@ -312,7 +312,7 @@ services:
           memory: 1G
 
   geospatial:
-    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:9c1b728da26125782122b685a8b4652cf6c5c60eca970d0a11c65680e71badcd
+    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:c5784eecfb8df17839c041a1b70a2a732130dbe85d55f7fcf81cbae917e2796fa992028cc5465ce64298efee2b9cb268ead91ebb
     # build:
     #   context: ./services/geospatial
     #   dockerfile: Dockerfile
@@ -359,7 +359,11 @@ services:
       start_period: 60s
 
   backup:
+<<<<<<< HEAD
     image: ghcr.io/fardani235/webodm-backup:1@sha256:8678d6015404f19ef5a349d55ece35c751d7e6933f922af035fdd6a8febd9785
+=======
+    image: ghcr.io/fardani235/webodm-backup:1@sha256:9cdf00e9fdfb7fdc815e76df9cea1bc7032f7cd6bd5febbe3d8fdecd2145ccca
+>>>>>>> a992028cc5465ce64298efee2b9cb268ead91ebb
     # build:
     #   context: ./infra/backup
     restart: unless-stopped
