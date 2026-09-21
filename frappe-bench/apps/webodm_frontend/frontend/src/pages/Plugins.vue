@@ -14,7 +14,11 @@
             class="hidden"
             @change="onFileChosen"
           />
-          <Button :loading="uploading" @click="fileInput?.click()">
+          <Button
+            :loading="uploading"
+            title="Zip with plugin.json and the entrypoint at the top level (zip the folder's contents, not the folder)"
+            @click="fileInput?.click()"
+          >
             <Upload />
             Upload plugin
           </Button>

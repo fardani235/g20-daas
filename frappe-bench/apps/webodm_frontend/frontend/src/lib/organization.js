@@ -1,5 +1,7 @@
 // Fetch wrappers for the organization/tenancy backend. Mirrors lib/presets.js.
 
+import { frappeErrorMessage } from './utils'
+
 function headers(json = false) {
   const h = {}
   if (json) h['Content-Type'] = 'application/json'
@@ -10,7 +12,7 @@ function headers(json = false) {
 async function unwrap(res) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.message || 'Request failed')
+    throw new Error(frappeErrorMessage(err))
   }
   const data = await res.json()
   return data.message !== undefined ? data.message : data

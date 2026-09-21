@@ -99,6 +99,22 @@ describe('user plugins', () => {
     expect(init.headers['X-Frappe-CSRF-Token']).toBe('x')
   })
 
+  it('uploadPlugin surfaces the server rejection reason', async () => {
+    global.fetch = vi.fn(() => Promise.resolve({
+      ok: false,
+      status: 417,
+      json: () => Promise.resolve({
+        exc_type: 'ValidationError',
+        _server_messages: JSON.stringify([
+          JSON.stringify({ message: 'Invalid plugin package: package has no plugin.json at its root' }),
+        ]),
+      }),
+    }))
+    const file = new File(['zip-bytes'], 'plugin.zip', { type: 'application/zip' })
+    await expect(plugins.uploadPlugin(file))
+      .rejects.toThrow('Invalid plugin package: package has no plugin.json at its root')
+  })
+
   it('removePlugin POSTs the plugin id', async () => {
     await plugins.removePlugin('acme.elevation-mask')
     const [url, init] = global.fetch.mock.calls.at(-1)
