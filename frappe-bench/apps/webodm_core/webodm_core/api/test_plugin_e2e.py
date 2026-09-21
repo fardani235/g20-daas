@@ -7,6 +7,8 @@ persist -> serve tiles/GeoJSON -> download, plus the security rejections.
 """
 
 import json
+import os
+import unittest
 import math
 from unittest.mock import patch
 
@@ -62,6 +64,8 @@ def _deg2tile(lat, lon, z):
 class TestPluginE2E(FrappeTestCase):
     @classmethod
     def setUpClass(cls):
+        if not os.path.exists(DSM_FIXTURE):
+            raise unittest.SkipTest(f"fixture {DSM_FIXTURE} not present on this host")
         super().setUpClass()
         cls._cleanup()
 

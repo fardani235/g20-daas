@@ -95,11 +95,11 @@ Internet
 | Service | Image | Ports (internal) | Purpose |
 |---------|-------|------------------|---------|
 | caddy | `webodm-caddy:2` | 80, 443 | Reverse proxy, TLS termination, rate limiting |
-| frappe-web | `webodm-frappe:16.26.3` | 8000 | WSGI app (gunicorn), API, file serving |
-| frappe-socketio | `webodm-frappe:16.26.3` | 9000 | Real-time notifications |
-| frappe-scheduler | `webodm-frappe:16.26.3` | - | Cron jobs, RQ scheduler |
-| frappe-worker | `webodm-frappe:16.26.3` | - | Background job processor |
-| frappe-init | `webodm-frappe:16.26.3` | - | One-time site bootstrap |
+| frappe-web | `webodm-frappe:<ver>@sha256:…` | 8000 | WSGI app (gunicorn), API, file serving |
+| frappe-socketio | `webodm-frappe:<ver>@sha256:…` | 9000 | Real-time notifications |
+| frappe-scheduler | `webodm-frappe:<ver>@sha256:…` | - | Cron jobs, RQ scheduler |
+| frappe-worker | `webodm-frappe:<ver>@sha256:…` | - | Background job processor |
+| frappe-init | `webodm-frappe:<ver>@sha256:…` | - | One-time site bootstrap |
 | postgres | `postgis/postgis:16-3.4` | 5432 | PostgreSQL + PostGIS |
 | redis-cache | `redis:7-alpine` | 13000 | Sessions, cache |
 | redis-queue | `redis:7-alpine` | 11000 | Job queues (RQ) |
@@ -269,7 +269,6 @@ DB_USER=webodm
 DB_PASSWORD=<GENERATE_STRONG_PASSWORD>
 
 # Frappe
-FRAPPE_VERSION=16.26.3
 ADMIN_PASSWORD=<GENERATE_STRONG_ADMIN_PASSWORD>
 
 # Backup S3 Configuration
@@ -443,16 +442,12 @@ services:
       # AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
 ```
 
-Also, in the `x-frappe-image` entrypoint script, update the live_reload setting. Find this section:
+Also disable Frappe's dev-only live reload by adding to `x-frappe-env-base` in
+`docker-compose.yml` (the entrypoint's `configure_site.py` writes it into
+`common_site_config.json` on every start):
 
-```python
-'    "live_reload": True,' \
-```
-
-Change to:
-
-```python
-'    "live_reload": False,' \
+```yaml
+  FRAPPE_LIVE_RELOAD: "false"
 ```
 
 ### 5.6 Update Site Configuration
@@ -624,7 +619,7 @@ docker compose pull
 ```
 
 This pulls:
-- `webodm-frappe:16.26.3` (includes bench, apps, and SPA assets)
+- `webodm-frappe:<ver>@sha256:…` (includes bench, apps, and SPA assets)
 - `webodm-caddy:2`
 - `webodm-backup:1`
 - `webodm-geospatial:1`
@@ -1095,7 +1090,7 @@ docker ps --format "{{.Names}}: {{.Ports}}"
 
 # Scan images for vulnerabilities (install trivy)
 # curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
-# trivy image webodm-frappe:16.26.3
+# trivy image ghcr.io/fardani235/webodm-frappe:$(scripts/frappe-version.sh)
 ```
 
 ---

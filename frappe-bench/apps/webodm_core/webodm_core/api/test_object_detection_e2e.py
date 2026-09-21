@@ -6,6 +6,8 @@ real image fixture (``/tmp/opencode/bus_ortho.tif``) with known objects.
 """
 
 import json
+import os
+import unittest
 from unittest.mock import patch
 
 import frappe
@@ -43,6 +45,8 @@ def _org(name):
 class TestObjectDetectionE2E(FrappeTestCase):
     @classmethod
     def setUpClass(cls):
+        if not os.path.exists(ORTHO_FIXTURE):
+            raise unittest.SkipTest(f"fixture {ORTHO_FIXTURE} not present on this host")
         super().setUpClass()
         cls._cleanup()
         result = sync.sync_catalog()

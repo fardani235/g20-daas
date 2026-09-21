@@ -299,7 +299,7 @@ All DocTypes live in `webodm_core`:
 ### What changed
 - `webodm_core` and `webodm_frontend` are no longer gitlinks. Their full histories were imported as tracked directories under `frappe-bench/apps/` via `git filter-repo --to-subdirectory-filter`, so per-file `git log`/`git blame` map to the original commits.
 - `webodm-geospatial` was imported from the sibling repo `../webodm-geospatial` into `services/geospatial/` the same way. The standalone service is **not** a Frappe app, so it lives under `services/`, not `frappe-bench/apps/`.
-- `frappe` is the only external app and is now declared in `.gitmodules` (upstream `frappe/frappe`, pinned at v16.26.3).
+- `frappe` is the only external app and is now declared in `.gitmodules` (upstream `frappe/frappe`, pinned by gitlink; currently v16.34.0 — `scripts/frappe-version.sh` prints it).
 - CI (`build-and-push.yml`) no longer clones the private app repos: the Frappe app context is assembled from the monorepo checkout, and the geospatial image builds from `./services/geospatial`.
 - `docker-compose.yml` geospatial build context is now `./services/geospatial`; the Procfile geospatial command runs from `../services/geospatial`.
 - Added `services/geospatial/.dockerignore` so the local ~600 MB `venv/` never enters a build context.
@@ -321,4 +321,3 @@ All DocTypes live in `webodm_core`:
   metadata) and `transfer_timeout` ((30, 600), uploads/downloads). HTTP-200 `{error}`
   bodies from NodeODM now raise `NodeODMError`.
 - `upload_images` streams werkzeug's spooled upload to disk and reads EXIF from the path.
-- Dev-site note: the live stack runs `webodm-frappe:16.34.0` while the repo still pins 16.26.3.

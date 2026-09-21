@@ -13,11 +13,11 @@ the `COMPOSE_PROJECT_NAME` env var when running more than one stack on a host.
 | `postgres` | `postgis/postgis:16-3.4` | — | Application DB + PostGIS. Only on the `data` and `backend` networks |
 | `redis-cache` | `redis:7-alpine` | — | Frappe's cache (port 13000, auth). Backend + data |
 | `redis-queue` | `redis:7-alpine` | — | Frappe's RQ (port 11000, auth, AOF). Backend + data |
-| `frappe-init` | `webodm-frappe:16.26.3` | — | One-shot bootstrap (`bench new-site webodm.local`) |
-| `frappe-web` | `webodm-frappe:16.26.3` | — | Gunicorn on 8000. The web tier |
-| `frappe-worker` | `webodm-frappe:16.26.3` | — | RQ worker for `default,long,short` queues |
-| `frappe-scheduler` | `webodm-frappe:16.26.3` | — | `bench schedule` cron loop |
-| `frappe-socketio` | `webodm-frappe:16.26.3` | — | Node socketio on 9000 (real-time updates) |
+| `frappe-init` | `webodm-frappe:<ver>@sha256:…` | — | One-shot bootstrap (`bench new-site webodm.local`) |
+| `frappe-web` | `webodm-frappe:<ver>@sha256:…` | — | Gunicorn on 8000. The web tier |
+| `frappe-worker` | `webodm-frappe:<ver>@sha256:…` | — | RQ worker for `default,long,short` queues |
+| `frappe-scheduler` | `webodm-frappe:<ver>@sha256:…` | — | `bench schedule` cron loop |
+| `frappe-socketio` | `webodm-frappe:<ver>@sha256:…` | — | Node socketio on 9000 (real-time updates) |
 | `geospatial` | `webodm-geospatial:1` | — | FastAPI tile/export service on 5000 |
 | `nodeodm` | `opendronemap/nodeodm:latest` | — | ODM processing engine on 3000 |
 | `backup` | `webodm-backup:1` | — | systemd-cron + bench backup, hourly at 03:00 by default |
@@ -78,7 +78,7 @@ Login at `https://${SITE_DOMAIN}/` with `Administrator` and the password from
 |---|---|---|
 | `SITE_DOMAIN` | `webodm.local` | Used by Caddy for TLS issuance. Production must be a real FQDN |
 | `SITE_NAME` | `webodm.local` | The Frappe bench site name |
-| `FRAPPE_VERSION` | `16.26.3` | Image tag for `webodm-frappe:*` |
+| _(no `FRAPPE_VERSION`)_ | — | The Frappe image tag+digest is fixed in `docker-compose.yml`; bump with `scripts/pin-images.sh` |
 | `DB_NAME` / `DB_USER` | `webodm` / `webodm` | Postgres DB + user (password is in `secrets/db_password.txt`) |
 | `CLOUDFLARE_API_TOKEN` | (empty) | If set, Caddy uses DNS-01 via Cloudflare. Required for wildcard certs |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | (empty) | Alternative DNS-01 provider (Route53) |
@@ -153,10 +153,12 @@ docker compose exec redis-queue \
 ```
 
 If you see `NOAUTH Authentication required`, the `frappe_sites` volume's
-`common_site_config.json` doesn't have the auth-embedded URLs. The wrapper
-entrypoint in `docker-compose.yml` overwrites this on every container start
-**iff** the existing config lacks `root_login`. If you `exec`-bash into the
-container and check the file, it should contain `"redis_cache": "redis://:<pw>@redis-cache:13000"`.
+`common_site_config.json` doesn't match the current redis secrets.
+`infra/frappe/configure_site.py` (run by the entrypoint on **every** container
+start) upserts `redis_cache` / `redis_queue` from the mounted secrets, so a
+restart normally fixes it; if not, check that the `redis_*_password` secret
+files are what the redis containers were started with. Inside the container the
+file should contain `"redis_cache": "redis://:<pw>@redis-cache:13000"`.
 
 ### TLS cert not issued
 
@@ -256,11 +258,11 @@ docker compose ps frappe-web
 docker compose logs --tail=50 frappe-web
 ```
 
-If `frappe-web` is exiting immediately, the most common cause is a stale
-`common_site_config.json` in the `frappe_sites` volume. The wrapper
-entrypoint will refuse to overwrite it if `root_login` is already present —
-that's intentional, but it means a corrupt config from a prior failed init
-can lock the system in. Reset:
+If `frappe-web` is exiting immediately, read the first lines of its log: the
+entrypoint (`infra/frappe/entrypoint.sh`) fails fast with the name of any
+missing secret/env var. A corrupt `common_site_config.json` in the
+`frappe_sites` volume is the other common cause; the entrypoint upserts the
+keys it owns but does not repair invalid JSON. Reset:
 
 ```bash
 docker compose down

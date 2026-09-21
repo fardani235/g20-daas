@@ -36,7 +36,7 @@ submodule).
 
 | Path | Purpose |
 |---|---|
-| `frappe-bench/` | Frappe Bench environment (v16.26.3) |
+| `frappe-bench/` | Frappe Bench environment (Frappe version = `frappe` submodule pin, see `scripts/frappe-version.sh`) |
 | `frappe-bench/apps/frappe/` | Frappe framework (submodule, upstream `frappe/frappe`) |
 | `frappe-bench/apps/webodm_core/` | All DocTypes, business logic, and API |
 | `frappe-bench/apps/webodm_frontend/` | Vue 3 SPA + Frappe page hooks |
@@ -48,7 +48,7 @@ submodule).
 ### Backend
 | Component | Technology |
 |---|---|
-| Framework | Frappe v16.26.3 (Python 3.14) |
+| Framework | Frappe v16.34.0 (Python 3.14) — pinned via the `frappe` submodule |
 | Database | PostgreSQL 16 + PostGIS 3.4 |
 | Task Queue | Frappe RQ (Redis-backed) |
 | Cache | Redis 7 |
@@ -153,7 +153,7 @@ g20-daas/
 └── frappe-bench/                 # Frappe Bench root
     ├── Procfile                  # bench start process definitions
     ├── apps/
-    │   ├── frappe/               # Frappe framework v16.26.3
+    │   ├── frappe/               # Frappe framework (submodule, pinned tag)
     │   ├── webodm_core/          # DocTypes + business logic
     │   │   └── webodm_core/
     │   │       ├── hooks.py

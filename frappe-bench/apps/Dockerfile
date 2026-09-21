@@ -181,13 +181,14 @@ COPY --from=root infra/frappe/entrypoint.sh /workspace/infra/frappe/entrypoint.s
 COPY --from=root infra/frappe/init.sh /workspace/infra/frappe/init.sh
 COPY --from=root infra/frappe/wsgi.py /workspace/infra/frappe/wsgi.py
 COPY --from=root infra/frappe/prepare_assets.py /workspace/infra/frappe/prepare_assets.py
-RUN cp /workspace/infra/frappe/entrypoint.sh /entrypoint.sh && \
-    cp /workspace/infra/frappe/init.sh /usr/local/bin/frappe-init.sh && \
-    chmod +x /entrypoint.sh /usr/local/bin/frappe-init.sh
+COPY --from=root infra/frappe/configure_site.py /workspace/infra/frappe/configure_site.py
+RUN chmod +x /workspace/infra/frappe/entrypoint.sh /workspace/infra/frappe/init.sh && \
+    ln -sf /workspace/infra/frappe/entrypoint.sh /entrypoint.sh
 
 WORKDIR /workspace/frappe-bench
 
 EXPOSE 8000 9000
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
-CMD ["frappe-web"]
+# docker-compose.yml bind-mounts ./infra/frappe over /workspace/infra/frappe so the
+# repo's entrypoint wins; this baked copy is the fallback for standalone runs.
+ENTRYPOINT ["/usr/bin/tini", "--", "/workspace/infra/frappe/entrypoint.sh"]

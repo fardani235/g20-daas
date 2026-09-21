@@ -7,13 +7,12 @@ import {
 } from './nav'
 
 describe('PRIMARY_TABS', () => {
-  it('lists the six app sections in order', () => {
+  it('lists the four app sections in order', () => {
+    // Settings and Billing live in the Account dropdown (Phase 5), not here.
     expect(PRIMARY_TABS.map(t => t.to)).toEqual([
       '/dashboard',
       '/projects',
       '/presets',
-      '/invoices',
-      '/settings',
       '/plugins',
     ])
   })
@@ -29,7 +28,12 @@ describe('PRIMARY_TABS', () => {
 describe('activePrimaryTab', () => {
   it('matches a tab exactly', () => {
     expect(activePrimaryTab('/projects')).toBe('/projects')
-    expect(activePrimaryTab('/settings')).toBe('/settings')
+    expect(activePrimaryTab('/plugins')).toBe('/plugins')
+  })
+
+  it('does not activate a primary tab for Account-menu routes', () => {
+    expect(activePrimaryTab('/settings')).toBe(null)
+    expect(activePrimaryTab('/invoices')).toBe(null)
   })
 
   it('matches nested paths under a tab', () => {
