@@ -8,10 +8,30 @@ function headers(json = false) {
   return h
 }
 
+// Human-readable text of a Frappe error body. frappe.throw() does not set
+// `message`; the text lives in `_server_messages`, a JSON-encoded list of
+// JSON-encoded {message, ...} objects. Fall back to the exception's last line.
+export function errorMessage(err, fallback = 'Request failed') {
+  if (!err || typeof err !== 'object') return fallback
+  if (err.message) return err.message
+  try {
+    const texts = JSON.parse(err._server_messages || '[]')
+      .map(m => (typeof m === 'string' ? JSON.parse(m) : m)?.message)
+      .filter(Boolean)
+    if (texts.length) return texts.join('\n')
+  } catch {
+    // malformed _server_messages: fall through to the other fields
+  }
+  if (typeof err.exception === 'string' && err.exception) {
+    return err.exception.replace(/^[\w.]*(Error|Exception)\w*:\s*/, '')
+  }
+  return fallback
+}
+
 async function unwrap(res) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.message || 'Request failed')
+    throw new Error(errorMessage(err))
   }
   const data = await res.json()
   return data.message !== undefined ? data.message : data

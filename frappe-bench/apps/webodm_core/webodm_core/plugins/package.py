@@ -156,7 +156,13 @@ def inspect_package(path: str) -> dict:
             _require(total <= MAX_EXTRACTED_BYTES,
                      f"package extracts to more than {MAX_EXTRACTED_BYTES // (1024 * 1024)} MB")
         members = {i.filename for i in infos}
-        _require(MANIFEST_NAME in members, f"package has no {MANIFEST_NAME} at its root")
+        if MANIFEST_NAME not in members:
+            # The usual mistake is zipping the plugin folder rather than its
+            # contents; say so when the manifest sits one level down.
+            nested = [m for m in members if m.count("/") == 1 and m.endswith("/" + MANIFEST_NAME)]
+            hint = (f" (found {nested[0]!r}: zip the folder's contents, not the folder itself)"
+                    if nested else "")
+            raise PackageError(f"package has no {MANIFEST_NAME} at its root{hint}")
         try:
             manifest = json.loads(zf.read(MANIFEST_NAME).decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as e:

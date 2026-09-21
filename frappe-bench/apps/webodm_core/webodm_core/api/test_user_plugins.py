@@ -115,6 +115,14 @@ class TestPackageValidation(FrappeTestCase):
     def test_missing_manifest(self):
         self._bad(_zip(manifest=None), "plugin.json")
 
+    def test_manifest_nested_in_folder_gets_hint(self):
+        # Zipping the plugin directory itself instead of its contents.
+        path = _zip(manifest=None, files={
+            "elevation-mask/plugin.json": json.dumps(MANIFEST),
+            "elevation-mask/main.py": "print('hi')\n",
+        })
+        self._bad(path, "found 'elevation-mask/plugin.json'")
+
     def test_manifest_not_json(self):
         self._bad(_zip(manifest="{not json"), "not valid JSON")
 

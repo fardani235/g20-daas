@@ -99,6 +99,28 @@ describe('user plugins', () => {
     expect(init.headers['X-Frappe-CSRF-Token']).toBe('x')
   })
 
+  it('surfaces frappe.throw text from _server_messages on upload failure', async () => {
+    const body = {
+      exc_type: 'ValidationError',
+      _server_messages: JSON.stringify([
+        JSON.stringify({ message: 'Invalid plugin package: package has no plugin.json at its root', title: 'Message' }),
+      ]),
+    }
+    global.fetch = vi.fn(() =>
+      Promise.resolve({ ok: false, status: 417, json: () => Promise.resolve(body) }))
+    await expect(plugins.uploadPlugin(new File(['x'], 'p.zip'))).rejects.toThrow(
+      'Invalid plugin package: package has no plugin.json at its root')
+  })
+
+  it('errorMessage prefers message, then _server_messages, then exception', () => {
+    expect(plugins.errorMessage({ message: 'direct' })).toBe('direct')
+    expect(plugins.errorMessage({ _server_messages: '["{\\"message\\": \\"a\\"}", "{\\"message\\": \\"b\\"}"]' })).toBe('a\nb')
+    expect(plugins.errorMessage({ exception: 'frappe.exceptions.ValidationError: boom' })).toBe('boom')
+    expect(plugins.errorMessage({ _server_messages: 'not json' })).toBe('Request failed')
+    expect(plugins.errorMessage({})).toBe('Request failed')
+    expect(plugins.errorMessage(null, 'nope')).toBe('nope')
+  })
+
   it('removePlugin POSTs the plugin id', async () => {
     await plugins.removePlugin('acme.elevation-mask')
     const [url, init] = global.fetch.mock.calls.at(-1)
