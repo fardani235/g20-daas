@@ -364,7 +364,11 @@ class TestPluginRun(FrappeTestCase):
 
         def run(**payload):
             with patch.object(frappe, "enqueue", lambda *a, **k: None):
-                return plugins_api.run_plugin(plugin=PLUGIN_ID, task=task, **payload)
+                result = plugins_api.run_plugin(plugin=PLUGIN_ID, task=task, **payload)
+            # Keep this helper independent from the active-run guard; each
+            # assertion in this test exercises only input resolution behavior.
+            frappe.db.set_value("WebODM Plugin Run", result["run"], "status", "Completed")
+            return result
 
         def stored_inputs(result):
             params = json.loads(frappe.db.get_value("WebODM Plugin Run", result["run"], "parameters"))
