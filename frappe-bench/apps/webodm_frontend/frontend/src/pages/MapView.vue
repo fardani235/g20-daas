@@ -347,6 +347,28 @@
           <option value="">Custom (type a model below)</option>
         </Select>
       </div>
+      <div v-if="runInputs.length" class="mb-3 space-y-3" data-testid="run-inputs">
+        <div v-for="choice in runInputs" :key="choice.name" class="space-y-1.5">
+          <Label :for="`run-input-${choice.name}`">
+            {{ choice.label }}
+            <span v-if="!choice.optional" class="text-destructive">*</span>
+          </Label>
+          <Select
+            v-if="choice.options.length > 1"
+            :id="`run-input-${choice.name}`"
+            :model-value="choice.value"
+            @update:model-value="v => (choice.value = v)"
+          >
+            <option v-for="opt in choice.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </Select>
+          <p v-else-if="choice.missing" class="text-sm text-destructive">
+            This task has no {{ choice.accepts }}.
+          </p>
+          <p v-else class="text-sm text-muted-foreground">
+            {{ choice.options[0]?.label || 'None' }}
+          </p>
+        </div>
+      </div>
       <PluginParamsForm
         v-if="runPluginDoc"
         :schema="runPluginDoc.params_schema"
@@ -354,7 +376,7 @@
       />
       <template #footer>
         <Button variant="ghost" @click="showRunDialog = false">Cancel</Button>
-        <Button :loading="runStarting" @click="startPluginRun">Run</Button>
+        <Button :loading="runStarting" :disabled="runInputsInvalid" @click="startPluginRun">Run</Button>
       </template>
     </Dialog>
   </div>
@@ -405,6 +427,8 @@ import {
   schemaDefaults,
   latestRunPerPlugin,
   shouldRenderVector,
+  inputChoices,
+  inputsPayload,
 } from '@/lib/plugins'
 import { detectionStyle, detectionLegend } from '@/lib/detections'
 import { segmentationStyle, segmentationLegend } from '@/lib/segmentation'
@@ -498,7 +522,12 @@ const taskRuns = ref([])
 const showRunDialog = ref(false)
 const runPluginDoc = ref(null)
 const runParams = ref({})
+const runInputs = ref([])
 const runStarting = ref(false)
+
+// Every input either has a dataset chosen or is optional and left out.
+const runInputsInvalid = computed(() =>
+  runInputs.value.some(c => c.missing || (!c.optional && !c.value)))
 
 const runnablePlugins = computed(() => availablePlugins.value.filter(p => p.runnable))
 
@@ -534,6 +563,9 @@ function openRunDialog(plugin) {
   // Start from the operation's schema defaults, then the organization's saved
   // settings, so the dialog never opens blank and users don't invent values.
   runParams.value = { ...schemaDefaults(plugin.params_schema), ...(plugin.settings || {}) }
+  // Which task datasets feed each plugin input; multi-source plugins let the
+  // user pick (or drop) datasets here.
+  runInputs.value = inputChoices(plugin.inputs, currentTask.value)
   showRunDialog.value = true
 }
 
@@ -555,6 +587,7 @@ async function startPluginRun() {
       plugin: runPluginDoc.value.op_id,
       task: selectedTask.value,
       params: runParams.value,
+      inputs: inputsPayload(runInputs.value),
     })
     showRunDialog.value = false
     toast.success('Analysis started')

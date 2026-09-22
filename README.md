@@ -42,7 +42,8 @@ submodule).
 | `frappe-bench/apps/webodm_frontend/` | Vue 3 SPA + Frappe page hooks |
 | `services/geospatial/` | Standalone FastAPI tile/analysis service (hosts the **system** analysis plugins) |
 | `services/plugin-runner/` | Sandbox that executes **user** analysis plugins (uploaded per organization) |
-| `docs/plugins/` | User plugin guide + example plugin |
+| `docs/plugins/` | User plugin guide, example plugin, Semantic Segmentation plugin docs |
+| `plugins/semantic-segmentation/` | Semantic Segmentation **user** plugin (orthophoto / DSM / DTM, pluggable ONNX + rule models) |
 | `infra/` | Caddy, backup, and image build assets |
 
 ## Tech Stack
@@ -235,6 +236,7 @@ services/plugin-runner/           # User plugin sandbox
 
 docs/plugins/
 ├── user-plugin-guide.md          # How to write, test, package, upload, manage plugins
+├── semantic-segmentation.md      # Running segmentation on orthophoto / DSM / DTM / all three
 └── examples/elevation-mask/      # Starter plugin (manifest, entrypoint, tests)
 ```
 

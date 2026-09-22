@@ -1,0 +1,49 @@
+{
+  "id": "landcover-segformer-b0",
+  "label": "Land cover — SegFormer-B0 (RGB, optional height fusion)",
+  "description": "SegFormer-B0 fine-tuned for 7 land-cover classes on satellite imagery (MIT licence). Uses the orthophoto; when a DSM (and DTM) are also selected, the normalized height above ground refines the classes by Bayesian late fusion.",
+  "backend": "onnx",
+  "auto_priority": 30,
+  "inputs": { "required": ["orthophoto"], "optional": ["dsm", "dtm"] },
+  "onnx": {
+    "file": "landcover-segformer-b0.onnx",
+    "sha256": "e2351ed70749afcab18e3039110dd5b4d49152a87430d146db68060c4a12ff09",
+    "input": "pixel_values",
+    "output": "probabilities",
+    "output_type": "probabilities",
+    "channels": ["red", "green", "blue"],
+    "scale": "unit",
+    "mean": null,
+    "std": null,
+    "input_size": 512
+  },
+  "classes": [
+    { "id": 0, "name": "background",        "color": "#000000", "background": true },
+    { "id": 1, "name": "residential_area",  "color": "#d7301f" },
+    { "id": 2, "name": "road",              "color": "#969696" },
+    { "id": 3, "name": "river",             "color": "#2b8cbe" },
+    { "id": 4, "name": "forest",            "color": "#238b45" },
+    { "id": 5, "name": "unused_land",       "color": "#d9b382" },
+    { "id": 6, "name": "agricultural_area", "color": "#a1d99b" }
+  ],
+  "height_fusion": {
+    "elevated_threshold_m": 2.0,
+    "softness_m": 0.75,
+    "classes": {
+      "residential_area": "elevated",
+      "road": "ground",
+      "river": "ground",
+      "forest": "elevated",
+      "unused_land": "ground",
+      "agricultural_area": "ground",
+      "background": "any"
+    }
+  },
+  "recommended": { "resolution_m": 0.3, "tile_size": 512, "overlap": 64 },
+  "source": {
+    "name": "Pranilllllll/segformer-satellite-segementation",
+    "url": "https://huggingface.co/Pranilllllll/segformer-satellite-segementation",
+    "license": "MIT",
+    "export": "services/geospatial/tools/export_segformer_landcover.py (graph takes [0,1] RGB, ImageNet-normalises internally, returns softmax probabilities at input resolution)"
+  }
+}

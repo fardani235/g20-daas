@@ -135,6 +135,9 @@ def render_tile(path: str, z: int, x: int, y: int, kind: str = "orthophoto",
 
     - orthophoto: rendered as RGB(A); alpha masks nodata so surrounding area is transparent.
     - dsm/dtm: single-band DEM stretched to its min/max and colored with a terrain ramp.
+    - paletted single band (a GeoTIFF colour table, e.g. a classification
+      mask): drawn with its own palette, no stretch, so class ids keep the
+      colours the producer assigned.
 
     Raises rio_tiler.errors.TileOutsideBounds when the tile does not intersect the raster.
     """
@@ -142,7 +145,9 @@ def render_tile(path: str, z: int, x: int, y: int, kind: str = "orthophoto",
         img = r.tile(x, y, z, tilesize=tilesize)
 
         colormap = None
-        if kind in ("dsm", "dtm") or img.count == 1:
+        if img.count == 1 and r.colormap:
+            colormap = r.colormap
+        elif kind in ("dsm", "dtm") or img.count == 1:
             stats = r.statistics()
             band = next(iter(stats.values()))
             img.rescale(in_range=((band.min, band.max),))

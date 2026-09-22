@@ -1,0 +1,165 @@
+{
+  "id": "semantic-segmentation-polygons",
+  "label": "Semantic Segmentation (polygons)",
+  "version": "1.0.0",
+  "description": "Same models and inputs as Semantic Segmentation, but the result is one polygon per classified region (GeoJSON) instead of a mask, styled by class on the map.",
+  "entrypoint": "main.py",
+  "inputs": [
+    {
+      "name": "orthophoto",
+      "label": "Orthophoto (RGB)",
+      "datasets": [
+        "orthophoto"
+      ],
+      "optional": true
+    },
+    {
+      "name": "dsm",
+      "label": "DSM (surface)",
+      "datasets": [
+        "dsm"
+      ],
+      "optional": true
+    },
+    {
+      "name": "dtm",
+      "label": "DTM (terrain)",
+      "datasets": [
+        "dtm"
+      ],
+      "optional": true
+    }
+  ],
+  "params_schema": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "description": "auto picks the best model for the selected inputs: flair-rgb-resnet34-unet (default) and landcover-segformer-b0 need the orthophoto (DSM/DTM optional), height-classes needs the DSM (DTM/orthophoto optional), geomorphons needs a DTM or DSM.",
+        "enum": [
+          "auto",
+          "flair-rgb-resnet34-unet",
+          "landcover-segformer-b0",
+          "height-classes",
+          "geomorphons"
+        ],
+        "default": "auto"
+      },
+      "resolution_m": {
+        "type": "number",
+        "title": "Processing resolution (m)",
+        "description": "Ground sample distance of the processing grid; 0 uses the model's recommended resolution. Coarser is faster.",
+        "minimum": 0,
+        "default": 0
+      },
+      "tile_size": {
+        "type": "integer",
+        "title": "Tile size (px)",
+        "description": "0 uses the model default (fixed for ONNX models).",
+        "minimum": 0,
+        "maximum": 4096,
+        "default": 0
+      },
+      "overlap": {
+        "type": "integer",
+        "title": "Tile overlap (px)",
+        "description": "Overlap blended with a Hann window to hide seams; -1 uses the model default.",
+        "minimum": -1,
+        "maximum": 1024,
+        "default": -1
+      },
+      "min_segment_area_m2": {
+        "type": "number",
+        "title": "Minimum segment area (m\u00b2)",
+        "description": "Regions smaller than this are merged into their neighbours.",
+        "minimum": 0,
+        "default": 2.0
+      },
+      "smoothing_radius_px": {
+        "type": "integer",
+        "title": "Smoothing radius (px)",
+        "description": "Majority-filter radius applied to the class map; 0 disables.",
+        "minimum": 0,
+        "maximum": 8,
+        "default": 1
+      },
+      "class_filter": {
+        "type": "string",
+        "title": "Class filter",
+        "description": "Comma-separated class names to keep (others become background). Empty keeps all.",
+        "default": ""
+      },
+      "height_weight": {
+        "type": "number",
+        "title": "Height fusion weight",
+        "description": "RGB models only: how strongly height above ground (needs DSM, ideally DTM) reweights the classes. 0 disables fusion.",
+        "minimum": 0,
+        "maximum": 3,
+        "default": 1.0
+      },
+      "elevated_threshold_m": {
+        "type": "number",
+        "title": "Elevated threshold (m)",
+        "description": "Height above ground separating elevated classes (buildings, trees) from ground classes in height fusion; 0 uses the model's value.",
+        "minimum": 0,
+        "default": 0
+      },
+      "ground_window_m": {
+        "type": "number",
+        "title": "Ground estimation window (m)",
+        "description": "DSM without DTM: size of the morphological opening used to estimate the terrain. Larger than the widest building.",
+        "minimum": 1,
+        "default": 40
+      },
+      "low_threshold_m": {
+        "type": "number",
+        "title": "Low object threshold (m)",
+        "description": "height-classes: heights above this count as objects.",
+        "minimum": 0,
+        "default": 0.5
+      },
+      "tall_threshold_m": {
+        "type": "number",
+        "title": "High object threshold (m)",
+        "description": "height-classes: heights above this are high objects (trees, buildings).",
+        "minimum": 0,
+        "default": 2.5
+      },
+      "vegetation_index_threshold": {
+        "type": "number",
+        "title": "Vegetation index threshold",
+        "description": "height-classes with orthophoto: Excess Green (ExG) above this is vegetation.",
+        "minimum": -1,
+        "maximum": 1,
+        "default": 0.06
+      },
+      "geomorphon_search_m": {
+        "type": "number",
+        "title": "Geomorphon search distance (m)",
+        "description": "geomorphons: line-of-sight lookup distance L.",
+        "exclusiveMinimum": 0,
+        "default": 20
+      },
+      "geomorphon_flatness_deg": {
+        "type": "number",
+        "title": "Geomorphon flatness (\u00b0)",
+        "description": "geomorphons: angles below this count as level.",
+        "exclusiveMinimum": 0,
+        "maximum": 89,
+        "default": 1.0
+      },
+      "simplify_tolerance_m": {
+        "type": "number",
+        "title": "Polygon simplification (m)",
+        "description": "Polygons variant only: Douglas-Peucker tolerance for region outlines.",
+        "minimum": 0,
+        "default": 0.25
+      }
+    },
+    "required": []
+  },
+  "output_kind": "vector",
+  "render_kind": "segmentation",
+  "timeout_seconds": 3600
+}

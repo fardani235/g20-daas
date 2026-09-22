@@ -357,24 +357,59 @@ def remove_plugin(plugin: str):
     return {"plugin": doc.name, "removed": True}
 
 
-def _resolve_inputs(task, inputs_spec: list) -> dict:
-    """Map each required input to the first task dataset that supplies it."""
+def _resolve_inputs(task, inputs_spec: list, selection: dict | None = None) -> dict:
+    """Map each declared input to the task dataset that supplies it.
+
+    ``selection`` (``{input name: dataset}``, from the run request) lets the
+    user pick among the datasets an input accepts, or leave an *optional*
+    input out with ``None``/``""``. When a selection is given it is complete:
+    optional inputs it does not name are left out too. Without a selection
+    (older clients) every input takes the first dataset the task has. A
+    required input that resolves to nothing is an error. At least one input
+    must resolve.
+    """
     from webodm_core.plugins.runner import DATASET_FIELDS
+
+    explicit = isinstance(selection, dict)
+    selection = selection if explicit else {}
+    known = {spec.get("name") for spec in inputs_spec or []}
+    for name in selection:
+        if name not in known:
+            frappe.throw(f"Unknown input '{name}'")
 
     resolved = {}
     for spec in inputs_spec or []:
         name = spec.get("name")
-        datasets = spec.get("datasets") or []
-        chosen = next(
-            (d for d in datasets if d in DATASET_FIELDS and task.get(d)),
-            None,
-        )
-        if not chosen:
-            frappe.throw(
-                f"Task is missing the required input '{name}' "
-                f"(needs one of: {', '.join(datasets)})"
-            )
+        datasets = [d for d in (spec.get("datasets") or []) if d in DATASET_FIELDS]
+        optional = bool(spec.get("optional"))
+
+        if name in selection:
+            chosen = selection[name]
+            if chosen in (None, ""):
+                if not optional:
+                    frappe.throw(f"Input '{name}' is required (one of: {', '.join(datasets)})")
+                continue
+            if chosen not in datasets:
+                frappe.throw(
+                    f"Input '{name}' cannot use '{chosen}' (one of: {', '.join(datasets)})"
+                )
+            if not task.get(chosen):
+                frappe.throw(f"Task has no '{chosen}' for input '{name}'")
+        else:
+            if optional and explicit:
+                continue
+            chosen = next((d for d in datasets if task.get(d)), None)
+            if not chosen:
+                if optional:
+                    continue
+                frappe.throw(
+                    f"Task is missing the required input '{name}' "
+                    f"(needs one of: {', '.join(datasets)})"
+                )
         resolved[name] = chosen
+
+    if not resolved:
+        frappe.throw("Select at least one input dataset for this plugin")
     return resolved
 
 
@@ -447,7 +482,9 @@ def run_plugin(**kwargs):
     if task.status != "Completed":
         frappe.throw("Plugin can only run on a completed task")
 
-    resolved_inputs = _resolve_inputs(task, _parse_json(plugin_doc.inputs, []))
+    resolved_inputs = _resolve_inputs(
+        task, _parse_json(plugin_doc.inputs, []), payload.get("inputs")
+    )
     defaults = _parse_json(setting.settings, {}) or {}
     effective = {**defaults, **(overrides if isinstance(overrides, dict) else {})}
     try:

@@ -135,3 +135,43 @@ describe('user plugins', () => {
     expect(plugins.pluginTypeLabel({})).toBe('System')
   })
 })
+
+describe('inputChoices', () => {
+  const task = { orthophoto: '/o.tif', dsm: '/d.tif', dtm: null }
+  const inputs = [
+    { name: 'ortho', datasets: ['orthophoto'], optional: true, label: 'Orthophoto' },
+    { name: 'surface', datasets: ['dtm', 'dsm'] },
+    { name: 'terrain', datasets: ['dtm'], optional: true },
+    { name: 'cloud', datasets: ['point_cloud'] },
+  ]
+
+  it('lists only the datasets the task has, first available as default', () => {
+    const [ortho, surface, terrain, cloud] = plugins.inputChoices(inputs, task)
+    expect(ortho.label).toBe('Orthophoto')
+    expect(ortho.options.map(o => o.value)).toEqual(['orthophoto', ''])
+    expect(ortho.value).toBe('orthophoto')
+    expect(surface.options.map(o => o.value)).toEqual(['dsm'])
+    expect(surface.value).toBe('dsm')
+    expect(surface.optional).toBe(false)
+    expect(surface.missing).toBe(false)
+    // optional with nothing available: only "None", not flagged missing
+    expect(terrain.options.map(o => o.value)).toEqual([''])
+    expect(terrain.value).toBe('')
+    expect(terrain.missing).toBe(false)
+    // required with nothing available is flagged
+    expect(cloud.missing).toBe(true)
+    expect(cloud.accepts).toBe('Point cloud')
+  })
+
+  it('inputsPayload sends every input, None as null', () => {
+    const choices = plugins.inputChoices(inputs, task)
+    expect(plugins.inputsPayload(choices)).toEqual({
+      ortho: 'orthophoto', surface: 'dsm', terrain: null, cloud: null,
+    })
+  })
+
+  it('tolerates missing inputs or task', () => {
+    expect(plugins.inputChoices(undefined, task)).toEqual([])
+    expect(plugins.inputChoices(inputs, null)[1].options).toEqual([])
+  })
+})

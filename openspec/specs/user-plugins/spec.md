@@ -92,6 +92,25 @@ this way.
 - **THEN** the plugin no longer appears in any list and its runs, outputs,
   settings and package are gone
 
+### Requirement: Optional inputs and dataset selection
+
+A manifest input MAY be marked `optional`. When a run is started, the caller
+MAY name the dataset that feeds each input (among those the input accepts) or
+leave an optional input out; a selection is complete (optional inputs it does
+not name are left out), and without any selection the first available dataset
+is used for every input. A required input that resolves to no dataset MUST reject the run;
+optional ones are omitted from the request. At least one input MUST resolve.
+
+#### Scenario: User picks datasets
+
+- **WHEN** a run names `{"surface": "dtm"}` for an input accepting `dsm` and `dtm`
+- **THEN** the run's inputs record `dtm` and the sandbox receives that file
+
+#### Scenario: Optional input left out
+
+- **WHEN** an optional input has no selection and the task lacks its datasets
+- **THEN** the run is accepted and the input is absent from `request.json`
+
 ### Requirement: Isolated execution
 
 User plugins SHALL execute in a sandbox separate from the platform's services.
@@ -99,7 +118,8 @@ The sandbox MUST NOT have access to the site's files other than per-run copies
 of the plugin's declared inputs, MUST NOT have network access, and MUST bound
 each plugin process's wall-clock time, memory, output size and process count.
 A plugin that crashes, hangs, produces no output or produces an unreadable
-output SHALL fail only its own run, with the error recorded on the run.
+output SHALL fail only its own run, with the error recorded on the run. The
+sandbox SHALL provide numpy, rasterio, shapely and a CPU ONNX runtime.
 
 #### Scenario: Plugin crash
 

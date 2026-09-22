@@ -49,8 +49,8 @@ MAX_PROCESSES = int(os.environ.get("PLUGIN_MAX_PROCESSES", 128))
 # Package limits: compressed size, extracted size and member count. Frappe
 # applies the same limits at upload; they are re-checked here so a bug on the
 # other side can never turn into a zip bomb in the sandbox.
-MAX_PACKAGE_BYTES = int(os.environ.get("PLUGIN_MAX_PACKAGE_MB", 50)) * 1024 * 1024
-MAX_EXTRACTED_BYTES = int(os.environ.get("PLUGIN_MAX_EXTRACTED_MB", 200)) * 1024 * 1024
+MAX_PACKAGE_BYTES = int(os.environ.get("PLUGIN_MAX_PACKAGE_MB", 256)) * 1024 * 1024
+MAX_EXTRACTED_BYTES = int(os.environ.get("PLUGIN_MAX_EXTRACTED_MB", 1024)) * 1024 * 1024
 MAX_MEMBERS = 500
 
 # Bytes of stdout/stderr kept for error messages and the run log.

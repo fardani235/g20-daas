@@ -435,3 +435,34 @@ All DocTypes live in `webodm_core`:
   `--use-angle=swiftshader --enable-unsafe-swiftshader`; a 34 MB model reaches ready in
   ~12 s there.
 
+
+## Phase 13: Semantic segmentation user plugin + multi-source inputs (2026-09-22)
+
+- New user plugin `plugins/semantic-segmentation/` (docs: `docs/plugins/semantic-segmentation.md`).
+  Model-card driven (`models/*.json`): `flair-rgb-resnet34-unet` (IGN FLAIR U-Net, aerial RGB,
+  Etalab-2.0, default with an orthophoto; ONNX is 98 MB and **not committed** — run
+  `tools/fetch_models.py` with a torch venv before `tools/build.sh`), `landcover-segformer-b0`
+  (the 15 MB MIT SegFormer export, committed; git dedups it against services/geospatial/models),
+  `height-classes` (nDSM rules ± ExG vegetation split) and `geomorphons` (Jasiewicz & Stepinski).
+  RGB models get Bayesian late fusion with the nDSM (DSM−DTM, or DSM minus a morphological
+  ground estimate). `segplugin/` = grid alignment via WarpedVRT (reads from the matching
+  overview level — warping a 5 cm ortho to 30 cm from level 0 was 8× slower), Hann-blended
+  tiling with a rolling row-band accumulator (flat memory), sieve/majority post-processing,
+  paletted mask GeoTIFF or polygons (extension of `output_path` decides; `plugin-polygons.json`
+  is the second manifest, `tools/build.sh` emits both zips). 47 pytest tests
+  (`plugins/semantic-segmentation/tests`, also run in CI's `test-plugin-runner` job).
+- Core changes made for it (kept minimal): manifest inputs accept `optional: true` and `label`
+  (`package.py`), `run_plugin` accepts `inputs: {name: dataset|null}` and skips optional inputs
+  the task lacks (`_resolve_inputs`), the run dialog (`MapView.vue`) shows a dataset Select per
+  input (`lib/plugins.js: inputChoices/inputsPayload`), `onnxruntime` is in the sandbox image,
+  package limits are 256 MB zipped / 1 GB extracted (Frappe + runner), and the geospatial
+  `render_tile` draws a single band with an embedded colour table using that palette instead of
+  the terrain stretch (`tests/test_raster_palette.py`).
+- Validation: the real task `p5nfvcmuif` (5 cm ortho + DSM + DTM, EPSG:32613) copied out of the
+  `frappe_sites` volume; all four input modes run locally and inside `webodm-plugin-runner:local`
+  under the 2 GB `RLIMIT_AS`. FLAIR at 0.2 m: 12 tiles, ~40 s CPU. The satellite SegFormer
+  mislabels lawns as river on this scene (domain shift) — documented, kept as fallback.
+- Local E2E recipe used: build `webodm-frappe:local` (`docker build -f frappe-bench/apps/Dockerfile
+  --build-context sites=./frappe-bench/sites --build-context root=. frappe-bench/apps`),
+  `webodm-geospatial:local`, `webodm-plugin-runner:local`; an override that swaps the images
+  (see `docs/plugins/semantic-segmentation.md` §1 for the upload/run commands).

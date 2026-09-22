@@ -1,0 +1,22 @@
+{
+  "id": "geomorphons",
+  "label": "Landforms — geomorphons (DTM or DSM)",
+  "description": "Ten landform classes from a single elevation raster following Jasiewicz & Stepinski (2013): the pattern of higher/lower/level line-of-sight angles in eight directions. Prefers the DTM (terrain landforms); on a DSM it describes the surface including vegetation and buildings.",
+  "backend": "geomorphon",
+  "auto_priority": 10,
+  "inputs": { "one_of": ["dtm", "dsm"], "optional": [] },
+  "classes": [
+    { "id": 0,  "name": "none",      "color": "#000000", "background": true },
+    { "id": 1,  "name": "flat",      "color": "#dcdcdc" },
+    { "id": 2,  "name": "peak",      "color": "#380000" },
+    { "id": 3,  "name": "ridge",     "color": "#c80000" },
+    { "id": 4,  "name": "shoulder",  "color": "#ff5000" },
+    { "id": 5,  "name": "spur",      "color": "#fad23c" },
+    { "id": 6,  "name": "slope",     "color": "#ffff3c" },
+    { "id": 7,  "name": "hollow",    "color": "#b4e600" },
+    { "id": 8,  "name": "footslope", "color": "#3cfa96" },
+    { "id": 9,  "name": "valley",    "color": "#0000ff" },
+    { "id": 10, "name": "pit",       "color": "#000038" }
+  ],
+  "recommended": { "resolution_m": 1.0, "tile_size": 512, "overlap": 0 }
+}

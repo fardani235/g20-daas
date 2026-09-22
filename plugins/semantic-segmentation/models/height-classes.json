@@ -1,0 +1,18 @@
+{
+  "id": "height-classes",
+  "label": "Height classes — nDSM rules (DSM, optional DTM and orthophoto)",
+  "description": "Classifies the scene by normalized height above ground (DSM minus DTM; ground is estimated from the DSM by morphological opening when no DTM is selected). With an orthophoto the Excess Green index splits elevated objects into vegetation and structures.",
+  "backend": "height",
+  "auto_priority": 20,
+  "inputs": { "required": ["dsm"], "optional": ["dtm", "orthophoto"] },
+  "classes": [
+    { "id": 0, "name": "ground",          "color": "#c7b88a", "background": true },
+    { "id": 1, "name": "low_object",      "color": "#fdae6b" },
+    { "id": 2, "name": "high_object",     "color": "#e6550d" },
+    { "id": 3, "name": "low_vegetation",  "color": "#a1d99b" },
+    { "id": 4, "name": "high_vegetation", "color": "#238b45" },
+    { "id": 5, "name": "low_structure",   "color": "#bcbddc" },
+    { "id": 6, "name": "high_structure",  "color": "#756bb1" }
+  ],
+  "recommended": { "resolution_m": 0.25, "tile_size": 1024, "overlap": 0 }
+}

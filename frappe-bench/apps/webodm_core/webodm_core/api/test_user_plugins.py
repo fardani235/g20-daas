@@ -140,6 +140,23 @@ class TestPackageValidation(FrappeTestCase):
         self._bad(_zip({**MANIFEST, "params_schema": {"type": "array"}}), "describe an object")
         self._bad(_zip({**MANIFEST, "params_schema": {"properties": {}, "required": ["ghost"]}}), "required")
 
+    def test_optional_inputs_are_normalized(self):
+        manifest = {**MANIFEST, "inputs": [
+            {"name": "ortho", "datasets": ["orthophoto"], "optional": True, "label": "Orthophoto"},
+            {"name": "surface", "datasets": ["dsm"], "optional": False, "extra": "dropped"},
+        ]}
+        path = _zip(manifest)
+        try:
+            m = package_mod.inspect_package(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(m["inputs"], [
+            {"name": "ortho", "datasets": ["orthophoto"], "optional": True, "label": "Orthophoto"},
+            {"name": "surface", "datasets": ["dsm"]},
+        ])
+        self._bad(_zip({**MANIFEST, "inputs": [{"name": "raster", "datasets": ["dsm"], "optional": "yes"}]}),
+                  "'optional'")
+
     def test_namespaced_id(self):
         self.assertEqual(package_mod.namespaced_id("acme-corp", "elevation-mask"), "acme-corp.elevation-mask")
 

@@ -5,6 +5,11 @@
 secrets/
 secrets/*.txt
 docs/plugins/examples/*.zip
+# Built plugin packages and fetched (not committed) model weights
+plugins/*.zip
+plugins/semantic-segmentation/models/*.onnx
+plugins/semantic-segmentation/models/*.pth
+!plugins/semantic-segmentation/models/landcover-segformer-b0.onnx
 # Docker compose override for local dev
 docker-compose.override.yml
 

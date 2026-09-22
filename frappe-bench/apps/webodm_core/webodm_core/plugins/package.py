@@ -16,8 +16,11 @@ import zipfile
 
 MANIFEST_NAME = "plugin.json"
 
-MAX_PACKAGE_BYTES = 50 * 1024 * 1024
-MAX_EXTRACTED_BYTES = 200 * 1024 * 1024
+# Large enough for a plugin to ship a CPU segmentation/detection model
+# (tens to a few hundred MB of ONNX weights); the runner enforces the same
+# limits again before extracting.
+MAX_PACKAGE_BYTES = 256 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 1024 * 1024 * 1024
 MAX_MEMBERS = 500
 
 # Lowercase slug, 2-64 chars; namespaced with the organization slug on install.
@@ -77,13 +80,15 @@ def validate_manifest(manifest, members: set[str]) -> dict:
              "'entrypoint' must be a relative .py path inside the package")
     _require(entrypoint in members, f"entrypoint '{entrypoint}' not found in package")
 
-    inputs = manifest.get("inputs")
-    _require(isinstance(inputs, list) and inputs, "'inputs' must be a non-empty list")
+    raw_inputs = manifest.get("inputs")
+    _require(isinstance(raw_inputs, list) and raw_inputs, "'inputs' must be a non-empty list")
+    inputs = []
     seen = set()
-    for spec in inputs:
+    for spec in raw_inputs:
         _require(isinstance(spec, dict), "each input must be an object")
         name = spec.get("name")
         datasets = spec.get("datasets")
+        optional = spec.get("optional", False)
         _require(isinstance(name, str) and _ID_RE.match(name), "input 'name' must be a slug")
         _require(name not in seen, f"duplicate input '{name}'")
         seen.add(name)
@@ -91,6 +96,16 @@ def validate_manifest(manifest, members: set[str]) -> dict:
         for ds in datasets:
             _require(ds in DATASET_FIELDS,
                      f"input '{name}': unknown dataset '{ds}' (one of {', '.join(DATASET_FIELDS)})")
+        _require(isinstance(optional, bool), f"input '{name}': 'optional' must be true or false")
+        # An optional input is skipped when the task lacks it (or the user
+        # leaves it out); a required one blocks the run. Only these keys are
+        # kept so the stored spec is exactly what the run API interprets.
+        normalized = {"name": name, "datasets": list(datasets)}
+        if optional:
+            normalized["optional"] = True
+        if isinstance(spec.get("label"), str) and 0 < len(spec["label"]) <= 140:
+            normalized["label"] = spec["label"]
+        inputs.append(normalized)
 
     schema = manifest.get("params_schema") or {"type": "object", "properties": {}}
     _require(isinstance(schema, dict), "'params_schema' must be a JSON schema object")

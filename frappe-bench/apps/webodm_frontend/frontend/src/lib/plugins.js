@@ -109,3 +109,44 @@ export function latestRunPerPlugin(runs) {
   }
   return [...byPlugin.values()]
 }
+// Human labels for the task datasets a plugin input can draw from.
+export const DATASET_LABELS = {
+  orthophoto: 'Orthophoto',
+  dsm: 'DSM',
+  dtm: 'DTM',
+  point_cloud: 'Point cloud',
+  model: '3D model',
+}
+
+// One row per plugin input for the run dialog: which of the input's accepted
+// datasets the task actually has, and which one is picked by default (the
+// first available, mirroring the server). Optional inputs get a "None" option;
+// a required input with nothing available is flagged so the dialog can say so.
+export function inputChoices(inputs, task) {
+  return (inputs || []).map(spec => {
+    const datasets = Array.isArray(spec.datasets) ? spec.datasets : []
+    const available = datasets.filter(d => !!task?.[d])
+    const optional = !!spec.optional
+    const options = available.map(d => ({ value: d, label: DATASET_LABELS[d] || d }))
+    if (optional) options.push({ value: '', label: 'None' })
+    return {
+      name: spec.name,
+      label: spec.label || spec.name,
+      optional,
+      options,
+      value: available[0] || '',
+      missing: !optional && !available.length,
+      // What the input would accept, for the "task has none of" message.
+      accepts: datasets.map(d => DATASET_LABELS[d] || d).join(', '),
+    }
+  })
+}
+
+// The `inputs` payload for run_plugin from the dialog's choices. Inputs left
+// at their server default are still sent so the stored run reflects exactly
+// what the user saw; optional inputs set to "None" are sent as null.
+export function inputsPayload(choices) {
+  const out = {}
+  for (const c of choices || []) out[c.name] = c.value || null
+  return out
+}

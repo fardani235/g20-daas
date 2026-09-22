@@ -68,7 +68,7 @@ different organizations share the runner process's uid, which is why
 | `PLUGIN_MEMORY_MB` | `2048` | `RLIMIT_AS` per plugin process |
 | `PLUGIN_MAX_OUTPUT_MB` | `4096` | `RLIMIT_FSIZE` |
 | `PLUGIN_MAX_PROCESSES` | `128` | `RLIMIT_NPROC` |
-| `PLUGIN_MAX_PACKAGE_MB` / `PLUGIN_MAX_EXTRACTED_MB` | `50` / `200` | Package limits |
+| `PLUGIN_MAX_PACKAGE_MB` / `PLUGIN_MAX_EXTRACTED_MB` | `256` / `1024` | Package limits |
 | `PLUGIN_PYTHON` | the service interpreter | Interpreter plugins run under |
 
 ## Development

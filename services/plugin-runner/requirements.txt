@@ -1,9 +1,11 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
 pydantic>=2.10.0
-# Libraries available to user plugins (same geospatial stack as services/geospatial,
-# minus the ML runtime).
+# Libraries available to user plugins: the same geospatial stack as
+# services/geospatial plus the CPU ONNX runtime, so ML plugins can ship a
+# model file and run it without bundling an inference engine.
 numpy>=2.0.0
 rasterio>=1.4.0
 shapely>=2.0.0
+onnxruntime>=1.18.0
 pytest>=8.0.0

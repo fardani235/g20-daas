@@ -351,6 +351,49 @@ class TestPluginRun(FrappeTestCase):
             with self.assertRaises(frappe.ValidationError):
                 plugins_api.run_plugin(plugin=PLUGIN_ID, task=self.task_ok)
 
+    def test_input_selection_and_optional_inputs(self):
+        spec = [
+            {"name": "ortho", "datasets": ["orthophoto"], "optional": True},
+            {"name": "surface", "datasets": ["dsm", "dtm"], "optional": True},
+        ]
+        frappe.db.set_value("WebODM Plugin", PLUGIN_ID, "inputs", json.dumps(spec))
+        task = self._task(self.owner, self.project, "Completed", with_dsm=True)
+        self._attach_dataset(task, "dtm", "dtm.tif")
+        self._enable(settings={"interval_m": 5})
+        self._as(self.owner)
+
+        def run(**payload):
+            with patch.object(frappe, "enqueue", lambda *a, **k: None):
+                return plugins_api.run_plugin(plugin=PLUGIN_ID, task=task, **payload)
+
+        def stored_inputs(result):
+            params = json.loads(frappe.db.get_value("WebODM Plugin Run", result["run"], "parameters"))
+            return params["inputs"]
+
+        # No selection: optional inputs the task lacks are skipped, the rest
+        # take the first available dataset.
+        self.assertEqual(stored_inputs(run()), {"surface": "dsm"})
+        # Explicit selection picks among the accepted datasets.
+        self.assertEqual(stored_inputs(run(inputs={"surface": "dtm"})), {"surface": "dtm"})
+        # An explicit selection is complete: optional inputs it does not name
+        # are left out even when the task has them.
+        self._attach_dataset(task, "orthophoto", "ortho.tif")
+        self.assertEqual(stored_inputs(run()), {"ortho": "orthophoto", "surface": "dsm"})
+        self.assertEqual(stored_inputs(run(inputs={"surface": "dsm"})), {"surface": "dsm"})
+        self.assertEqual(stored_inputs(run(inputs={"ortho": "orthophoto", "surface": None})),
+                         {"ortho": "orthophoto"})
+        # Wrong dataset for an input, dataset the task lacks, unknown input,
+        # and leaving every input out are all rejected before a run exists.
+        for bad in ({"surface": "orthophoto"}, {"ortho": "orthophoto"},
+                    {"ghost": "dsm"}, {"surface": None}):
+            with self.assertRaises(frappe.ValidationError):
+                run(inputs=bad)
+        # A required input cannot be left out.
+        frappe.db.set_value("WebODM Plugin", PLUGIN_ID, "inputs",
+                            json.dumps([{"name": "surface", "datasets": ["dsm", "dtm"]}]))
+        with self.assertRaises(frappe.ValidationError):
+            run(inputs={"surface": ""})
+
     def test_vector_output_persisted_and_served(self):
         frappe.db.set_value("WebODM Plugin", PLUGIN_ID,
                             {"output_kind": "vector", "render_kind": "detections"})
