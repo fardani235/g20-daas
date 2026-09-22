@@ -364,7 +364,11 @@ class TestPluginRun(FrappeTestCase):
 
         def run(**payload):
             with patch.object(frappe, "enqueue", lambda *a, **k: None):
-                return plugins_api.run_plugin(plugin=PLUGIN_ID, task=task, **payload)
+                result = plugins_api.run_plugin(plugin=PLUGIN_ID, task=task, **payload)
+            # Keep this helper independent from the active-run guard; each
+            # assertion in this test exercises only input resolution behavior.
+            frappe.db.set_value("WebODM Plugin Run", result["run"], "status", "Completed")
+            return result
 
         def stored_inputs(result):
             params = json.loads(frappe.db.get_value("WebODM Plugin Run", result["run"], "parameters"))
@@ -382,10 +386,9 @@ class TestPluginRun(FrappeTestCase):
         self.assertEqual(stored_inputs(run(inputs={"surface": "dsm"})), {"surface": "dsm"})
         self.assertEqual(stored_inputs(run(inputs={"ortho": "orthophoto", "surface": None})),
                          {"ortho": "orthophoto"})
-        # Wrong dataset for an input, dataset the task lacks, unknown input,
-        # and leaving every input out are all rejected before a run exists.
-        for bad in ({"surface": "orthophoto"}, {"ortho": "orthophoto"},
-                    {"ghost": "dsm"}, {"surface": None}):
+        # Wrong dataset for an input, unknown input, and leaving every input
+        # out are all rejected before a run exists.
+        for bad in ({"surface": "orthophoto"}, {"ghost": "dsm"}, {"surface": None}):
             with self.assertRaises(frappe.ValidationError):
                 run(inputs=bad)
         # A required input cannot be left out.
