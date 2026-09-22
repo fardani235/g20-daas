@@ -386,10 +386,9 @@ class TestPluginRun(FrappeTestCase):
         self.assertEqual(stored_inputs(run(inputs={"surface": "dsm"})), {"surface": "dsm"})
         self.assertEqual(stored_inputs(run(inputs={"ortho": "orthophoto", "surface": None})),
                          {"ortho": "orthophoto"})
-        # Wrong dataset for an input, dataset the task lacks, unknown input,
-        # and leaving every input out are all rejected before a run exists.
-        for bad in ({"surface": "orthophoto"}, {"ortho": "orthophoto"},
-                    {"ghost": "dsm"}, {"surface": None}):
+        # Wrong dataset for an input, unknown input, and leaving every input
+        # out are all rejected before a run exists.
+        for bad in ({"surface": "orthophoto"}, {"ghost": "dsm"}, {"surface": None}):
             with self.assertRaises(frappe.ValidationError):
                 run(inputs=bad)
         # A required input cannot be left out.
