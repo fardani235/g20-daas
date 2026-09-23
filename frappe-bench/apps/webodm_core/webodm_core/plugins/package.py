@@ -25,12 +25,18 @@ MAX_MEMBERS = 500
 
 # Lowercase slug, 2-64 chars; namespaced with the organization slug on install.
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
+# Input names may also use underscores so they can mirror dataset fields
+# (``point_cloud``); they are dict keys and staged-file stems, never URLs.
+_INPUT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
 _VERSION_RE = re.compile(r"^\d+(\.\d+){0,3}([-+][0-9A-Za-z.-]+)?$")
 
-OUTPUT_KINDS = ("raster", "vector")
+# raster -> GeoTIFF (map tiles), vector -> GeoJSON (map layer), model -> GLB
+# (opened in the 3D viewer; georeference read from its extras by the runner).
+OUTPUT_KINDS = ("raster", "vector", "model")
 # How the tiles proxy renders a raster output (see api/tiles.py); vector
 # render kinds are free-form and fall back to the default map style.
 RASTER_RENDER_KINDS = ("dem", "orthophoto")
+MODEL_RENDER_KINDS = ("model",)
 
 MIN_TIMEOUT, MAX_TIMEOUT, DEFAULT_TIMEOUT = 10, 3600, 300
 
@@ -89,7 +95,8 @@ def validate_manifest(manifest, members: set[str]) -> dict:
         name = spec.get("name")
         datasets = spec.get("datasets")
         optional = spec.get("optional", False)
-        _require(isinstance(name, str) and _ID_RE.match(name), "input 'name' must be a slug")
+        _require(isinstance(name, str) and _INPUT_NAME_RE.match(name),
+                 "input 'name' must be a slug (lowercase letters, digits, - or _)")
         _require(name not in seen, f"duplicate input '{name}'")
         seen.add(name)
         _require(isinstance(datasets, list) and datasets, f"input '{name}' needs a 'datasets' list")
@@ -121,11 +128,14 @@ def validate_manifest(manifest, members: set[str]) -> dict:
     output_kind = manifest.get("output_kind") or "raster"
     _require(output_kind in OUTPUT_KINDS, f"'output_kind' must be one of {', '.join(OUTPUT_KINDS)}")
 
-    render_kind = manifest.get("render_kind") or (output_kind if output_kind == "vector" else "dem")
+    render_kind = manifest.get("render_kind") or {"raster": "dem", "vector": "vector", "model": "model"}[output_kind]
     _require(isinstance(render_kind, str) and 0 < len(render_kind) <= 40, "'render_kind' must be a short string")
     if output_kind == "raster":
         _require(render_kind in RASTER_RENDER_KINDS,
                  f"raster 'render_kind' must be one of {', '.join(RASTER_RENDER_KINDS)}")
+    if output_kind == "model":
+        _require(render_kind in MODEL_RENDER_KINDS,
+                 f"model 'render_kind' must be one of {', '.join(MODEL_RENDER_KINDS)}")
 
     timeout = manifest.get("timeout_seconds", DEFAULT_TIMEOUT)
     _require(isinstance(timeout, int) and not isinstance(timeout, bool)

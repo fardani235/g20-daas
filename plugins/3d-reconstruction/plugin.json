@@ -1,0 +1,124 @@
+{
+  "id": "3d-reconstruction",
+  "label": "3D Reconstruction",
+  "version": "1.0.0",
+  "description": "Builds a web-ready, georeferenced 3D model (GLB) from whatever the task has: a textured terrain mesh from the DSM/DTM draped with the orthophoto, a surface or coloured points from the LAZ point cloud, or an optimised copy of ODM's own textured mesh with textures shrunk to a web budget. Detects the available inputs and picks the workflow automatically; opens in the 3D viewer.",
+  "entrypoint": "main.py",
+  "inputs": [
+    { "name": "orthophoto", "label": "Orthophoto (texture)", "datasets": ["orthophoto"], "optional": true },
+    { "name": "dsm", "label": "DSM (surface)", "datasets": ["dsm"], "optional": true },
+    { "name": "dtm", "label": "DTM (terrain)", "datasets": ["dtm"], "optional": true },
+    { "name": "point_cloud", "label": "Point cloud (LAZ)", "datasets": ["point_cloud"], "optional": true },
+    { "name": "model", "label": "Existing 3D model", "datasets": ["model"], "optional": true }
+  ],
+  "params_schema": {
+    "type": "object",
+    "properties": {
+      "workflow": {
+        "type": "string",
+        "title": "Workflow",
+        "description": "auto reuses the existing 3D model when the task has one (mesh), else builds a terrain mesh from the DSM/DTM (terrain), else from the point cloud (point-cloud). points exports the point cloud itself as coloured points.",
+        "enum": ["auto", "terrain", "point-cloud", "points", "mesh"],
+        "default": "auto"
+      },
+      "quality": {
+        "type": "string",
+        "title": "Quality profile",
+        "description": "Triangle, texture and point budgets. auto follows the task's ODM options (pc-quality, mesh-size, fast-orthophoto): web-lite 150k triangles / 2048 px, balanced 500k / 4096 px, high-detail 1.5M / 8192 px.",
+        "enum": ["auto", "web-lite", "balanced", "high-detail"],
+        "default": "auto"
+      },
+      "surface": {
+        "type": "string",
+        "title": "Elevation source (terrain)",
+        "description": "dsm keeps buildings and trees; dtm gives the bare-earth terrain. Falls back to whichever the task has.",
+        "enum": ["dsm", "dtm"],
+        "default": "dsm"
+      },
+      "resolution_m": {
+        "type": "number",
+        "title": "Mesh grid resolution (m)",
+        "description": "Cell size of the elevation grid that is triangulated; 0 derives it from the triangle budget and the surveyed area.",
+        "minimum": 0,
+        "maximum": 1000,
+        "default": 0
+      },
+      "max_triangles": {
+        "type": "integer",
+        "title": "Max triangles",
+        "description": "Triangle budget after decimation; 0 uses the quality profile's value.",
+        "minimum": 0,
+        "maximum": 20000000,
+        "default": 0
+      },
+      "texture_size": {
+        "type": "integer",
+        "title": "Texture size (px)",
+        "description": "Longest side of the texture image (256-8192); 0 uses the quality profile's value. Never finer than the orthophoto itself.",
+        "minimum": 0,
+        "maximum": 8192,
+        "default": 0
+      },
+      "texture_quality": {
+        "type": "integer",
+        "title": "Texture JPEG quality",
+        "minimum": 40,
+        "maximum": 95,
+        "default": 85
+      },
+      "texture_source": {
+        "type": "string",
+        "title": "Texture source",
+        "description": "auto prefers the orthophoto, then point-cloud colours, then shaded relief computed from the elevation; each fills where the previous has no data.",
+        "enum": ["auto", "orthophoto", "point-cloud", "shaded-relief"],
+        "default": "auto"
+      },
+      "texture_budget_mp": {
+        "type": "integer",
+        "title": "Total texture budget (megapixels, mesh workflow)",
+        "description": "Existing-model workflow: all texture atlases are shrunk uniformly until their decoded size fits this budget; 0 uses the quality profile's value (16 / 48 / 128 MP).",
+        "minimum": 0,
+        "maximum": 1024,
+        "default": 0
+      },
+      "fill_holes": {
+        "type": "boolean",
+        "title": "Fill holes",
+        "description": "Fill missing elevation cells from the other elevation source (DTM under a DSM, point cloud under either) and interpolate small enclosed gaps. Large holes (outside the flight area, water) stay open.",
+        "default": true
+      },
+      "point_classes": {
+        "type": "string",
+        "title": "Point classes",
+        "description": "Comma-separated LAS classification codes to use from the point cloud (e.g. 2 for ground, 2,6 for ground and buildings). Empty uses all points.",
+        "default": ""
+      },
+      "point_statistic": {
+        "type": "string",
+        "title": "Point surface statistic",
+        "description": "point-cloud workflow: elevation per grid cell — max is a DSM-like top surface, mean is smoother, min approximates the ground.",
+        "enum": ["max", "mean", "min"],
+        "default": "max"
+      },
+      "max_points": {
+        "type": "integer",
+        "title": "Max points (points workflow)",
+        "description": "Evenly subsample the cloud to at most this many points; 0 uses the quality profile's value (0.5M / 2M / 5M).",
+        "minimum": 0,
+        "maximum": 50000000,
+        "default": 0
+      },
+      "compression": {
+        "type": "string",
+        "title": "Geometry compression",
+        "description": "draco compresses the mesh (the viewer decodes it; typically 5-10x smaller); none writes plain float32 buffers.",
+        "enum": ["draco", "none"],
+        "default": "draco"
+      }
+    },
+    "required": []
+  },
+  "output_kind": "model",
+  "render_kind": "model",
+  "timeout_seconds": 3600
+}

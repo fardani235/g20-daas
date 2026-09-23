@@ -86,6 +86,14 @@ updating progress while running.
 - **WHEN** a run is running and the operation reports progress
 - **THEN** the run's progress reflects the latest reported value
 
+#### Scenario: Live progress from a user plugin
+
+- **WHEN** a user plugin writes `{"percent", "message"}` to its
+  `progress_path` while the sandbox run is executing
+- **THEN** within a few seconds the run's `progress` and `progress_message`
+  reflect it (committed independently of the job's transaction) and the run
+  list exposes both; on completion `progress` is 100 and the message cleared
+
 ### Requirement: Run record retention and history
 
 The system SHALL retain a durable record of every run, including plugin, task,

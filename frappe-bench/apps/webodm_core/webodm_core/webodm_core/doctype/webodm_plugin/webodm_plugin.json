@@ -77,7 +77,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Output Kind",
-   "options": "raster\nvector",
+   "options": "raster\nvector\nmodel",
    "read_only": 1
   },
   {

@@ -78,6 +78,25 @@ export const runTileUrl = runName =>
 export const runDownloadUrl = runName =>
   `/api/method/webodm_core.api.plugins.download_run_output?run_name=${encodeURIComponent(runName)}`
 
+// A completed run whose artifact is a 3D model (GLB) for the model viewer.
+export function isModelRun(run) {
+  return run?.output_kind === 'model' && run?.status === 'Completed' && !!run?.output_file
+}
+
+// Route to the 3D viewer showing a run's model instead of the task's own.
+export function runModelRoute(projectId, taskName, runName) {
+  return `/project/${encodeURIComponent(projectId)}/task/${encodeURIComponent(taskName)}/model?run=${encodeURIComponent(runName)}`
+}
+
+// Live progress text for a run row: "42% · decimating" while running, else null.
+export function runProgressText(run) {
+  if (!run || !['Queued', 'Running'].includes(run.status)) return null
+  const pct = Math.round(Number(run.progress) || 0)
+  const message = (run.progress_message || '').trim()
+  if (!pct && !message) return null
+  return message ? `${pct}% · ${message}` : `${pct}%`
+}
+
 // Vector outputs above this many features are not drawn client-side; they stay
 // downloadable and the UI warns instead of freezing the map.
 export const MAX_VECTOR_FEATURES = 5000

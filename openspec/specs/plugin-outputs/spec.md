@@ -23,6 +23,13 @@ run and its task, with raster outputs retaining georeferencing metadata.
 - **THEN** the vector data is stored in a web-renderable form with its extent
   recorded
 
+#### Scenario: Model output stored
+
+- **WHEN** an operation succeeds and produces a 3D model (`output_kind: model`)
+- **THEN** the model is stored as a `.glb` file and, when the file declares a
+  georeference (`asset.extras.webodm_georef` with EPSG, origin and bounds), its
+  extent is recorded; a model without one is still stored, without an extent
+
 #### Scenario: Failure discards partial output
 
 - **WHEN** an operation fails after producing partial output
@@ -72,6 +79,30 @@ a task or run is viewed.
 
 - **WHEN** a user toggles a vector overlay
 - **THEN** the overlay is shown or hidden without affecting other layers
+
+### Requirement: Model output viewing
+
+Model outputs SHALL open in the platform's 3D viewer instead of being drawn as
+map layers.
+
+#### Scenario: Viewer link on the run
+
+- **WHEN** a completed model output is listed for a task on the map page
+- **THEN** the run offers a *View 3D* action that opens the 3D viewer on that
+  run's model, and no map layer is created for it
+
+#### Scenario: Viewer switcher
+
+- **WHEN** the 3D viewer is opened for a task that has completed model runs
+- **THEN** its model switcher lists the task's own model and each model run,
+  labelled by plugin, and `?run=<name>` selects a run's model directly
+
+#### Scenario: Run without a model
+
+- **WHEN** the viewer is opened with `?run=` naming a run that is not
+  completed or has no model file
+- **THEN** the viewer explains that the reconstruction is not available and
+  does not attempt to load a file
 
 ### Requirement: Downloadable outputs
 

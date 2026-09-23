@@ -9,14 +9,20 @@ single JSON file, so a plugin needs no SDK and no imports from this service:
 
        {"inputs": {"raster": "/sandbox/runs/<id>/inputs/raster.tif"},
         "params": {"threshold": 120.0},
-        "output_path": "/sandbox/runs/<id>/output.tif",
-        "result_path": "/sandbox/runs/<id>/result.json",
-        "work_dir":    "/sandbox/runs/<id>/work"}
+        "context": {"task": {"name": "...", "epsg": 32632, "processing_options": [...]}},
+        "output_path":   "/sandbox/runs/<id>/output.tif",
+        "result_path":   "/sandbox/runs/<id>/result.json",
+        "progress_path": "/sandbox/runs/<id>/progress.json",
+        "work_dir":      "/sandbox/runs/<id>/work"}
 
 2. It runs ``python -E -s -B <entrypoint> request.json`` with the plugin
    directory as the working directory.
 3. The plugin writes its artifact to ``output_path`` and may write
    ``{"metadata": {...}}`` to ``result_path``. Exit code 0 means success.
+   While running it may write ``{"percent": 0-100, "message": "..."}`` to
+   ``progress_path``; the caller polls that file (it is left in ``run_dir``
+   until the caller removes the directory). ``context`` is read-only
+   information about the task the caller chooses to share.
 
 Isolation is layered: the container this runs in is unprivileged, read-only and
 on an internal-only network with nothing but the sandbox volume mounted (see
@@ -257,12 +263,103 @@ def geojson_georef(path: str) -> dict:
     return out
 
 
+GLB_MAGIC = b"glTF"
+GLB_CHUNK_JSON = 0x4E4F534A
+MODEL_GEOREF_KEY = "webodm_georef"
+
+
+def read_glb_json(path: str) -> dict:
+    """The JSON chunk of a GLB (header + first chunk only; the binary buffer is not read)."""
+    import struct
+
+    with open(path, "rb") as f:
+        head = f.read(12)
+        if len(head) < 12 or head[:4] != GLB_MAGIC:
+            raise PluginError("model output is not a GLB file")
+        version = struct.unpack("<I", head[4:8])[0]
+        if version != 2:
+            raise PluginError(f"model output is GLB version {version}; version 2 is required")
+        chunk_len, chunk_type = struct.unpack("<II", f.read(8))
+        if chunk_type != GLB_CHUNK_JSON:
+            raise PluginError("model output's first GLB chunk is not JSON")
+        try:
+            return json.loads(f.read(chunk_len).decode("utf-8"))
+        except ValueError as e:
+            raise PluginError(f"model output has an invalid JSON chunk: {e}") from e
+
+
+def model_georef(path: str) -> dict:
+    """Georeference of a GLB from its ``asset.extras.webodm_georef`` block.
+
+    Unlike rasters, glTF carries no CRS, so the plugin records the origin
+    (``CESIUM_RTC``), EPSG and absolute bounds in ``extras``; this validates
+    that block and derives the map extent (``bounds_4326``) from it. A model
+    without the block (or without an EPSG) is accepted but gets no extent.
+    """
+    gltf = read_glb_json(path)
+    counts = _model_counts(gltf)
+    out = {"epsg": None, "extent": None, "bounds_4326": None, "origin": None, **counts}
+    extras = ((gltf.get("asset") or {}).get("extras") or {}).get(MODEL_GEOREF_KEY)
+    if not isinstance(extras, dict):
+        return out
+    origin = extras.get("origin")
+    if isinstance(origin, list) and len(origin) == 3 and all(isinstance(v, (int, float)) for v in origin):
+        out["origin"] = [float(v) for v in origin]
+    epsg, bounds = extras.get("epsg"), extras.get("bounds")
+    if not (isinstance(epsg, int) and isinstance(bounds, list) and len(bounds) == 4
+            and all(isinstance(v, (int, float)) for v in bounds)):
+        return out
+    from rasterio.crs import CRS
+    from rasterio.warp import transform_bounds
+
+    try:
+        crs = CRS.from_epsg(epsg)
+        minx, miny, maxx, maxy = transform_bounds(crs, "EPSG:4326", *bounds, densify_pts=21)
+    except Exception as e:
+        raise PluginError(f"model georef has an invalid EPSG/bounds: {e}") from e
+    out["epsg"] = int(epsg)
+    out["bounds_4326"] = [float(minx), float(miny), float(maxx), float(maxy)]
+    out["extent"] = _polygon(minx, miny, maxx, maxy)
+    if isinstance(extras.get("z_range"), list):
+        out["z_range"] = extras["z_range"]
+    return out
+
+
+def _model_counts(gltf: dict) -> dict:
+    triangles = points = 0
+    accessors = gltf.get("accessors", [])
+    for mesh in gltf.get("meshes", []):
+        for prim in mesh.get("primitives", []):
+            mode = prim.get("mode", 4)
+            attrs = prim.get("attributes", {})
+            try:
+                if mode == 4:
+                    if "indices" in prim:
+                        triangles += accessors[prim["indices"]]["count"] // 3
+                    elif "POSITION" in attrs:
+                        triangles += accessors[attrs["POSITION"]]["count"] // 3
+                elif mode == 0 and "POSITION" in attrs:
+                    points += accessors[attrs["POSITION"]]["count"]
+            except (IndexError, KeyError, TypeError):
+                raise PluginError("model output references a missing accessor")
+    return {
+        "triangles": int(triangles), "points": int(points),
+        "images": len(gltf.get("images", [])),
+        "extensions_required": list(gltf.get("extensionsRequired", [])),
+    }
+
+
+OUTPUT_KINDS = ("raster", "vector", "model")
+
+
 def output_georef(path: str, output_kind: str) -> dict:
     try:
         if output_kind == "raster":
             return raster_georef(path)
         if output_kind == "vector":
             return geojson_georef(path)
+        if output_kind == "model":
+            return model_georef(path)
     except PluginError:
         raise
     except Exception as e:
@@ -285,6 +382,11 @@ def _remove(path: str):
         pass
 
 
+def progress_path_for(run_dir: str) -> str:
+    """Where a plugin run publishes its progress; callers poll it while ``/run`` blocks."""
+    return os.path.join(run_dir, "progress.json")
+
+
 def run_package(
     package_path: str,
     inputs: dict[str, str],
@@ -294,12 +396,14 @@ def run_package(
     *,
     output_kind: str = "raster",
     timeout_seconds: int | None = None,
+    context: dict | None = None,
 ) -> dict:
     """Run one plugin package and return ``{"output_path", "metadata", "log"}``.
 
     ``run_dir`` must exist and be writable; the extracted plugin, scratch space
     and logs are created under it and removed again, so on return it contains
-    the output file and nothing else of the runner's.
+    the output file (and the last progress file) and nothing else of the
+    runner's. ``context`` is passed to the plugin verbatim.
     """
     timeout = int(timeout_seconds or DEFAULT_TIMEOUT)
     timeout = max(1, min(timeout, MAX_TIMEOUT))
@@ -312,6 +416,7 @@ def run_package(
     work_dir = os.path.join(run_dir, "work")
     request_path = os.path.join(run_dir, "request.json")
     result_path = os.path.join(run_dir, "result.json")
+    progress_path = progress_path_for(run_dir)
     stdout_path = os.path.join(run_dir, "stdout.log")
     stderr_path = os.path.join(run_dir, "stderr.log")
 
@@ -321,13 +426,16 @@ def run_package(
         os.makedirs(work_dir, exist_ok=True)
         _remove(output_path)
         _remove(result_path)
+        _remove(progress_path)
 
         with open(request_path, "w", encoding="utf-8") as f:
             json.dump({
                 "inputs": inputs,
                 "params": params,
+                "context": context or {},
                 "output_path": output_path,
                 "result_path": result_path,
+                "progress_path": progress_path,
                 "work_dir": work_dir,
             }, f)
 
@@ -368,5 +476,5 @@ def run_package(
     finally:
         _rmtree(plugin_dir)
         _rmtree(work_dir)
-        for p in (request_path, result_path, stdout_path, stderr_path):
+        for p in (request_path, result_path, stdout_path, stderr_path, progress_path + ".tmp"):
             _remove(p)

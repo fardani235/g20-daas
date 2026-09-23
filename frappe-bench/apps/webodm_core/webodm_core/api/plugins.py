@@ -537,7 +537,7 @@ def list_runs(task: str | None = None):
         "WebODM Plugin Run",
         filters=filters,
         fields=[
-            "name", "plugin", "task", "status", "progress",
+            "name", "plugin", "task", "status", "progress", "progress_message",
             "output_kind", "render_kind", "output_file", "output_extent",
             "output_metadata", "error", "creation", "started_at", "completed_at",
         ],
@@ -553,6 +553,7 @@ def _serialize_run(doc) -> dict:
         "task": doc.task,
         "status": doc.status,
         "progress": doc.progress,
+        "progress_message": doc.get("progress_message"),
         "parameters": _parse_json(doc.parameters, {}),
         "output_kind": doc.output_kind,
         "render_kind": doc.render_kind,

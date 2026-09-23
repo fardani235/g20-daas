@@ -48,8 +48,10 @@ def main(argv=None) -> int:
     ap.add_argument("--input", action="append", metavar="NAME=PATH", help="input file (repeatable)")
     ap.add_argument("--param", action="append", metavar="KEY=VALUE", help="parameter (repeatable)")
     ap.add_argument("--output", required=True, help="where to write the plugin's output")
-    ap.add_argument("--output-kind", choices=("raster", "vector"), default=None)
+    ap.add_argument("--output-kind", choices=sandbox.OUTPUT_KINDS, default=None)
     ap.add_argument("--timeout", type=int, default=None, help="seconds (default: manifest / runner default)")
+    ap.add_argument("--context", default=None, metavar="JSON",
+                    help='task context passed to the plugin, e.g. \'{"task": {"epsg": 32632}}\'')
     args = ap.parse_args(argv)
 
     inputs = {k: os.path.abspath(v) for k, v in _kv(args.input, parse_json=False).items()}
@@ -69,6 +71,7 @@ def main(argv=None) -> int:
             package, inputs, params, output, run_dir,
             output_kind=args.output_kind or manifest.get("output_kind", "raster"),
             timeout_seconds=args.timeout or manifest.get("timeout_seconds"),
+            context=json.loads(args.context) if args.context else None,
         )
     except (sandbox.PluginError, sandbox.SandboxError, OSError, ValueError) as e:
         print(f"plugin failed: {e}", file=sys.stderr)

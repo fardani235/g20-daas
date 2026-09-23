@@ -23,6 +23,7 @@ Frappe. See `docs/plugins/user-plugin-guide.md` for the plugin contract.
   "package_path": "/sandbox/runs/<id>/package.zip",
   "inputs": {"raster": "/sandbox/runs/<id>/inputs/raster.tif"},
   "params": {"threshold": 120},
+  "context": {"task": {"name": "...", "epsg": 32632, "processing_options": []}},
   "output_path": "/sandbox/runs/<id>/output.tif",
   "output_kind": "raster",
   "run_dir": "/sandbox/runs/<id>",
@@ -30,10 +31,21 @@ Frappe. See `docs/plugins/user-plugin-guide.md` for the plugin contract.
 }
 ```
 
-Every path must be absolute and inside `SANDBOX_DIR` (400 otherwise). Responses:
-`200 {output_path, metadata, log}`; `422` when the plugin is malformed, exits
-non-zero, times out or writes no/invalid output (`detail` carries the stderr
-tail); `400` for a bad request; `500` for a runner fault.
+Every path must be absolute and inside `SANDBOX_DIR` (400 otherwise).
+`output_kind` is `raster` (GeoTIFF), `vector` (GeoJSON) or `model` (GLB; the
+georeference is read from `asset.extras.webodm_georef`). `context` is passed
+to the plugin verbatim. Responses: `200 {output_path, metadata, log}`; `422`
+when the plugin is malformed, exits non-zero, times out or writes no/invalid
+output (`detail` carries the stderr tail); `400` for a bad request; `500` for
+a runner fault.
+
+While `/run` blocks, the plugin may write `{"percent", "message"}` to
+`<run_dir>/progress.json` (its path is in `request.json` as `progress_path`);
+the caller polls that file on the shared volume. It is the only runner file
+left in `run_dir` next to the output.
+
+Libraries available to plugins: numpy, rasterio, shapely, Pillow, onnxruntime
+(CPU), laspy + lazrs, fast-simplification, DracoPy (see `requirements.txt`).
 
 ## Isolation
 
