@@ -466,3 +466,35 @@ All DocTypes live in `webodm_core`:
   --build-context sites=./frappe-bench/sites --build-context root=. frappe-bench/apps`),
   `webodm-geospatial:local`, `webodm-plugin-runner:local`; an override that swaps the images
   (see `docs/plugins/semantic-segmentation.md` §1 for the upload/run commands).
+
+## Phase 14: 3D Reconstruction user plugin + `model` plugin outputs (2026-09-23)
+
+- New user plugin `plugins/3d-reconstruction/` (docs: `docs/plugins/3d-reconstruction.md`, incl. the
+  technology decision matrix). Inputs are all optional (dsm, dtm, orthophoto, point_cloud, model); the
+  plugin detects what it got and picks `terrain` (textured heightfield mesh) or `optimize-model` (ODM GLB
+  re-encoded: textures capped, 16-bit positions). Pure numpy/rasterio/laspy — the sandbox cannot install
+  compiled meshing libs, so `recon3d/rtin.py` is a vectorised, level-by-level Martini RTIN (2049² grid in
+  ~5 s, chunked to bound memory) with tile-aware forced splits so each texture tile owns whole triangles;
+  `recon3d/gltf.py` is a small GLB writer (`KHR_mesh_quantization` uint16 positions + node
+  translation/scale, uint16 normalized UVs, unlit materials, `CESIUM_RTC` + `extras.webodm_georef`).
+  Quality presets (`web-light` / `balanced` / `high-detail`) bundle triangle budget, texture size, tile
+  count and JPEG quality. 38 pytest tests (`plugins/3d-reconstruction/tests`, run in CI's
+  `test-plugin-runner` job). Benchmarks (400 m survey through the sandbox CLI): DSM+ortho 11 s / 313 MB /
+  7.4 MB GLB; 4 M-point LAZ 22 s / 783 MB.
+- Core changes (generic): `output_kind: "model"` (`render_kind: glb`, ext `.glb`) in `package.py`,
+  `runner.py`, the `WebODM Plugin` Select options and the runner (`sandbox.glb_georef` validates the GLB
+  container and lifts `extras.webodm_georef` → `epsg`/`extent`/`bounds_4326`/triangles/textures);
+  `request.json["context"]` = `runner.run_context()` (task name/title/epsg/processing_options, run and
+  plugin ids) forwarded through `sandbox.run_user_plugin(context=)` → runner `RunRequest.context` → plugin
+  (CLI: `--context JSON|@file`); `laspy[lazrs]` in the runner image and `RAYON_NUM_THREADS=1` in the
+  plugin env (lazrs' rayon pool otherwise fails under RLIMIT_AS/NPROC with EAGAIN).
+- Frontend: `PluginParamsForm` coerces numeric enums back to numbers (a `<select>` yields strings, which
+  the server's schema validation rejected for integer enums). `lib/plugins.js`: `isModelRun`,
+  `runDownloadHref` (model outputs download via their private file URL — `download_run_output` buffers
+  the whole file), `modelViewerPath`, `completedModelRuns`. `MapView.vue`: *Open 3D* on completed model
+  runs, dashed footprint layer (kind `model`, click opens the viewer), opacity slider only for rasters.
+  `ModelView.vue`: `?run=<name>` shows a plugin run's GLB, *Model source* select (ODM model ↔
+  reconstructions via `lib/modelViewer.modelSourceOptions`), run polling, `runEmptyStateFor` states,
+  `runSummary` tooltip. Spec: `openspec/specs/3d-reconstruction/spec.md`.
+- Not run here: the Frappe test suite (`test_user_plugins.py` gained `test_model_output_kind` and context
+  assertions; the sandbox fake now takes `context=`) — needs the bench/Docker recipe from Phase 11.

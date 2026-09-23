@@ -140,6 +140,16 @@ class TestPackageValidation(FrappeTestCase):
         self._bad(_zip({**MANIFEST, "params_schema": {"type": "array"}}), "describe an object")
         self._bad(_zip({**MANIFEST, "params_schema": {"properties": {}, "required": ["ghost"]}}), "required")
 
+    def test_model_output_kind(self):
+        path = _zip({**MANIFEST, "output_kind": "model", "render_kind": None})
+        try:
+            m = package_mod.inspect_package(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(m["output_kind"], "model")
+        self.assertEqual(m["render_kind"], "glb")
+        self._bad(_zip({**MANIFEST, "output_kind": "model", "render_kind": "dem"}), "model 'render_kind'")
+
     def test_optional_inputs_are_normalized(self):
         manifest = {**MANIFEST, "inputs": [
             {"name": "ortho", "datasets": ["orthophoto"], "optional": True, "label": "Orthophoto"},
@@ -425,8 +435,8 @@ class TestUserPluginExecution(FrappeTestCase):
         run_name = self._queue_run()
         seen = {}
 
-        def fake_sandbox(plugin, inputs, params, output_path, timeout=300):
-            seen.update(plugin=plugin.name, inputs=inputs, params=params, timeout=timeout)
+        def fake_sandbox(plugin, inputs, params, output_path, timeout=300, context=None):
+            seen.update(plugin=plugin.name, inputs=inputs, params=params, timeout=timeout, context=context)
             with open(output_path, "wb") as f:
                 f.write(b"fake-output")
             return {"output_path": output_path, "metadata": {"epsg": 32633, "extent": {"type": "Polygon", "coordinates": []}}}
@@ -445,6 +455,11 @@ class TestUserPluginExecution(FrappeTestCase):
         self.assertEqual(seen["timeout"], 120)
         self.assertTrue(seen["inputs"]["raster"].endswith("_dsm.tif"))
         self.assertEqual(json.loads(run.output_metadata)["epsg"], 32633)
+        # Task facts travel to the sandbox so plugins can adapt to the task.
+        self.assertEqual(seen["context"]["task"]["name"], self.task)
+        self.assertEqual(seen["context"]["run"], run_name)
+        self.assertEqual(seen["context"]["plugin"], self.plugin_id)
+        self.assertIsInstance(seen["context"]["task"]["processing_options"], (list, dict))
 
     def test_sandbox_failure_marks_run_failed(self):
         run_name = self._queue_run()
@@ -489,6 +504,7 @@ class TestUserPluginExecution(FrappeTestCase):
             self.assertTrue(zipfile.is_zipfile(json["package_path"]))
             self.assertEqual(json["output_kind"], "raster")
             self.assertEqual(json["timeout_seconds"], 42)
+            self.assertEqual(json["context"], {"task": {"name": "T"}})
             # ...and the runner writes its output there.
             with open(json["output_path"], "wb") as f:
                 f.write(b"result-bytes")
@@ -496,7 +512,8 @@ class TestUserPluginExecution(FrappeTestCase):
 
         with patch.object(sandbox.requests, "post", fake_post), \
              patch.object(sandbox, "sandbox_dir", lambda: os.path.join(tmp, "sandbox")):
-            result = sandbox.run_user_plugin(plugin, {"raster": src}, {"threshold": 1}, out, timeout=42)
+            result = sandbox.run_user_plugin(plugin, {"raster": src}, {"threshold": 1}, out, timeout=42,
+                                             context={"task": {"name": "T"}})
 
         self.assertEqual(result["metadata"], {"epsg": 1})
         with open(out, "rb") as f:

@@ -88,12 +88,14 @@ def run_user_plugin(
     params: dict,
     output_path: str,
     timeout: int = 300,
+    context: dict | None = None,
 ) -> dict:
     """Execute ``plugin`` (a ``WebODM Plugin`` doc of type User) in the sandbox.
 
     ``inputs`` maps input names to absolute paths of the task's files and
-    ``output_path`` is where the artifact must end up. Returns the runner's
-    result dict (``metadata`` incl. georeferencing, ``log``).
+    ``output_path`` is where the artifact must end up. ``context`` (task facts,
+    see ``runner.run_context``) is forwarded to the plugin's ``request.json``.
+    Returns the runner's result dict (``metadata`` incl. georeferencing, ``log``).
     """
     if not plugin.package:
         raise PluginRunnerError(f"plugin '{plugin.name}' has no package")
@@ -118,6 +120,7 @@ def run_user_plugin(
                     "output_kind": plugin.output_kind,
                     "run_dir": run_dir,
                     "timeout_seconds": int(timeout),
+                    "context": context or {},
                 },
                 timeout=int(timeout) + _HTTP_GRACE_SECONDS,
             )

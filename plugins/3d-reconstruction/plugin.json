@@ -1,0 +1,135 @@
+{
+  "id": "3d-reconstruction",
+  "label": "3D Reconstruction",
+  "version": "1.0.0",
+  "description": "Build a compact, georeferenced, web-ready 3D model (GLB) from a task's outputs: a textured terrain mesh from the DSM/DTM or point cloud with the orthophoto (or point colours / shaded relief) as texture, or a web-optimized version of the existing ODM textured model. Detects the available inputs and picks the workflow automatically.",
+  "entrypoint": "main.py",
+  "inputs": [
+    { "name": "dsm", "label": "DSM (surface heights)", "datasets": ["dsm"], "optional": true },
+    { "name": "dtm", "label": "DTM (terrain heights)", "datasets": ["dtm"], "optional": true },
+    { "name": "orthophoto", "label": "Orthophoto (texture)", "datasets": ["orthophoto"], "optional": true },
+    { "name": "point_cloud", "label": "Point cloud (LAS/LAZ)", "datasets": ["point_cloud"], "optional": true },
+    { "name": "model", "label": "Existing 3D model (GLB)", "datasets": ["model"], "optional": true }
+  ],
+  "params_schema": {
+    "type": "object",
+    "properties": {
+      "workflow": {
+        "type": "string",
+        "title": "Workflow",
+        "description": "auto: optimize the existing ODM model when the task has one, otherwise build a textured terrain mesh. terrain: always build the mesh from DSM/DTM/point cloud. optimize-model: always re-encode the existing model.",
+        "enum": ["auto", "terrain", "optimize-model"],
+        "default": "auto"
+      },
+      "quality": {
+        "type": "string",
+        "title": "Quality preset",
+        "description": "web-light: 150k triangles, 2048 px texture. balanced: 500k triangles, up to 2x2 4096 px textures. high-detail: 1.5M triangles, up to 4x4 4096 px textures. Explicit values below override the preset.",
+        "enum": ["web-light", "balanced", "high-detail"],
+        "default": "balanced"
+      },
+      "surface_source": {
+        "type": "string",
+        "title": "Surface source",
+        "description": "Which input gives the heights (terrain workflow). auto prefers DSM, then point cloud, then DTM; the others fill gaps.",
+        "enum": ["auto", "dsm", "dtm", "point_cloud"],
+        "default": "auto"
+      },
+      "texture_source": {
+        "type": "string",
+        "title": "Texture source",
+        "description": "auto prefers the orthophoto, then point-cloud colours, then a shaded relief coloured by elevation.",
+        "enum": ["auto", "orthophoto", "point_cloud", "hillshade"],
+        "default": "auto"
+      },
+      "mesh_method": {
+        "type": "string",
+        "title": "Mesh method",
+        "description": "adaptive: error-driven simplification (RTIN) that keeps detail where the surface changes. grid: a regular grid sized to the triangle budget.",
+        "enum": ["adaptive", "grid"],
+        "default": "adaptive"
+      },
+      "resolution_m": {
+        "type": "number",
+        "title": "Heightfield resolution (m)",
+        "description": "Node spacing of the surface grid; 0 uses the source resolution (capped so the grid stays within 2049 nodes per side).",
+        "minimum": 0,
+        "default": 0
+      },
+      "max_triangles": {
+        "type": "integer",
+        "title": "Triangle budget",
+        "description": "Upper bound for the mesh; 0 uses the preset.",
+        "minimum": 0,
+        "maximum": 8000000,
+        "default": 0
+      },
+      "max_error_m": {
+        "type": "number",
+        "title": "Max vertical error (m)",
+        "description": "adaptive method: largest allowed deviation of the mesh from the heightfield; 0 picks the smallest error that fits the triangle budget.",
+        "minimum": 0,
+        "default": 0
+      },
+      "texture_size": {
+        "type": "integer",
+        "title": "Texture size (px)",
+        "description": "Side of each texture tile (terrain) or cap for existing textures (optimize-model); 0 uses the preset.",
+        "minimum": 0,
+        "maximum": 8192,
+        "default": 0
+      },
+      "texture_tiles": {
+        "type": "integer",
+        "title": "Texture tiles per side",
+        "description": "terrain: split the model into N x N tiles, each with its own texture; 0 chooses from the orthophoto resolution within the preset's limit.",
+        "enum": [0, 1, 2, 4],
+        "default": 0
+      },
+      "texture_quality": {
+        "type": "integer",
+        "title": "JPEG quality",
+        "description": "1–100; 0 uses the preset.",
+        "minimum": 0,
+        "maximum": 100,
+        "default": 0
+      },
+      "quantize": {
+        "type": "boolean",
+        "title": "16-bit positions",
+        "description": "Store vertex positions as 16-bit integers (KHR_mesh_quantization, half the geometry size). Supported by three.js, Cesium, Babylon and Blender; disable for older tools.",
+        "default": true
+      },
+      "fill_holes": {
+        "type": "boolean",
+        "title": "Fill interior holes",
+        "description": "Interpolate no-data holes enclosed by data (from the DTM/point cloud when available). Areas outside the survey are never filled.",
+        "default": true
+      },
+      "clip_to_texture": {
+        "type": "boolean",
+        "title": "Clip to orthophoto",
+        "description": "Drop surface outside the orthophoto's coverage so the model has no untextured fringe.",
+        "default": true
+      },
+      "point_cloud_cell_m": {
+        "type": "number",
+        "title": "Point cloud cell (m)",
+        "description": "Node spacing when the surface comes from the point cloud; 0 chooses about two points per node.",
+        "minimum": 0,
+        "default": 0
+      },
+      "point_cloud_stat": {
+        "type": "string",
+        "title": "Point cloud height statistic",
+        "description": "Per grid node: max (top surface, like a DSM), mean, or min (rough ground).",
+        "enum": ["max", "mean", "min"],
+        "default": "max"
+      }
+    },
+    "required": []
+  },
+  "output_kind": "model",
+  "render_kind": "glb",
+  "timeout_seconds": 3600
+}

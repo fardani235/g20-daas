@@ -105,10 +105,22 @@
                   <span class="truncate text-foreground">{{ pluginLabel(run.plugin) }}</span>
                   <Badge :variant="statusVariant(run.status)">{{ run.status }}</Badge>
                   <span class="flex items-center gap-2">
+                    <Button
+                      v-if="run.status === 'Completed' && run.output_file && isModelRun(run)"
+                      variant="ghost"
+                      size="sm"
+                      class="h-6 px-1 text-primary"
+                      title="Open this model in the 3D viewer"
+                      @click.stop="openRunModel(run)"
+                    >
+                      <Box />
+                      Open 3D
+                    </Button>
                     <a
                       v-if="run.status === 'Completed' && run.output_file"
-                      :href="runDownloadUrl(run.name)"
+                      :href="runDownloadHref(run)"
                       class="text-primary hover:underline"
+                      download
                       @click.stop
                     >Download</a>
                     <Button
@@ -265,7 +277,7 @@
                   </div>
                 </div>
                 <input
-                  v-if="o.visible && o.kind !== 'vector'"
+                  v-if="o.visible && o.kind === 'raster'"
                   type="range" min="0" max="100" step="5"
                   :value="o.opacity"
                   @input="setOverlayOpacity(o, $event.target.value)"
@@ -423,7 +435,9 @@ import {
   cancelRun,
   getRunGeojson,
   runTileUrl,
-  runDownloadUrl,
+  runDownloadHref,
+  isModelRun,
+  modelViewerPath,
   schemaDefaults,
   latestRunPerPlugin,
   shouldRenderVector,
@@ -769,6 +783,19 @@ async function loadRunOverlays(taskName) {
       overlayLayers[key] = layer
       overlays.value.push({ key, label, visible: false, opacity: 80, kind: 'raster' })
       extendDataBounds(bounds)
+    } else if (run.output_kind === 'model') {
+      // A 3D model is not drawn on the map: show its footprint (from the
+      // GLB's georeferencing) and let a click open the viewer.
+      const bounds = parseExtentBounds(run.output_extent)
+      if (!bounds) continue
+      const layer = L.rectangle(bounds, {
+        color: '#7c3aed', weight: 2, dashArray: '6 4', fillOpacity: 0.08, interactive: true,
+      })
+      layer.bindTooltip(`${label} — click to open in 3D`, { sticky: true })
+      layer.on('click', () => openRunModel(run))
+      overlayLayers[key] = layer
+      overlays.value.push({ key, label: `${label} (3D footprint)`, visible: false, opacity: 100, kind: 'model' })
+      extendDataBounds(bounds)
     } else if (run.output_kind === 'vector') {
       try {
         const geojson = await getRunGeojson(run.name)
@@ -998,6 +1025,12 @@ function openTaskConsole(task) {
 
 function openTaskModel(task) {
   router.push(`/project/${route.params.id}/task/${encodeURIComponent(task.name)}/model`)
+}
+
+// A completed model run (e.g. 3D Reconstruction) opens in the same viewer,
+// selected through the `run` query parameter.
+function openRunModel(run) {
+  router.push(modelViewerPath(route.params.id, run.task || selectedTask.value, run.name))
 }
 
 function zoomToFit() {

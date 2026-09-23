@@ -20,7 +20,7 @@
         v-else-if="field.enum"
         :id="`pp-${field.name}`"
         :model-value="modelValue[field.name] ?? ''"
-        @update:model-value="v => set(field.name, v)"
+        @update:model-value="v => set(field.name, enumValue(field, v))"
       >
         <option value="">Default</option>
         <option v-for="opt in field.enum" :key="opt" :value="opt">{{ opt }}</option>
@@ -97,6 +97,13 @@ const fields = computed(() => {
     required: required.has(name),
   }))
 })
+
+// <select> yields strings; give numeric enums (e.g. tile counts) their
+// declared type back so server-side schema validation accepts them.
+function enumValue(field, value) {
+  if (value === '' || value === undefined || value === null) return undefined
+  return field.type === 'integer' || field.type === 'number' ? Number(value) : value
+}
 
 function set(name, value) {
   const next = { ...props.modelValue }

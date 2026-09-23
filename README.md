@@ -42,8 +42,9 @@ submodule).
 | `frappe-bench/apps/webodm_frontend/` | Vue 3 SPA + Frappe page hooks |
 | `services/geospatial/` | Standalone FastAPI tile/analysis service (hosts the **system** analysis plugins) |
 | `services/plugin-runner/` | Sandbox that executes **user** analysis plugins (uploaded per organization) |
-| `docs/plugins/` | User plugin guide, example plugin, Semantic Segmentation plugin docs |
+| `docs/plugins/` | User plugin guide, example plugin, Semantic Segmentation and 3D Reconstruction plugin docs |
 | `plugins/semantic-segmentation/` | Semantic Segmentation **user** plugin (orthophoto / DSM / DTM, pluggable ONNX + rule models) |
+| `plugins/3d-reconstruction/` | 3D Reconstruction **user** plugin (DSM / DTM / orthophoto / LAZ / ODM model → web-ready georeferenced GLB) |
 | `infra/` | Caddy, backup, and image build assets |
 
 ## Tech Stack

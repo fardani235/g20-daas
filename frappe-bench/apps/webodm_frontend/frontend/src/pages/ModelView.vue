@@ -8,8 +8,22 @@
         {{ task?.title || task?.name || (taskLoading ? 'Loading…' : '3D viewer') }}
       </h2>
       <Badge v-if="task" :variant="statusVariant(task.status)">{{ task.status }}</Badge>
+      <template v-if="runName">
+        <Badge variant="secondary" :title="runSummaryText || undefined">{{ runLabel }}</Badge>
+        <Badge v-if="run && run.status !== 'Completed'" :variant="statusVariant(run.status)">{{ run.status }}</Badge>
+      </template>
 
       <div class="ml-auto flex flex-wrap items-center gap-2">
+        <Select
+          v-if="sourceOptions.length > 1"
+          :model-value="runName"
+          class="h-8 w-auto max-w-[16rem] py-0 text-xs"
+          title="Which model to show: ODM's textured model or a reconstruction"
+          aria-label="Model source"
+          @update:model-value="switchSource"
+        >
+          <option v-for="o in sourceOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </Select>
         <Select
           v-if="datasets.length > 1"
           :model-value="taskId"
@@ -25,8 +39,8 @@
           <span class="hidden sm:inline">Console</span>
         </Button>
         <a
-          v-if="task?.model"
-          :href="task.model"
+          v-if="modelUrl"
+          :href="modelUrl"
           download
           class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
         >
@@ -129,7 +143,7 @@
             WebGL is disabled or unsupported. Enable hardware acceleration or use a recent version of Chrome, Firefox, Safari or Edge.
           </p>
           <div class="mt-4 flex justify-center gap-2">
-            <a v-if="task?.model" :href="task.model" download class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+            <a v-if="modelUrl" :href="modelUrl" download class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90">
               <Download class="size-3.5" />
               Download model
             </a>
@@ -144,7 +158,7 @@
           <LoaderCircle v-if="emptyState.kind === 'processing'" class="mx-auto mb-3 size-10 animate-spin text-primary" />
           <Box v-else class="mx-auto mb-3 size-10 text-white/50" />
           <p class="text-sm font-medium text-white">{{ emptyState.title }}</p>
-          <p v-if="emptyState.kind === 'processing' && taskProgress !== null" class="mt-1 font-mono text-sm text-white/80">
+          <p v-if="emptyState.kind === 'processing' && !runName && taskProgress !== null" class="mt-1 font-mono text-sm text-white/80">
             {{ taskProgress }}%
           </p>
           <p class="mt-1 text-sm text-white/70">{{ emptyState.detail }}</p>
@@ -205,13 +219,18 @@ import { statusVariant } from '@/lib/status'
 import { useModelViewer } from '@/composables/useModelViewer'
 import {
   PROCESSING_STATUSES,
+  RUN_ACTIVE_STATUSES,
   emptyStateFor,
   formatBytes,
   formatCount,
   hintFor,
   keyAction,
+  modelSourceOptions,
   progressPercent,
+  runEmptyStateFor,
+  runSummary,
 } from '@/lib/modelViewer'
+import { getRun, listPlugins, listRuns } from '@/lib/plugins'
 
 const KEYBOARD_HELP = [
   [['←', '→', '↑', '↓'], 'Pan (also W A S D)'],
@@ -237,6 +256,12 @@ const datasets = ref([])
 const helpOpen = ref(false)
 const hintVisible = ref(false)
 
+// Plugin runs that produced a model for this task (3D Reconstruction). The
+// viewer shows one of them instead of ODM's model when `?run=<name>` is set.
+const runs = ref([])
+const run = ref(null)
+const pluginLabels = ref({})
+
 let pollTimer = null
 let hintTimer = null
 let requestSeq = 0
@@ -247,8 +272,21 @@ if (import.meta.env.DEV) window.__modelViewer = viewer
 
 const taskId = computed(() => String(route.params.taskId || ''))
 const projectId = computed(() => String(route.params.id || ''))
+const runName = computed(() => String(route.query.run || ''))
 
-const emptyState = computed(() => (taskLoading.value ? null : emptyStateFor(task.value)))
+const runLabel = computed(() => (run.value && pluginLabels.value[run.value.plugin]) || run.value?.plugin || 'Reconstruction')
+const runSummaryText = computed(() => runSummary(run.value))
+const sourceOptions = computed(() =>
+  modelSourceOptions(task.value, runs.value, r => pluginLabels.value[r.plugin] || r.plugin))
+
+// The model currently shown: the selected run's output or ODM's model.
+const modelUrl = computed(() => (runName.value ? run.value?.output_file || null : task.value?.model || null))
+
+const emptyState = computed(() => {
+  if (taskLoading.value) return null
+  if (!task.value) return emptyStateFor(null)
+  return runName.value ? runEmptyStateFor(run.value, runLabel.value) : emptyStateFor(task.value)
+})
 
 const taskProgress = computed(() => {
   const p = task.value?.node_progress ?? task.value?.progress
@@ -304,6 +342,32 @@ async function fetchTask(name) {
   }
 }
 
+async function fetchRuns(name) {
+  try {
+    return await listRuns(name)
+  } catch {
+    return []
+  }
+}
+
+async function fetchRun(name) {
+  try {
+    return await getRun(name)
+  } catch {
+    return null
+  }
+}
+
+async function fetchPluginLabels() {
+  if (Object.keys(pluginLabels.value).length) return
+  try {
+    const catalog = await listPlugins()
+    pluginLabels.value = Object.fromEntries(catalog.map(p => [p.op_id, p.label]))
+  } catch {
+    pluginLabels.value = {}
+  }
+}
+
 // Other tasks in this project that already have a model, for the switcher.
 async function fetchDatasets() {
   try {
@@ -327,12 +391,23 @@ async function loadTask() {
   task.value = null
   viewer.clear()
 
-  const [fetched] = await Promise.all([fetchTask(taskId.value), fetchDatasets()])
+  const [fetched, taskRuns] = await Promise.all([
+    fetchTask(taskId.value), fetchRuns(taskId.value), fetchDatasets(), fetchPluginLabels(),
+  ])
   if (seq !== requestSeq) return
   task.value = fetched
+  runs.value = fetched ? taskRuns : []
+  run.value = runName.value ? runs.value.find(r => r.name === runName.value) || await fetchRun(runName.value) : null
+  if (seq !== requestSeq) return
   taskLoading.value = false
 
-  if (fetched?.model) {
+  if (runName.value) {
+    if (run.value?.status === 'Completed' && run.value.output_file) {
+      await loadModel()
+    } else if (run.value && RUN_ACTIVE_STATUSES.includes(run.value.status)) {
+      startRunPolling()
+    }
+  } else if (fetched?.model) {
     await loadModel()
   } else if (fetched && PROCESSING_STATUSES.includes(fetched.status)) {
     startPolling()
@@ -340,8 +415,8 @@ async function loadTask() {
 }
 
 async function loadModel() {
-  if (!task.value?.model) return
-  await viewer.load(task.value.model)
+  if (!modelUrl.value) return
+  await viewer.load(modelUrl.value)
   if (viewer.state.status === 'ready') showHint(true)
 }
 
@@ -356,6 +431,23 @@ function startPolling() {
       fetchDatasets()
       await loadModel()
     } else if (!PROCESSING_STATUSES.includes(updated.status)) {
+      stopPolling()
+    }
+  }, POLL_MS)
+}
+
+// A reconstruction still Queued/Running: watch the run until it ends.
+function startRunPolling() {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    const updated = await fetchRun(runName.value)
+    if (!updated || updated.name !== runName.value) return
+    run.value = updated
+    if (updated.status === 'Completed' && updated.output_file) {
+      stopPolling()
+      runs.value = await fetchRuns(taskId.value)
+      await loadModel()
+    } else if (!RUN_ACTIVE_STATUSES.includes(updated.status)) {
       stopPolling()
     }
   }, POLL_MS)
@@ -405,6 +497,16 @@ function switchDataset(name) {
   router.push(`/project/${encodeURIComponent(projectId.value)}/task/${encodeURIComponent(name)}/model`)
 }
 
+function switchSource(value) {
+  if ((value || '') === runName.value) return
+  router.replace({ query: value ? { ...route.query, run: value } : omitRun(route.query) })
+}
+
+function omitRun(query) {
+  const { run: _run, ...rest } = query
+  return rest
+}
+
 function backToProject() {
   router.push(`/project/${encodeURIComponent(projectId.value)}`)
 }
@@ -415,6 +517,10 @@ function openConsole() {
 
 watch(taskId, (next, prev) => {
   if (next && next !== prev) loadTask()
+})
+
+watch(runName, (next, prev) => {
+  if (next !== prev) loadTask()
 })
 
 onMounted(() => {

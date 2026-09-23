@@ -175,3 +175,30 @@ describe('inputChoices', () => {
     expect(plugins.inputChoices(inputs, null)[1].options).toEqual([])
   })
 })
+
+describe('model outputs', () => {
+  const model = { name: 'R1', task: 'T1', plugin: 'acme.3d', output_kind: 'model', status: 'Completed',
+    output_file: '/private/files/R1.glb', creation: '2026-09-23 10:00:00' }
+
+  it('recognises model runs and links their private file for download', () => {
+    expect(plugins.isModelRun(model)).toBe(true)
+    expect(plugins.isModelRun({ output_kind: 'raster' })).toBe(false)
+    expect(plugins.runDownloadHref(model)).toBe('/private/files/R1.glb')
+    expect(plugins.runDownloadHref({ name: 'R2', output_kind: 'vector' })).toContain('run_name=R2')
+    expect(plugins.runDownloadHref({ ...model, output_file: null })).toContain('run_name=R1')
+  })
+
+  it('builds the viewer route with and without a run', () => {
+    expect(plugins.modelViewerPath('P 1', 'T1')).toBe('/project/P%201/task/T1/model')
+    expect(plugins.modelViewerPath('P1', 'T1', 'R 1')).toBe('/project/P1/task/T1/model?run=R%201')
+  })
+
+  it('lists completed model runs newest first, one per plugin', () => {
+    const older = { ...model, name: 'R0', creation: '2026-09-22 10:00:00' }
+    const other = { ...model, name: 'R5', plugin: 'acme.other', creation: '2026-09-24 10:00:00' }
+    const running = { ...model, name: 'R9', plugin: 'acme.busy', status: 'Running', output_file: null }
+    const raster = { ...model, name: 'R7', plugin: 'hillshade', output_kind: 'raster' }
+    const out = plugins.completedModelRuns([older, model, other, running, raster])
+    expect(out.map(r => r.name)).toEqual(['R5', 'R1'])
+  })
+})

@@ -5,7 +5,8 @@
 
 Params are parsed as JSON when possible (``--param threshold=120`` is a number,
 ``--param mode=fast`` a string). ``--output-kind`` defaults to the manifest's
-``output_kind``. Prints the result JSON (metadata + log tail) on success and the
+``output_kind``. ``--context`` takes a JSON object (or ``@file.json``) that the
+plugin receives as ``request["context"]``, the way Frappe passes task facts. Prints the result JSON (metadata + log tail) on success and the
 plugin error on failure, with exit code 1.
 """
 
@@ -48,13 +49,24 @@ def main(argv=None) -> int:
     ap.add_argument("--input", action="append", metavar="NAME=PATH", help="input file (repeatable)")
     ap.add_argument("--param", action="append", metavar="KEY=VALUE", help="parameter (repeatable)")
     ap.add_argument("--output", required=True, help="where to write the plugin's output")
-    ap.add_argument("--output-kind", choices=("raster", "vector"), default=None)
+    ap.add_argument("--output-kind", choices=sandbox.OUTPUT_KINDS, default=None)
+    ap.add_argument("--context", default=None, metavar="JSON|@FILE",
+                    help="context object handed to the plugin (e.g. '{\"task\": {\"epsg\": 32633}}')")
     ap.add_argument("--timeout", type=int, default=None, help="seconds (default: manifest / runner default)")
     args = ap.parse_args(argv)
 
     inputs = {k: os.path.abspath(v) for k, v in _kv(args.input, parse_json=False).items()}
     params = _kv(args.param, parse_json=True)
     output = os.path.abspath(args.output)
+    context = {}
+    if args.context:
+        raw = open(args.context[1:], encoding="utf-8").read() if args.context.startswith("@") else args.context
+        try:
+            context = json.loads(raw)
+        except ValueError as e:
+            raise SystemExit(f"--context must be a JSON object: {e}")
+        if not isinstance(context, dict):
+            raise SystemExit("--context must be a JSON object")
 
     tmp = tempfile.mkdtemp(prefix="plugin-run-")
     try:
@@ -69,6 +81,7 @@ def main(argv=None) -> int:
             package, inputs, params, output, run_dir,
             output_kind=args.output_kind or manifest.get("output_kind", "raster"),
             timeout_seconds=args.timeout or manifest.get("timeout_seconds"),
+            context=context,
         )
     except (sandbox.PluginError, sandbox.SandboxError, OSError, ValueError) as e:
         print(f"plugin failed: {e}", file=sys.stderr)

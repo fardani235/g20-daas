@@ -25,7 +25,11 @@ from webodm_core.plugins.sandbox import run_user_plugin
 # Task fields that can supply an operation input.
 DATASET_FIELDS = ("orthophoto", "dsm", "dtm", "point_cloud", "model")
 
-_OUTPUT_EXT = {"raster": "tif", "vector": "geojson"}
+_OUTPUT_EXT = {"raster": "tif", "vector": "geojson", "model": "glb"}
+
+# ODM options are stored as the upload dialog's [{name, value}] list; keep the
+# context small (no WKT) — it travels into the sandbox as JSON.
+_CONTEXT_TASK_FIELDS = ("name", "title", "epsg")
 
 
 def _parameters(run) -> dict:
@@ -43,6 +47,36 @@ def _parameters(run) -> dict:
 
 def _as_json(value):
     return json.dumps(value) if value is not None else None
+
+
+def _json_value(value):
+    for _ in range(3):
+        if isinstance(value, str):
+            try:
+                value = frappe.parse_json(value)
+            except Exception:
+                return None
+        else:
+            break
+    return value
+
+
+def run_context(task, run, plugin) -> dict:
+    """Facts about the task a user plugin may adapt to (no file access implied).
+
+    Forwarded verbatim to the sandbox as ``request.json["context"]``: the task's
+    identity and CRS, the ODM processing options it was run with (so a plugin
+    can see e.g. whether a DSM/DTM was requested or which mesh size ODM used),
+    the run and plugin ids.
+    """
+    options = _json_value(task.get("processing_options"))
+    if not isinstance(options, (list, dict)):
+        options = []
+    return {
+        "task": {**{f: task.get(f) for f in _CONTEXT_TASK_FIELDS}, "processing_options": options},
+        "run": run.name,
+        "plugin": plugin.name,
+    }
 
 
 def _remove(path: str):
@@ -86,6 +120,7 @@ def execute_run(run_name: str):
             result = run_user_plugin(
                 plugin, inputs, params, tmp_path,
                 timeout=int(plugin.timeout_seconds or 300),
+                context=run_context(task, run, plugin),
             )
         else:
             result = run_operation(

@@ -188,3 +188,41 @@ describe('page state', () => {
     expect(progressPercent(300, 200)).toBe(100)
   })
 })
+
+import { runEmptyStateFor, modelSourceOptions, runSummary, formatCount as fc } from './modelViewer'
+
+describe('plugin-run model sources', () => {
+  const done = { name: 'R1', plugin: 'acme.3d', output_kind: 'model', status: 'Completed', output_file: '/private/files/R1.glb' }
+
+  it('reports the run state the way task states are reported', () => {
+    expect(runEmptyStateFor(null).kind).toBe('missing')
+    expect(runEmptyStateFor(done)).toBeNull()
+    expect(runEmptyStateFor({ ...done, status: 'Running', output_file: null }).kind).toBe('processing')
+    const failed = runEmptyStateFor({ ...done, status: 'Failed', output_file: null, error: 'no usable input' }, 'Recon')
+    expect(failed.kind).toBe('failed')
+    expect(failed.title).toBe('Recon failed')
+    expect(failed.detail).toBe('no usable input')
+    expect(runEmptyStateFor({ ...done, status: 'Cancelled', output_file: null }).kind).toBe('failed')
+    expect(runEmptyStateFor({ ...done, output_file: null }).kind).toBe('none')
+  })
+
+  it('offers the ODM model and completed model runs as sources', () => {
+    const task = { model: '/private/files/model.glb' }
+    const runs = [done, { ...done, name: 'R2', status: 'Running', output_file: null }, { ...done, name: 'R3', output_kind: 'raster' }]
+    expect(modelSourceOptions(task, runs, r => `Plugin ${r.name}`)).toEqual([
+      { value: '', label: 'ODM textured model' },
+      { value: 'R1', label: 'Plugin R1' },
+    ])
+    expect(modelSourceOptions({ model: null }, runs)).toEqual([{ value: 'R1', label: 'acme.3d' }])
+    expect(modelSourceOptions(null, [])).toEqual([])
+  })
+
+  it('summarises run metadata from an object or a JSON string', () => {
+    expect(runSummary({ output_metadata: { workflow: 'terrain', triangles: 480000, tiles: 4, epsg: 32633 } }))
+      .toBe(`terrain mesh · ${fc(480000)} tris · 4 textures · EPSG:32633`)
+    expect(runSummary({ output_metadata: JSON.stringify({ workflow: 'optimize-model', triangles: 12, textures: 1 }) }))
+      .toBe('optimized ODM model · 12 tris · 1 texture')
+    expect(runSummary({ output_metadata: '{bad' })).toBe('')
+    expect(runSummary(null)).toBe('')
+  })
+})

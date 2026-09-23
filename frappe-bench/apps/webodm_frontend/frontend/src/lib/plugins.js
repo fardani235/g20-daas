@@ -150,3 +150,31 @@ export function inputsPayload(choices) {
   for (const c of choices || []) out[c.name] = c.value || null
   return out
 }
+
+// ---------------------------------------------------------------------------
+// 3D model outputs (output_kind "model": a GLB opened in the model viewer)
+// ---------------------------------------------------------------------------
+
+export const isModelRun = run => run?.output_kind === 'model'
+
+// Where a run's output should be fetched from for download. Model outputs use
+// the private file URL directly (Frappe streams it with the session cookie);
+// the download endpoint buffers the whole file in memory, fine for a GeoJSON
+// but not for a multi-hundred-MB GLB.
+export function runDownloadHref(run) {
+  if (isModelRun(run) && run.output_file) return run.output_file
+  return runDownloadUrl(run.name)
+}
+
+// SPA route of the 3D viewer for a task, optionally showing a plugin run's model.
+export function modelViewerPath(projectId, taskId, runName) {
+  const base = `/project/${encodeURIComponent(projectId)}/task/${encodeURIComponent(taskId)}/model`
+  return runName ? `${base}?run=${encodeURIComponent(runName)}` : base
+}
+
+// Newest completed model run per plugin, newest first.
+export function completedModelRuns(runs) {
+  return latestRunPerPlugin(runs)
+    .filter(r => isModelRun(r) && r.status === 'Completed' && r.output_file)
+    .sort((a, b) => String(b.creation || '').localeCompare(String(a.creation || '')))
+}

@@ -77,3 +77,11 @@ def test_plugin_failure_is_422(confined, dem, run_dir):
         asyncio.run(app_main.run(_req(confined, dem, run_dir, package_path=bad)))
     assert e.value.status_code == 422
     assert "status 3" in e.value.detail
+
+
+def test_model_output_kind_and_context_are_accepted(confined, dem, run_dir):
+    req = _req(confined, dem, run_dir, output_kind="model", context={"task": {"name": "T1"}})
+    assert req.output_kind == "model" and req.context == {"task": {"name": "T1"}}
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(app_main.run(_req(confined, dem, run_dir, output_kind="table")))
+    assert e.value.status_code == 400 and "output_kind" in e.value.detail

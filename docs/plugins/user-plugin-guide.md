@@ -9,7 +9,7 @@ layer that can also be downloaded. There are two kinds:
 | Who provides them | The platform (`services/geospatial/app/analysis/ops`) | Your organization, as an uploaded package |
 | Who can see them | Every organization | Only the organization that uploaded them |
 | Where they run | Inside the geospatial service | In an isolated sandbox (`services/plugin-runner`) |
-| Examples | Hillshade, Contours, Object detection, Segmentation | Anything you write in Python — e.g. the [Semantic Segmentation plugin](semantic-segmentation.md) |
+| Examples | Hillshade, Contours, Object detection, Segmentation | Anything you write in Python — e.g. the [Semantic Segmentation](semantic-segmentation.md) and [3D Reconstruction](3d-reconstruction.md) plugins |
 
 Both kinds appear in the same **Plugins** page and run from the same task
 panel; the core processing pipeline knows nothing about individual plugins.
@@ -76,7 +76,10 @@ script runs.
   "params":      {"threshold": 120.0, "mode": "above"},
   "output_path": "/sandbox/runs/3f9a.../output.tif",
   "result_path": "/sandbox/runs/3f9a.../result.json",
-  "work_dir":    "/sandbox/runs/3f9a.../work"
+  "work_dir":    "/sandbox/runs/3f9a.../work",
+  "context":     {"task": {"name": "p5nfvcmuif", "title": "Site A", "epsg": 32613,
+                           "processing_options": [{"name": "dsm", "value": true}]},
+                  "run": "PR-0042", "plugin": "acme.my-plugin"}
 }
 ```
 
@@ -87,6 +90,7 @@ script runs.
 | `output_path` | Where you **must** write your result. The extension is `.tif` for `raster` plugins and `.geojson` for `vector` plugins. |
 | `result_path` | Optional. Write `{"metadata": {...}}` here to report numbers/strings alongside the output. |
 | `work_dir` | Scratch space you may use for temporary files. Everything in it is deleted after the run. |
+| `context` | Optional facts about the task: `name`, `title`, `epsg` (the task's CRS, if known) and `processing_options` (the ODM options / preset the task was processed with), plus the `run` and `plugin` ids. Read-only hints — e.g. to pick defaults that match how the task was processed, or to record provenance in your metadata. Always present, possibly `{}`. |
 
 A minimal `main.py`:
 
@@ -115,6 +119,18 @@ with rasterio.open(request["output_path"], "w", **profile) as dst:
   (longitude/latitude). Feature `properties` are kept and downloadable. Very
   large collections (>5000 features) are still downloadable but not drawn on
   the map.
+- **`output_kind: model`** — a **glTF 2.0 binary (`.glb`)** with at least one
+  mesh, opened in the built-in 3D viewer (*Open 3D* in the run row, or the
+  viewer's *Model source* selector). Write your georeferencing into the root
+  `extras.webodm_georef` object — `{"epsg": 32633, "origin": [E, N, H],
+  "bounds": [w, s, e, n], "bounds_4326": [lon_w, lat_s, lon_e, lat_n], "up_axis":
+  "Z"}` — and the map draws the model's footprint from `bounds_4326`; without it
+  the model still opens but is not placed on the map. Keep the mesh in a local
+  frame near the origin (X east, Y north, Z up like ODM's models; the viewer
+  rotates Z-up to screen-up) and put the origin in `CESIUM_RTC` as ODM does.
+  `KHR_mesh_quantization`, `KHR_materials_unlit` and `KHR_draco_mesh_compression`
+  are supported by the viewer. The [3D Reconstruction plugin](3d-reconstruction.md)
+  is the reference implementation, including a small GLB writer you can copy.
 
 You do **not** need to compute extents or bounds: the runner reads them from
 the file.
@@ -122,7 +138,9 @@ the file.
 ### What you can use
 
 The sandbox interpreter has **numpy**, **rasterio** (GDAL), **shapely**,
-**onnxruntime** (CPU) and the Python standard library. It cannot install
+**onnxruntime** (CPU), **laspy** with the **lazrs** LAZ backend (LAS/LAZ point
+clouds; single-threaded — the sandbox pins `RAYON_NUM_THREADS=1`) and the
+Python standard library. It cannot install
 packages and has no network access, so pure-Python helpers — and any model
 files — must ship inside your package. ONNX is the supported way to run a
 machine-learning model: export it once, put the `.onnx` file in the package
@@ -180,8 +198,8 @@ memory limit on real datasets.
 | `entrypoint` | no | Relative path to the script to run. Default `main.py`. |
 | `inputs` | yes | List of `{name, datasets, optional?, label?}`. `datasets` are task fields: `orthophoto`, `dsm`, `dtm`, `point_cloud`, `model`. The run dialog lets the user pick which of them feeds the input (first available by default). A required input blocks the run when the task has none of its datasets; an input with `"optional": true` is simply left out of `request.json` instead — check `"name" in request["inputs"]`. API clients pass `inputs: {name: dataset}` to `run_plugin`; that selection is complete (optional inputs it does not name are left out), while omitting `inputs` altogether takes the first available dataset for every input. At least one input must resolve. `label` is shown in the run dialog. |
 | `params_schema` | no | JSON Schema describing a flat object of scalars. Supported: `type` (`number`, `integer`, `string`, `boolean`), `enum`, `default`, `minimum`/`maximum`, `exclusiveMinimum`/`exclusiveMaximum`, `minLength`/`maxLength`, `title`, `description`, `required`. The form and server-side validation are both generated from it. |
-| `output_kind` | no | `raster` (default) or `vector`. |
-| `render_kind` | no | Raster: `dem` (default) or `orthophoto`. Vector: any short string, default `vector`. |
+| `output_kind` | no | `raster` (default), `vector` or `model`. |
+| `render_kind` | no | Raster: `dem` (default) or `orthophoto`. Vector: any short string, default `vector`. Model: `glb`. |
 | `timeout_seconds` | no | 10–3600, default 300. |
 
 Uploads with an invalid manifest are rejected with the reason; nothing is
@@ -233,7 +251,8 @@ python3 -m venv venv && source venv/bin/activate && pip install -r requirements.
 python -m app.cli /path/to/my-plugin \
     --input raster=/path/to/some/dsm.tif \
     --param threshold=120 --param mode=above \
-    --output /tmp/out.tif
+    --output /tmp/out.tif \
+    --context '{"task": {"epsg": 32633}}'      # optional, what request["context"] will hold
 ```
 
 It prints the metadata the run panel would show (yours plus the
@@ -323,6 +342,7 @@ Platform admins additionally have a kill switch (`Platform Enabled` on the
 | Run `Failed`: *plugin timed out after 300s* | Raise `timeout_seconds` (max 3600) or process in blocks. |
 | Run `Failed`: *plugin exited successfully but wrote no output* | You did not write to `request["output_path"]`. |
 | Run `Failed`: *output is not a readable raster* | The file at `output_path` is not a GeoTIFF rasterio can open (e.g. missing CRS). |
+| Run `Failed`: *model output is not a GLB (glTF binary) file* / *contains no meshes* | A `model` plugin must write a glTF 2.0 **binary** (`.glb` container) with at least one mesh — not a `.gltf` JSON or an OBJ. |
 | Run `Failed`: *plugin runner unreachable* | The sandbox service is down — contact the platform operator. |
 | `MemoryError` / killed silently | You exceeded the 2 GB address-space limit; process in blocks. |
 

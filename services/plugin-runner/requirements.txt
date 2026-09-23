@@ -8,4 +8,7 @@ numpy>=2.0.0
 rasterio>=1.4.0
 shapely>=2.0.0
 onnxruntime>=1.18.0
+# LAS/LAZ point clouds (laspy: BSD-2, lazrs: Apache-2.0/MIT) for plugins such
+# as 3D Reconstruction that mesh or colour from the task's point cloud.
+laspy[lazrs]>=2.5.0
 pytest>=8.0.0

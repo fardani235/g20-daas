@@ -39,6 +39,9 @@ class RunRequest(BaseModel):
     output_kind: str = "raster"
     run_dir: str
     timeout_seconds: int | None = None
+    # Free-form facts about the task (name, CRS, ODM options) forwarded to the
+    # plugin in request.json; never interpreted here.
+    context: dict = {}
 
 
 def _inside_sandbox(path: str) -> bool:
@@ -58,8 +61,8 @@ def _check_paths(req: RunRequest):
         raise HTTPException(status_code=400, detail="run_dir does not exist")
     if not os.path.isfile(req.package_path):
         raise HTTPException(status_code=404, detail="package not found")
-    if req.output_kind not in ("raster", "vector"):
-        raise HTTPException(status_code=400, detail="output_kind must be raster or vector")
+    if req.output_kind not in sandbox.OUTPUT_KINDS:
+        raise HTTPException(status_code=400, detail=f"output_kind must be one of {', '.join(sandbox.OUTPUT_KINDS)}")
 
 
 @app.get("/health")
@@ -84,6 +87,7 @@ async def run(req: RunRequest):
                 sandbox.run_package,
                 req.package_path, req.inputs, req.params, req.output_path, req.run_dir,
                 output_kind=req.output_kind, timeout_seconds=req.timeout_seconds,
+                context=req.context,
             )
         except sandbox.PluginError as e:
             raise HTTPException(status_code=422, detail=str(e))

@@ -27,10 +27,14 @@ MAX_MEMBERS = 500
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 _VERSION_RE = re.compile(r"^\d+(\.\d+){0,3}([-+][0-9A-Za-z.-]+)?$")
 
-OUTPUT_KINDS = ("raster", "vector")
+# raster: GeoTIFF shown as a tile layer; vector: GeoJSON drawn on the map;
+# model: glTF binary (GLB) opened in the 3D viewer, with its footprint on the map.
+OUTPUT_KINDS = ("raster", "vector", "model")
 # How the tiles proxy renders a raster output (see api/tiles.py); vector
 # render kinds are free-form and fall back to the default map style.
 RASTER_RENDER_KINDS = ("dem", "orthophoto")
+MODEL_RENDER_KINDS = ("glb",)
+_DEFAULT_RENDER_KIND = {"raster": "dem", "vector": "vector", "model": "glb"}
 
 MIN_TIMEOUT, MAX_TIMEOUT, DEFAULT_TIMEOUT = 10, 3600, 300
 
@@ -121,11 +125,14 @@ def validate_manifest(manifest, members: set[str]) -> dict:
     output_kind = manifest.get("output_kind") or "raster"
     _require(output_kind in OUTPUT_KINDS, f"'output_kind' must be one of {', '.join(OUTPUT_KINDS)}")
 
-    render_kind = manifest.get("render_kind") or (output_kind if output_kind == "vector" else "dem")
+    render_kind = manifest.get("render_kind") or _DEFAULT_RENDER_KIND[output_kind]
     _require(isinstance(render_kind, str) and 0 < len(render_kind) <= 40, "'render_kind' must be a short string")
     if output_kind == "raster":
         _require(render_kind in RASTER_RENDER_KINDS,
                  f"raster 'render_kind' must be one of {', '.join(RASTER_RENDER_KINDS)}")
+    elif output_kind == "model":
+        _require(render_kind in MODEL_RENDER_KINDS,
+                 f"model 'render_kind' must be one of {', '.join(MODEL_RENDER_KINDS)}")
 
     timeout = manifest.get("timeout_seconds", DEFAULT_TIMEOUT)
     _require(isinstance(timeout, int) and not isinstance(timeout, bool)

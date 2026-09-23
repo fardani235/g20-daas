@@ -18,6 +18,13 @@ single JSON file, so a plugin needs no SDK and no imports from this service:
 3. The plugin writes its artifact to ``output_path`` and may write
    ``{"metadata": {...}}`` to ``result_path``. Exit code 0 means success.
 
+``request.json`` also carries an optional ``context`` object (task name, CRS,
+ODM processing options) that Frappe supplies so a plugin can adapt to how the
+task was processed without any access to the database.
+
+Output kinds: ``raster`` (GeoTIFF), ``vector`` (GeoJSON) and ``model`` (a
+glTF binary / GLB carrying its georeferencing in ``extras.webodm_georef``).
+
 Isolation is layered: the container this runs in is unprivileged, read-only and
 on an internal-only network with nothing but the sandbox volume mounted (see
 docker-compose.yml); on top of that every plugin process gets a scrubbed
@@ -36,6 +43,7 @@ import sys
 import zipfile
 
 MANIFEST_NAME = "plugin.json"
+OUTPUT_KINDS = ("raster", "vector", "model")
 
 SANDBOX_DIR = os.path.realpath(os.environ.get("SANDBOX_DIR", "/sandbox"))
 PLUGIN_PYTHON = os.environ.get("PLUGIN_PYTHON", sys.executable)
@@ -159,6 +167,9 @@ def _plugin_env(work_dir: str) -> dict:
         "OPENBLAS_NUM_THREADS": "1",
         "MKL_NUM_THREADS": "1",
         "GDAL_NUM_THREADS": "1",
+        # lazrs (LAZ decompression) builds a rayon pool sized to the host's
+        # cores at import; under RLIMIT_AS/NPROC that fails with EAGAIN.
+        "RAYON_NUM_THREADS": "1",
     }
     # Library data dirs, when the image sets them (rasterio wheels bundle
     # their own, so these are usually unset).
@@ -257,12 +268,80 @@ def geojson_georef(path: str) -> dict:
     return out
 
 
+_GLB_MAGIC = 0x46546C67
+_GLB_JSON_CHUNK = 0x4E4F534A
+
+
+def glb_georef(path: str) -> dict:
+    """Structure check of a GLB plus the georeferencing its producer recorded.
+
+    A ``model`` output is a glTF 2.0 binary. The plugin (trusted to know its
+    CRS) writes ``extras.webodm_georef`` — ``epsg``, ``origin``, ``bounds`` (in
+    that CRS) and ``bounds_4326`` — and this turns it into the ``extent`` /
+    ``bounds_4326`` / ``epsg`` metadata the map footprint and viewer expect,
+    alongside cheap statistics read from the glTF JSON (triangles, textures).
+    """
+    import struct
+
+    size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        header = f.read(12)
+        if len(header) < 12 or struct.unpack_from("<I", header, 0)[0] != _GLB_MAGIC:
+            raise PluginError("model output is not a GLB (glTF binary) file")
+        version, length = struct.unpack_from("<II", header, 4)
+        if version != 2:
+            raise PluginError(f"model output is glTF version {version}; version 2 is required")
+        if length != size:
+            raise PluginError("model output GLB is truncated or has a wrong length header")
+        chunk_len, chunk_type = struct.unpack("<II", f.read(8))
+        if chunk_type != _GLB_JSON_CHUNK:
+            raise PluginError("model output GLB has no JSON chunk")
+        try:
+            root = json.loads(f.read(chunk_len).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as e:
+            raise PluginError(f"model output GLB has an invalid JSON chunk: {e}") from e
+    if not isinstance(root, dict) or not root.get("meshes"):
+        raise PluginError("model output GLB contains no meshes")
+
+    accessors = root.get("accessors", [])
+    triangles = vertices = 0
+    for mesh in root["meshes"]:
+        for prim in mesh.get("primitives", []):
+            pos = prim.get("attributes", {}).get("POSITION")
+            if pos is not None and pos < len(accessors):
+                vertices += int(accessors[pos].get("count", 0))
+                if "indices" in prim and prim["indices"] < len(accessors):
+                    triangles += int(accessors[prim["indices"]].get("count", 0)) // 3
+                else:
+                    triangles += int(accessors[pos].get("count", 0)) // 3
+
+    georef = (root.get("extras") or {}).get("webodm_georef") or {}
+    out = {
+        "format": "glb", "bytes": size, "triangles": triangles, "vertices": vertices,
+        "textures": len(root.get("textures", [])), "meshes": len(root["meshes"]),
+        "extensions": sorted(root.get("extensionsUsed", [])),
+        "epsg": None, "extent": None, "bounds_4326": None,
+        "origin": georef.get("origin"), "model_bounds": georef.get("bounds"),
+        "up_axis": georef.get("up_axis", "Z"),
+    }
+    epsg = georef.get("epsg")
+    if isinstance(epsg, int):
+        out["epsg"] = epsg
+    b = georef.get("bounds_4326")
+    if isinstance(b, list) and len(b) == 4 and all(isinstance(v, (int, float)) for v in b):
+        out["bounds_4326"] = [float(v) for v in b]
+        out["extent"] = _polygon(*out["bounds_4326"])
+    return out
+
+
 def output_georef(path: str, output_kind: str) -> dict:
     try:
         if output_kind == "raster":
             return raster_georef(path)
         if output_kind == "vector":
             return geojson_georef(path)
+        if output_kind == "model":
+            return glb_georef(path)
     except PluginError:
         raise
     except Exception as e:
@@ -294,12 +373,14 @@ def run_package(
     *,
     output_kind: str = "raster",
     timeout_seconds: int | None = None,
+    context: dict | None = None,
 ) -> dict:
     """Run one plugin package and return ``{"output_path", "metadata", "log"}``.
 
     ``run_dir`` must exist and be writable; the extracted plugin, scratch space
     and logs are created under it and removed again, so on return it contains
-    the output file and nothing else of the runner's.
+    the output file and nothing else of the runner's. ``context`` is passed to
+    the plugin verbatim in ``request.json``.
     """
     timeout = int(timeout_seconds or DEFAULT_TIMEOUT)
     timeout = max(1, min(timeout, MAX_TIMEOUT))
@@ -329,6 +410,7 @@ def run_package(
                 "output_path": output_path,
                 "result_path": result_path,
                 "work_dir": work_dir,
+                "context": context if isinstance(context, dict) else {},
             }, f)
 
         cmd = [PLUGIN_PYTHON, "-E", "-s", "-B", manifest["_entrypoint_abs"], request_path]

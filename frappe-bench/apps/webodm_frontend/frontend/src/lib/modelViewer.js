@@ -267,6 +267,68 @@ export function emptyStateFor(task) {
   }
 }
 
+// Plugin runs (3D Reconstruction) whose output is a model: the viewer shows
+// them through `?run=<name>`. Same shape as emptyStateFor, for a run.
+export const RUN_ACTIVE_STATUSES = ['Queued', 'Running']
+
+export function runEmptyStateFor(run, pluginLabel = '3D reconstruction') {
+  if (!run) {
+    return { kind: 'missing', title: 'Model not found', detail: 'This reconstruction run does not exist or you do not have access to it.' }
+  }
+  if (run.status === 'Completed' && run.output_file) return null
+  if (RUN_ACTIVE_STATUSES.includes(run.status)) {
+    return {
+      kind: 'processing',
+      title: `${pluginLabel} in progress`,
+      detail: 'The model appears here automatically when the run completes.',
+    }
+  }
+  if (run.status === 'Failed' || run.status === 'Cancelled') {
+    return {
+      kind: 'failed',
+      title: `${pluginLabel} ${run.status.toLowerCase()}`,
+      detail: run.error || 'No model was produced. Check the run in the project view, then run it again.',
+    }
+  }
+  return { kind: 'none', title: 'No model for this run', detail: 'The run finished without an output file.' }
+}
+
+// Entries for the viewer's source switcher: the ODM textured model (when the
+// task has one) plus every completed model run. `labelFor(run)` supplies the
+// plugin label; the value is '' for the ODM model or the run name.
+export function modelSourceOptions(task, runs, labelFor = run => run.plugin) {
+  const out = []
+  if (task?.model) out.push({ value: '', label: 'ODM textured model' })
+  for (const run of runs || []) {
+    if (run.output_kind === 'model' && run.status === 'Completed' && run.output_file) {
+      out.push({ value: run.name, label: labelFor(run) })
+    }
+  }
+  return out
+}
+
+// One-line description of a reconstructed model from its run metadata.
+export function runSummary(run) {
+  const md = typeof run?.output_metadata === 'string'
+    ? safeJson(run.output_metadata)
+    : run?.output_metadata || {}
+  const parts = []
+  if (md.workflow) parts.push(md.workflow === 'optimize-model' ? 'optimized ODM model' : 'terrain mesh')
+  if (md.triangles) parts.push(`${formatCount(md.triangles)} tris`)
+  if (md.textures) parts.push(`${md.textures} texture${md.textures === 1 ? '' : 's'}`)
+  else if (md.tiles) parts.push(`${md.tiles} texture${md.tiles === 1 ? '' : 's'}`)
+  if (md.epsg) parts.push(`EPSG:${md.epsg}`)
+  return parts.join(' · ')
+}
+
+function safeJson(text) {
+  try {
+    return JSON.parse(text) || {}
+  } catch {
+    return {}
+  }
+}
+
 export function formatBytes(bytes) {
   const n = Number(bytes)
   if (!Number.isFinite(n) || n < 0) return ''

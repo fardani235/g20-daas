@@ -26,9 +26,15 @@ Frappe. See `docs/plugins/user-plugin-guide.md` for the plugin contract.
   "output_path": "/sandbox/runs/<id>/output.tif",
   "output_kind": "raster",
   "run_dir": "/sandbox/runs/<id>",
-  "timeout_seconds": 300
+  "timeout_seconds": 300,
+  "context": {"task": {"name": "…", "epsg": 32633, "processing_options": []}}
 }
 ```
+
+`output_kind` is `raster` (GeoTIFF), `vector` (GeoJSON) or `model` (glTF
+binary; the runner validates the container and reads `extras.webodm_georef`
+into the metadata). `context` is optional and forwarded verbatim to the plugin
+as `request["context"]`.
 
 Every path must be absolute and inside `SANDBOX_DIR` (400 otherwise). Responses:
 `200 {output_path, metadata, log}`; `422` when the plugin is malformed, exits
@@ -46,9 +52,11 @@ Layered, from the outside in:
    NodeODM or the geospatial service, and `frappe_sites` is **not** mounted, so
    other organizations' files are unreachable.
 2. **Process** (`app/sandbox.py`): each plugin runs as a child process with a
-   scrubbed environment (no service config), `RLIMIT_AS` / `RLIMIT_CPU` /
-   `RLIMIT_FSIZE` / `RLIMIT_NPROC`, its own process group and a wall-clock
-   kill. Package extraction refuses path traversal, symlinks and zip bombs.
+   scrubbed environment (no service config; BLAS/GDAL/rayon thread pools pinned
+   to one thread so `RLIMIT_AS` is not exhausted by thread stacks), `RLIMIT_AS`
+   / `RLIMIT_CPU` / `RLIMIT_FSIZE` / `RLIMIT_NPROC`, its own process group and a
+   wall-clock kill. Package extraction refuses path traversal, symlinks and zip
+   bombs.
 3. **Data**: inputs are *copies* made by Frappe into a per-run directory with an
    unguessable name; the runner deletes everything it created (extracted
    package, scratch, logs) before returning, and Frappe removes the run
@@ -82,7 +90,13 @@ SANDBOX_DIR=/tmp/sandbox uvicorn app.main:app --port 5001
 # Run a plugin locally, no HTTP, same code path as the sandbox:
 python -m app.cli ../../docs/plugins/examples/elevation-mask \
     --input raster=/path/to/dsm.tif --param threshold=120 --output /tmp/out.tif
+# … with a task context and a model output:
+python -m app.cli ../../plugins/3d-reconstruction --input dsm=/path/to/dsm.tif \
+    --output /tmp/model.glb --context '{"task": {"epsg": 32633}}'
 ```
+
+Libraries available to plugins: numpy, rasterio (GDAL), shapely, onnxruntime
+(CPU), laspy + lazrs (LAS/LAZ).
 
 Frappe reads `plugin_runner_url` (default `http://127.0.0.1:5001`) and
 `plugin_sandbox_dir` (default `sites/<site>/private/plugin_sandbox`) from site

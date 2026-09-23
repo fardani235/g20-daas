@@ -168,3 +168,69 @@ def test_rejects_not_a_zip(tmp_path, dem, run_dir):
     path.write_bytes(b"definitely not a zip")
     with pytest.raises(sandbox.PluginError, match="not a valid zip"):
         _run(str(path), dem, run_dir)
+
+
+# ---- model outputs and context ---------------------------------------------
+
+def _minimal_glb(extras: dict) -> bytes:
+    """A structurally valid GLB with one (empty) mesh and the given root extras."""
+    import struct
+    root = {"asset": {"version": "2.0"}, "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+            "accessors": [{"count": 3, "type": "VEC3", "componentType": 5126},
+                          {"count": 3, "type": "SCALAR", "componentType": 5123}],
+            "textures": [{"source": 0}], "extras": extras}
+    payload = json.dumps(root).encode()
+    payload += b" " * ((-len(payload)) % 4)
+    body = struct.pack("<II", len(payload), 0x4E4F534A) + payload
+    return struct.pack("<III", 0x46546C67, 2, 12 + len(body)) + body
+
+
+def test_model_output_gets_georef_from_glb_extras(tmp_path, dem, run_dir):
+    glb = _minimal_glb({"webodm_georef": {"epsg": 32633, "bounds_4326": [10.0, 50.0, 10.1, 50.1],
+                                          "origin": [500000.0, 4500000.0, 0.0]}})
+    pkg = make_package(tmp_path / "p.zip", {"main.py": (
+        "import sys, json\nreq = json.load(open(sys.argv[1]))\n"
+        f"open(req['output_path'], 'wb').write(bytes.fromhex('{glb.hex()}'))\n"
+    )})
+    out = os.path.join(run_dir, "output.glb")
+    result = _run(pkg, dem, run_dir, out=out, output_kind="model")
+    md = result["metadata"]
+    assert md["format"] == "glb" and md["epsg"] == 32633
+    assert md["bounds_4326"] == [10.0, 50.0, 10.1, 50.1]
+    assert md["extent"]["type"] == "Polygon"
+    assert md["triangles"] == 1 and md["vertices"] == 3 and md["textures"] == 1
+    assert md["origin"] == [500000.0, 4500000.0, 0.0]
+    assert sorted(os.listdir(run_dir)) == ["output.glb"]
+
+
+def test_model_output_without_georef_is_accepted_but_unplaced(tmp_path, dem, run_dir):
+    glb = _minimal_glb({})
+    pkg = make_package(tmp_path / "p.zip", {"main.py": (
+        "import sys, json\nreq = json.load(open(sys.argv[1]))\n"
+        f"open(req['output_path'], 'wb').write(bytes.fromhex('{glb.hex()}'))\n"
+    )})
+    md = _run(pkg, dem, run_dir, out=os.path.join(run_dir, "o.glb"), output_kind="model")["metadata"]
+    assert md["epsg"] is None and md["extent"] is None and md["triangles"] == 1
+
+
+def test_invalid_model_output_is_a_plugin_error(tmp_path, dem, run_dir):
+    pkg = make_package(tmp_path / "p.zip", {"main.py": (
+        "import sys, json\nreq = json.load(open(sys.argv[1]))\n"
+        "open(req['output_path'], 'wb').write(b'not a glb, not even close')\n"
+    )})
+    with pytest.raises(sandbox.PluginError, match="not a GLB"):
+        _run(pkg, dem, run_dir, out=os.path.join(run_dir, "o.glb"), output_kind="model")
+
+
+def test_context_reaches_the_plugin(tmp_path, dem, run_dir):
+    pkg = make_package(tmp_path / "p.zip", {"main.py": (
+        "import sys, json, shutil\nreq = json.load(open(sys.argv[1]))\n"
+        "shutil.copyfile(req['inputs']['raster'], req['output_path'])\n"
+        "json.dump({'metadata': {'ctx': req['context']}}, open(req['result_path'], 'w'))\n"
+    )})
+    ctx = {"task": {"name": "T1", "epsg": 32633, "processing_options": [{"name": "dsm", "value": True}]}}
+    result = _run(pkg, dem, run_dir, context=ctx)
+    assert result["metadata"]["ctx"] == ctx
+    # absent context -> empty object, never a missing key
+    result = _run(pkg, dem, run_dir)
+    assert result["metadata"]["ctx"] == {}
