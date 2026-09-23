@@ -6,27 +6,28 @@
       </Button>
       <h2 class="truncate text-base font-medium text-foreground">
         {{ task?.title || task?.name || (taskLoading ? 'Loading…' : '3D viewer') }}
+        <span v-if="source.kind === 'run'" class="text-muted-foreground">· {{ sourceLabel }}</span>
       </h2>
       <Badge v-if="task" :variant="statusVariant(task.status)">{{ task.status }}</Badge>
 
       <div class="ml-auto flex flex-wrap items-center gap-2">
         <Select
-          v-if="datasets.length > 1"
-          :model-value="taskId"
-          class="h-8 w-auto max-w-[14rem] py-0 text-xs"
-          title="Switch to another 3D model in this project"
-          aria-label="Dataset"
+          v-if="choices.length > 1"
+          :model-value="currentChoice"
+          class="h-8 w-auto max-w-[16rem] py-0 text-xs"
+          title="Switch between the task's model, its 3D reconstructions and other tasks"
+          aria-label="Model"
           @update:model-value="switchDataset"
         >
-          <option v-for="d in datasets" :key="d.name" :value="d.name">{{ d.title || d.name }}</option>
+          <option v-for="c in choices" :key="c.value" :value="c.value">{{ c.label }}</option>
         </Select>
         <Button variant="outline" size="sm" @click="openConsole">
           <Terminal />
           <span class="hidden sm:inline">Console</span>
         </Button>
         <a
-          v-if="task?.model"
-          :href="task.model"
+          v-if="source.url"
+          :href="source.url"
           download
           class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
         >
@@ -129,7 +130,7 @@
             WebGL is disabled or unsupported. Enable hardware acceleration or use a recent version of Chrome, Firefox, Safari or Edge.
           </p>
           <div class="mt-4 flex justify-center gap-2">
-            <a v-if="task?.model" :href="task.model" download class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+            <a v-if="source.url" :href="source.url" download class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90">
               <Download class="size-3.5" />
               Download model
             </a>
@@ -210,8 +211,11 @@ import {
   formatCount,
   hintFor,
   keyAction,
+  modelChoices,
+  modelSourceFor,
   progressPercent,
 } from '@/lib/modelViewer'
+import { listPlugins, listRuns } from '@/lib/plugins'
 
 const KEYBOARD_HELP = [
   [['←', '→', '↑', '↓'], 'Pan (also W A S D)'],
@@ -234,6 +238,9 @@ const canvasRef = ref(null)
 const task = ref(null)
 const taskLoading = ref(true)
 const datasets = ref([])
+// Completed plugin runs with a model output for this task (3D reconstructions).
+const modelRuns = ref([])
+const pluginLabels = ref({})
 const helpOpen = ref(false)
 const hintVisible = ref(false)
 
@@ -247,8 +254,16 @@ if (import.meta.env.DEV) window.__modelViewer = viewer
 
 const taskId = computed(() => String(route.params.taskId || ''))
 const projectId = computed(() => String(route.params.id || ''))
+const runId = computed(() => (route.query.run ? String(route.query.run) : ''))
 
-const emptyState = computed(() => (taskLoading.value ? null : emptyStateFor(task.value)))
+// What is shown: the task's ODM model, or a reconstruction run's model (?run=).
+const source = computed(() => modelSourceFor(task.value, modelRuns.value, runId.value))
+const labelFor = id => pluginLabels.value[id] || String(id || '').split('.').pop()
+const sourceLabel = computed(() => (source.value.run ? labelFor(source.value.run.plugin) : ''))
+const choices = computed(() => modelChoices(datasets.value, modelRuns.value, taskId.value, labelFor))
+const currentChoice = computed(() => (source.value.kind === 'run' ? `run:${runId.value}` : `task:${taskId.value}`))
+
+const emptyState = computed(() => (taskLoading.value ? null : emptyStateFor(task.value, source.value)))
 
 const taskProgress = computed(() => {
   const p = task.value?.node_progress ?? task.value?.progress
@@ -318,6 +333,28 @@ async function fetchDatasets() {
   }
 }
 
+// Reconstruction runs for this task, so the switcher can offer them and
+// ?run= can be resolved to a file. Failures just leave the list empty.
+async function fetchModelRuns() {
+  try {
+    const runs = await listRuns(taskId.value)
+    modelRuns.value = (runs || []).filter(r => r.output_kind === 'model')
+  } catch {
+    modelRuns.value = []
+  }
+}
+
+async function fetchPluginLabels() {
+  if (Object.keys(pluginLabels.value).length) return
+  try {
+    const out = {}
+    for (const p of await listPlugins()) out[p.op_id || p.name] = p.label
+    pluginLabels.value = out
+  } catch {
+    pluginLabels.value = {}
+  }
+}
+
 // ------------------------------------------------------------- lifecycle
 
 async function loadTask() {
@@ -327,12 +364,12 @@ async function loadTask() {
   task.value = null
   viewer.clear()
 
-  const [fetched] = await Promise.all([fetchTask(taskId.value), fetchDatasets()])
+  const [fetched] = await Promise.all([fetchTask(taskId.value), fetchDatasets(), fetchModelRuns(), fetchPluginLabels()])
   if (seq !== requestSeq) return
   task.value = fetched
   taskLoading.value = false
 
-  if (fetched?.model) {
+  if (source.value.url) {
     await loadModel()
   } else if (fetched && PROCESSING_STATUSES.includes(fetched.status)) {
     startPolling()
@@ -340,8 +377,9 @@ async function loadTask() {
 }
 
 async function loadModel() {
-  if (!task.value?.model) return
-  await viewer.load(task.value.model)
+  const url = source.value.url
+  if (!url) return
+  await viewer.load(url)
   if (viewer.state.status === 'ready') showHint(true)
 }
 
@@ -351,7 +389,7 @@ function startPolling() {
     const updated = await fetchTask(taskId.value)
     if (!updated || updated.name !== task.value?.name) return
     task.value = updated
-    if (updated.model) {
+    if (source.value.url) {
       stopPolling()
       fetchDatasets()
       await loadModel()
@@ -400,9 +438,11 @@ function onKeydown(event) {
   if (viewer.state.status === 'ready') act(action)
 }
 
-function switchDataset(name) {
-  if (!name || name === taskId.value) return
-  router.push(`/project/${encodeURIComponent(projectId.value)}/task/${encodeURIComponent(name)}/model`)
+function switchDataset(value) {
+  if (!value || value === currentChoice.value) return
+  const [kind, name] = String(value).split(/:(.+)/)
+  const base = `/project/${encodeURIComponent(projectId.value)}/task/${encodeURIComponent(kind === 'run' ? taskId.value : name)}/model`
+  router.push(kind === 'run' ? `${base}?run=${encodeURIComponent(name)}` : base)
 }
 
 function backToProject() {
@@ -415,6 +455,9 @@ function openConsole() {
 
 watch(taskId, (next, prev) => {
   if (next && next !== prev) loadTask()
+})
+watch(runId, (next, prev) => {
+  if (next !== prev && !taskLoading.value) loadTask()
 })
 
 onMounted(() => {

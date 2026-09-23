@@ -142,14 +142,28 @@ sandbox SHALL provide numpy, rasterio, shapely and a CPU ONNX runtime.
 ### Requirement: Plugin contract
 
 The runner SHALL pass a single `request.json` path to the plugin's entrypoint
-containing `inputs` (name → absolute path), `params`, `output_path`,
-`result_path` and `work_dir`. The plugin SHALL write its artifact to
-`output_path`, MAY write `{"metadata": {...}}` to `result_path`, and SHALL
-signal success with exit status 0. Raster outputs are GeoTIFFs; vector outputs
-are GeoJSON FeatureCollections in EPSG:4326.
+containing `inputs` (name → absolute path), `params`, `context` (read-only task
+facts: name, title, EPSG/WKT, resolution, ODM processing options),
+`output_path`, `result_path`, `progress_path` and `work_dir`. The plugin SHALL
+write its artifact to `output_path`, MAY write `{"metadata": {...}}` to
+`result_path`, MAY write `{"percent", "message"}` to `progress_path` while
+running, and SHALL signal success with exit status 0. Raster outputs are
+GeoTIFFs; vector outputs are GeoJSON FeatureCollections in EPSG:4326; model
+outputs are glTF 2.0 binaries (`.glb`) whose georeference, when present, is
+declared in `asset.extras.webodm_georef` (`epsg`, `origin`, `bounds`) and is
+validated and turned into a map extent by the runner. Input names are slugs
+that may contain underscores so they can mirror dataset field names.
 
 #### Scenario: Metadata reported
 
 - **WHEN** the plugin writes `result.json` with a `metadata` object
 - **THEN** those keys appear in the run's output metadata alongside the
   runner-derived georeferencing
+
+#### Scenario: Model georeference derived
+
+- **WHEN** a `model` plugin writes a GLB whose extras declare `epsg`, `origin`
+  and `bounds`
+- **THEN** the runner records `epsg`, `bounds_4326` and `extent` (plus
+  triangle/point/image counts) in the run metadata; a GLB without the block
+  yields no extent, and a non-GLB file fails the run

@@ -425,8 +425,8 @@ class TestUserPluginExecution(FrappeTestCase):
         run_name = self._queue_run()
         seen = {}
 
-        def fake_sandbox(plugin, inputs, params, output_path, timeout=300):
-            seen.update(plugin=plugin.name, inputs=inputs, params=params, timeout=timeout)
+        def fake_sandbox(plugin, inputs, params, output_path, timeout=300, *, context=None, on_progress=None):
+            seen.update(plugin=plugin.name, inputs=inputs, params=params, timeout=timeout, context=context)
             with open(output_path, "wb") as f:
                 f.write(b"fake-output")
             return {"output_path": output_path, "metadata": {"epsg": 32633, "extent": {"type": "Polygon", "coordinates": []}}}
@@ -445,6 +445,9 @@ class TestUserPluginExecution(FrappeTestCase):
         self.assertEqual(seen["timeout"], 120)
         self.assertTrue(seen["inputs"]["raster"].endswith("_dsm.tif"))
         self.assertEqual(json.loads(run.output_metadata)["epsg"], 32633)
+        # The worker shares read-only task facts with the plugin.
+        self.assertEqual(seen["context"]["task"]["name"], self.task)
+        self.assertIn("processing_options", seen["context"]["task"])
 
     def test_sandbox_failure_marks_run_failed(self):
         run_name = self._queue_run()

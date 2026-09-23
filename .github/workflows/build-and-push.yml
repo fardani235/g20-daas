@@ -80,6 +80,9 @@ jobs:
       - name: Semantic segmentation plugin tests
         working-directory: plugins/semantic-segmentation
         run: python -m pytest -q
+      - name: 3D reconstruction plugin tests
+        working-directory: plugins/3d-reconstruction
+        run: python -m pytest -q
 
   frappe:
     name: webodm_core (build image, run tests, push)

@@ -17,6 +17,8 @@ import {
   resolveZipUri,
   keyAction,
   emptyStateFor,
+  modelSourceFor,
+  modelChoices,
   formatBytes,
   formatCount,
   progressPercent,
@@ -164,6 +166,31 @@ describe('keyboard', () => {
 describe('page state', () => {
   it('returns null when a model exists', () => {
     expect(emptyStateFor({ status: 'Completed', model: '/private/files/x.glb' })).toBeNull()
+  })
+
+  it('selects the task model or a reconstruction run model', () => {
+    const task = { name: 't1', status: 'Completed', model: '/private/files/t1_model.glb' }
+    const runs = [
+      { name: 'r1', task: 't1', plugin: 'org.3d-reconstruction', output_kind: 'model', status: 'Completed',
+        output_file: '/private/files/r1.glb', output_metadata: { workflow: 'terrain' } },
+      { name: 'r2', task: 't1', plugin: 'org.3d-reconstruction', output_kind: 'model', status: 'Running', output_file: null },
+      { name: 'r3', task: 't1', plugin: 'org.contours', output_kind: 'vector', status: 'Completed', output_file: '/x.geojson' },
+    ]
+    expect(modelSourceFor(task, runs, null)).toEqual({ kind: 'task', url: task.model, run: null })
+    expect(modelSourceFor(task, runs, 'r1').url).toBe('/private/files/r1.glb')
+    expect(modelSourceFor(task, runs, 'r2').kind).toBe('run-missing')
+    expect(modelSourceFor(task, runs, 'nope').kind).toBe('run-missing')
+    expect(modelSourceFor({ name: 't1', status: 'Completed' }, runs, null).kind).toBe('none')
+    // Empty states follow the selected source, not just the task.
+    expect(emptyStateFor(task, modelSourceFor(task, runs, 'r1'))).toBeNull()
+    expect(emptyStateFor(task, modelSourceFor(task, runs, 'r2')).detail).toMatch(/running/)
+    expect(emptyStateFor(task, modelSourceFor(task, runs, 'nope')).detail).toMatch(/no longer/)
+    expect(emptyStateFor({ name: 't1', status: 'Completed' }, modelSourceFor({ status: 'Completed' }, runs, null)).kind).toBe('none')
+    // Switcher entries: tasks with models plus this task's completed model runs.
+    const choices = modelChoices([{ name: 't1', title: 'Flight A' }, { name: 't2' }], runs, 't1', id => id.split('.').pop())
+    expect(choices.map(c => c.value)).toEqual(['task:t1', 'task:t2', 'run:r1'])
+    expect(choices[2].label).toBe('3d-reconstruction (terrain)')
+    expect(modelChoices([], runs, 'other')).toEqual([])
   })
 
   it('describes processing, failed, missing and no-model tasks', () => {

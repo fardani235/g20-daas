@@ -33,9 +33,12 @@ and change the pieces you need.
 4. The runner unpacks your package and starts your `entrypoint` as a separate
    process with one argument: the path to a `request.json`.
 5. Your script reads `request.json`, writes its result to `output_path` and
-   exits with status `0`.
+   exits with status `0`. While it runs it may publish `{"percent", "message"}`
+   to `progress_path`; the worker polls that file and shows it on the run
+   (`Running · 45% · decimating`).
 6. The runner reads georeferencing from your output, the worker moves it into
-   the task's private files and the run becomes `Completed`. If anything went
+   the task's private files and the run becomes `Completed` (raster/vector
+   results appear as map layers, model results open in the 3D viewer). If anything went
    wrong — a crash, a timeout, no output — the run becomes `Failed` and the
    error (with the tail of your stderr) is shown in the run panel.
 
@@ -72,11 +75,14 @@ script runs.
 
 ```json
 {
-  "inputs":      {"raster": "/sandbox/runs/3f9a.../inputs/raster.tif"},
-  "params":      {"threshold": 120.0, "mode": "above"},
-  "output_path": "/sandbox/runs/3f9a.../output.tif",
-  "result_path": "/sandbox/runs/3f9a.../result.json",
-  "work_dir":    "/sandbox/runs/3f9a.../work"
+  "inputs":        {"raster": "/sandbox/runs/3f9a.../inputs/raster.tif"},
+  "params":        {"threshold": 120.0, "mode": "above"},
+  "context":       {"task": {"name": "p5nfvcmuif", "title": "Site A", "epsg": 32613, "wkt": "PROJCS[...]",
+                             "resolution": 5.0, "processing_options": [{"name": "dsm", "value": true}]}},
+  "output_path":   "/sandbox/runs/3f9a.../output.tif",
+  "result_path":   "/sandbox/runs/3f9a.../result.json",
+  "progress_path": "/sandbox/runs/3f9a.../progress.json",
+  "work_dir":      "/sandbox/runs/3f9a.../work"
 }
 ```
 
@@ -84,8 +90,10 @@ script runs.
 |---|---|
 | `inputs` | One absolute path per input declared in the manifest, keyed by the input's `name`. Optional inputs the user left out (or the task lacks) are absent. These are private copies; you may read them freely. |
 | `params` | The parameters, already validated against your `params_schema`, with the organization's saved defaults applied. |
-| `output_path` | Where you **must** write your result. The extension is `.tif` for `raster` plugins and `.geojson` for `vector` plugins. |
+| `context` | Read-only facts about the task: `name`, `title`, `epsg`/`wkt` (its CRS, when known), `resolution` and the ODM `processing_options` it was run with (a list of `{name, value}`). Use it to adapt defaults; never required. |
+| `output_path` | Where you **must** write your result. The extension is `.tif` for `raster` plugins, `.geojson` for `vector` plugins and `.glb` for `model` plugins. |
 | `result_path` | Optional. Write `{"metadata": {...}}` here to report numbers/strings alongside the output. |
+| `progress_path` | Optional. Write `{"percent": 0-100, "message": "short status"}` here whenever your progress changes (write to a temp file and `os.replace` it so readers never see a half-written file). The platform polls it every couple of seconds and shows it on the run while it is running. |
 | `work_dir` | Scratch space you may use for temporary files. Everything in it is deleted after the run. |
 
 A minimal `main.py`:
@@ -115,14 +123,28 @@ with rasterio.open(request["output_path"], "w", **profile) as dst:
   (longitude/latitude). Feature `properties` are kept and downloadable. Very
   large collections (>5000 features) are still downloadable but not drawn on
   the map.
+- **`output_kind: model`** — a binary glTF 2.0 (`.glb`) opened in the 3D
+  viewer (*View 3D* on the run row) rather than drawn on the map. Follow the
+  conventions of ODM's own model so the viewer treats both alike: Z-up
+  coordinates in the task's projected CRS, stored **relative to an origin**
+  (put it in the `CESIUM_RTC` extension), unlit materials, JPEG textures.
+  Draco-compressed geometry (`KHR_draco_mesh_compression`) is supported;
+  KTX2/meshopt are not. Since glTF carries no CRS, record the georeference in
+  `asset.extras.webodm_georef`: `{"epsg": 32632, "origin": [x, y, z],
+  "bounds": [minx, miny, maxx, maxy]}` (absolute, in that CRS) — the runner
+  validates it and derives the run's map extent from it; without it the model
+  is still accepted but has no extent. See `plugins/3d-reconstruction/recon/gltf.py`
+  for a complete writer.
 
-You do **not** need to compute extents or bounds: the runner reads them from
-the file.
+You do **not** need to compute extents or bounds for rasters and vectors: the
+runner reads them from the file.
 
 ### What you can use
 
 The sandbox interpreter has **numpy**, **rasterio** (GDAL), **shapely**,
-**onnxruntime** (CPU) and the Python standard library. It cannot install
+**Pillow**, **onnxruntime** (CPU), **laspy** (+ **lazrs**, LAS/LAZ point
+clouds), **fast-simplification** (mesh decimation), **DracoPy** (Draco
+encode/decode) and the Python standard library. It cannot install
 packages and has no network access, so pure-Python helpers — and any model
 files — must ship inside your package. ONNX is the supported way to run a
 machine-learning model: export it once, put the `.onnx` file in the package
@@ -178,10 +200,10 @@ memory limit on real datasets.
 | `version` | yes | Dotted version, e.g. `1.2.0`. Shown in the UI; bump it on every upload. |
 | `description` | no | One or two sentences, shown under the label. |
 | `entrypoint` | no | Relative path to the script to run. Default `main.py`. |
-| `inputs` | yes | List of `{name, datasets, optional?, label?}`. `datasets` are task fields: `orthophoto`, `dsm`, `dtm`, `point_cloud`, `model`. The run dialog lets the user pick which of them feeds the input (first available by default). A required input blocks the run when the task has none of its datasets; an input with `"optional": true` is simply left out of `request.json` instead — check `"name" in request["inputs"]`. API clients pass `inputs: {name: dataset}` to `run_plugin`; that selection is complete (optional inputs it does not name are left out), while omitting `inputs` altogether takes the first available dataset for every input. At least one input must resolve. `label` is shown in the run dialog. |
+| `inputs` | yes | List of `{name, datasets, optional?, label?}`. `name` is a slug (lowercase letters, digits, `-`, `_`). `datasets` are task fields: `orthophoto`, `dsm`, `dtm`, `point_cloud`, `model`. The run dialog lets the user pick which of them feeds the input (first available by default). A required input blocks the run when the task has none of its datasets; an input with `"optional": true` is simply left out of `request.json` instead — check `"name" in request["inputs"]`. API clients pass `inputs: {name: dataset}` to `run_plugin`; that selection is complete (optional inputs it does not name are left out), while omitting `inputs` altogether takes the first available dataset for every input. At least one input must resolve. `label` is shown in the run dialog. |
 | `params_schema` | no | JSON Schema describing a flat object of scalars. Supported: `type` (`number`, `integer`, `string`, `boolean`), `enum`, `default`, `minimum`/`maximum`, `exclusiveMinimum`/`exclusiveMaximum`, `minLength`/`maxLength`, `title`, `description`, `required`. The form and server-side validation are both generated from it. |
-| `output_kind` | no | `raster` (default) or `vector`. |
-| `render_kind` | no | Raster: `dem` (default) or `orthophoto`. Vector: any short string, default `vector`. |
+| `output_kind` | no | `raster` (default), `vector` or `model`. |
+| `render_kind` | no | Raster: `dem` (default) or `orthophoto`. Vector: any short string, default `vector`. Model: `model`. |
 | `timeout_seconds` | no | 10–3600, default 300. |
 
 Uploads with an invalid manifest are rejected with the reason; nothing is

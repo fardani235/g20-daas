@@ -466,3 +466,36 @@ All DocTypes live in `webodm_core`:
   --build-context sites=./frappe-bench/sites --build-context root=. frappe-bench/apps`),
   `webodm-geospatial:local`, `webodm-plugin-runner:local`; an override that swaps the images
   (see `docs/plugins/semantic-segmentation.md` §1 for the upload/run commands).
+
+## Phase 14: 3D Reconstruction user plugin + `model` output kind (2026-09-23)
+
+- New user plugin `plugins/3d-reconstruction/` (docs: `docs/plugins/3d-reconstruction.md`, design:
+  `docs/superpowers/specs/2026-09-23-3d-reconstruction-design.md`, spec `openspec/specs/3d-reconstruction/`).
+  Five optional inputs (orthophoto, dsm, dtm, point_cloud, model); workflows `terrain` (DSM/DTM heightfield
+  → quadric-decimated mesh draped with the orthophoto; DTM → point cloud → interpolation fill holes ≤100 m²),
+  `point-cloud` (LAZ binned to a heightfield, coloured from ortho or point RGB), `points` (subsampled
+  coloured POINTS primitive), `mesh` (ODM's Draco GLB or OBJ zip → atlases shrunk to a pixel budget, Draco
+  re-encode, georef). `auto` = mesh > terrain > point-cloud; `quality: auto` reads the task's ODM options.
+  Output GLB follows ODM's conventions (Z-up, local to `CESIUM_RTC` centre, unlit) plus
+  `asset.extras.webodm_georef` {epsg, wkt, origin, bounds, z_range}. Stack: laspy+lazrs, fast-simplification,
+  DracoPy, Pillow, own ~300-line GLB reader/writer (`recon/gltf.py`). 21 pytest tests (synthetic data).
+- Gotchas learned: DracoPy does **not** quantise `tex_coord` (float UVs doubled the mesh size) → UVs go in
+  as a generic uint16 attribute (glTF-native `normalized` VEC2) and the `attributes` id map is read back from
+  the blob (`m.attributes[...]["unique_id"]`), cross-checked with the vendored JS decoder in
+  `tests/test_gltf.py`. `WarpedVRT` always warps from level 0 → open `rasterio.open(path, overview_level=n)`
+  first (700 MB/4 s → 100 MB/0.5 s). Set `GDAL_CACHEMAX=128` in the plugin (default is 5% of host RAM).
+  Peak RSS at high-detail on the 10 M-pt / 170 MP survey: 1.22 GB inside the sandbox image.
+- Core changes (generic): `output_kind: model` (`package.py`, `runner._OUTPUT_EXT` → `.glb`, `WebODM Plugin`
+  select, runner `/run` + `model_georef` reading the extras and deriving `bounds_4326`/`extent`); input names
+  may contain `_`; `request.json` gains `context.task` {name,title,epsg,wkt,resolution,processing_options}
+  and `progress_path`; `sandbox.run_user_plugin` posts in a thread and polls `progress.json` on the shared
+  volume → `run.progress`/`progress_message` (new field) committed live; `list_runs` returns
+  `progress_message`. Frontend: run rows show `Running · 45% · stage`, model runs get *View 3D* (no map
+  layer); `ModelView` accepts `?run=<name>` and its switcher lists reconstruction runs
+  (`lib/modelViewer.js: modelSourceFor/modelChoices`, `lib/plugins.js: isModelRun/runModelRoute/runProgressText`).
+- Sandbox image gained Pillow, laspy[lazrs], fast-simplification, DracoPy (`services/plugin-runner/requirements.txt`);
+  CI `test-plugin-runner` runs the plugin's tests. Frappe tests for a worktree: throwaway postgres/redis on a
+  docker network, `ghcr.io/fardani235/webodm-frappe:16.34.0` with `-v <worktree>/frappe-bench/apps/webodm_core:/workspace/webodm_core`,
+  `FRAPPE_ROLE=init`, then `FRAPPE_ROLE=exec ... frappe --site ci.localhost run-tests --app webodm_core --module ...`.
+- Local test data: `~/Downloads/{j1u49j8ore,if7iq9jhap}_*` (ortho/DSM/LAZ/GLB from real tasks, EPSG:32632);
+  `plugins/3d-reconstruction/tools/preview.py out.glb out.png` renders a GLB without a browser.

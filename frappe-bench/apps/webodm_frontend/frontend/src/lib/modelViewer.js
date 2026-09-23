@@ -241,11 +241,51 @@ export const PROCESSING_STATUSES = ['Pending', 'Queued', 'Running']
  * What to show when a task has no model to display. Returns null when the
  * task does have a model (the viewer should load it).
  */
-export function emptyStateFor(task) {
+// Which GLB the viewer shows. A `?run=<name>` query selects a plugin run's
+// model output (e.g. the 3D Reconstruction plugin) instead of the task's own
+// ODM model; both are private file URLs the viewer fetches the same way.
+export function modelSourceFor(task, runs, runName) {
+  if (runName) {
+    const run = (runs || []).find(r => r.name === runName)
+    if (run && run.output_kind === 'model' && run.status === 'Completed' && run.output_file) {
+      return { kind: 'run', url: run.output_file, run }
+    }
+    return { kind: 'run-missing', url: null, run: run || null }
+  }
+  return task?.model ? { kind: 'task', url: task.model, run: null } : { kind: 'none', url: null, run: null }
+}
+
+// Entries for the model switcher: the project's tasks with an ODM model plus
+// this task's completed reconstruction runs. Values are `task:<name>` /
+// `run:<name>` so one Select can route to either.
+export function modelChoices(datasets, runs, taskName, labelFor = id => id) {
+  const out = (datasets || []).map(d => ({
+    value: `task:${d.name}`, label: d.title || d.name, kind: 'task',
+  }))
+  for (const run of runs || []) {
+    if (run.output_kind !== 'model' || run.status !== 'Completed' || !run.output_file) continue
+    if (taskName && run.task && run.task !== taskName) continue
+    const wf = run.output_metadata?.workflow
+    out.push({ value: `run:${run.name}`, kind: 'run', label: `${labelFor(run.plugin)}${wf ? ` (${wf})` : ''}` })
+  }
+  return out
+}
+
+export function emptyStateFor(task, source = null) {
   if (!task) {
     return { kind: 'missing', title: 'Task not found', detail: 'This task does not exist or you do not have access to it.' }
   }
-  if (task.model) return null
+  if (source?.kind === 'run-missing') {
+    const status = source.run?.status
+    return {
+      kind: 'none',
+      title: 'Reconstruction not available',
+      detail: status && status !== 'Completed'
+        ? `This 3D reconstruction run is ${status.toLowerCase()}. Its model appears here once it completes.`
+        : 'This 3D reconstruction run no longer has a model (it may have been replaced by a newer run).',
+    }
+  }
+  if (source ? source.url : task.model) return null
   if (PROCESSING_STATUSES.includes(task.status)) {
     return {
       kind: 'processing',

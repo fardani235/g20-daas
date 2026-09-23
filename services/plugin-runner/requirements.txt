@@ -8,4 +8,11 @@ numpy>=2.0.0
 rasterio>=1.4.0
 shapely>=2.0.0
 onnxruntime>=1.18.0
+Pillow>=10.0.0
+# 3D stack (plugins/3d-reconstruction): LAS/LAZ reading, quadric mesh
+# decimation and Draco encode/decode of glTF meshes. All permissively
+# licensed (BSD-2 / Apache-2.0 / MIT) and pure pip wheels for Python 3.12.
+laspy[lazrs]>=2.5.0
+fast-simplification>=0.1.9
+DracoPy>=1.4.0,<2
 pytest>=8.0.0

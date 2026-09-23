@@ -3,7 +3,8 @@
 Flow: mark Running -> resolve the task's input files to absolute paths -> call
 the analysis backend -> persist the returned artifact as a private File -> mark
 Completed (or Failed). A cancellation that lands while the operation is running
-is honored by discarding the output.
+is honored by discarding the output. User plugins may publish intermediate
+progress, which is written to the run row as it arrives.
 
 The backend depends on the plugin type: System plugins run in the geospatial
 service (``geospatial.run_operation``), User plugins in the sandboxed plugin
@@ -25,7 +26,7 @@ from webodm_core.plugins.sandbox import run_user_plugin
 # Task fields that can supply an operation input.
 DATASET_FIELDS = ("orthophoto", "dsm", "dtm", "point_cloud", "model")
 
-_OUTPUT_EXT = {"raster": "tif", "vector": "geojson"}
+_OUTPUT_EXT = {"raster": "tif", "vector": "geojson", "model": "glb"}
 
 
 def _parameters(run) -> dict:
@@ -50,6 +51,38 @@ def _remove(path: str):
         os.remove(path)
     except OSError:
         pass
+
+
+def task_context(task) -> dict:
+    """Read-only facts about the task a user plugin may want (CRS, ODM options)."""
+    options = task.get("processing_options")
+    for _ in range(3):
+        if isinstance(options, str):
+            try:
+                options = frappe.parse_json(options)
+            except Exception:
+                break
+        else:
+            break
+    return {
+        "task": {
+            "name": task.name,
+            "title": task.get("title"),
+            "epsg": task.get("epsg"),
+            "wkt": task.get("wkt"),
+            "resolution": task.get("resolution"),
+            "processing_options": options if isinstance(options, (list, dict)) else [],
+        }
+    }
+
+
+def _progress_writer(run):
+    """Persist plugin progress as it arrives (own commit: the job's transaction is long-lived)."""
+    def on_progress(percent, message):
+        run.db_set("progress", percent, update_modified=False)
+        run.db_set("progress_message", message or "", update_modified=False)
+        frappe.db.commit()
+    return on_progress
 
 
 def execute_run(run_name: str):
@@ -86,6 +119,8 @@ def execute_run(run_name: str):
             result = run_user_plugin(
                 plugin, inputs, params, tmp_path,
                 timeout=int(plugin.timeout_seconds or 300),
+                context=task_context(task),
+                on_progress=_progress_writer(run),
             )
         else:
             result = run_operation(
@@ -116,6 +151,7 @@ def execute_run(run_name: str):
         run.db_set("output_metadata", _as_json(metadata))
         run.db_set("status", "Completed")
         run.db_set("progress", 100)
+        run.db_set("progress_message", "")
         run.db_set("completed_at", now_datetime())
     except Exception as e:
         run.reload()

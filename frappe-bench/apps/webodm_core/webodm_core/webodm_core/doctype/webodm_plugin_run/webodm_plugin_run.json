@@ -10,6 +10,7 @@
   "organization",
   "status",
   "progress",
+  "progress_message",
   "parameters",
   "output_kind",
   "render_kind",
@@ -62,6 +63,12 @@
    "fieldname": "progress",
    "fieldtype": "Percent",
    "label": "Progress"
+  },
+  {
+   "fieldname": "progress_message",
+   "fieldtype": "Data",
+   "label": "Progress Message",
+   "read_only": 1
   },
   {
    "description": "Inputs and parameters the run executed with.",

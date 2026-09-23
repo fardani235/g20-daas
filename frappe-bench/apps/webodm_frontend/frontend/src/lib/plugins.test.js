@@ -86,6 +86,27 @@ describe('plugins lib', () => {
   })
 })
 
+describe('model runs', () => {
+  it('recognises completed model outputs only', () => {
+    expect(plugins.isModelRun({ output_kind: 'model', status: 'Completed', output_file: '/private/files/a.glb' })).toBe(true)
+    expect(plugins.isModelRun({ output_kind: 'model', status: 'Running', output_file: null })).toBe(false)
+    expect(plugins.isModelRun({ output_kind: 'raster', status: 'Completed', output_file: '/x.tif' })).toBe(false)
+    expect(plugins.isModelRun(null)).toBe(false)
+  })
+
+  it('builds the viewer route for a run', () => {
+    expect(plugins.runModelRoute('P 1', 'task/1', 'r&2'))
+      .toBe('/project/P%201/task/task%2F1/model?run=r%262')
+  })
+
+  it('formats live progress only while a run is active', () => {
+    expect(plugins.runProgressText({ status: 'Running', progress: 42.4, progress_message: 'decimating' })).toBe('42% · decimating')
+    expect(plugins.runProgressText({ status: 'Running', progress: 7 })).toBe('7%')
+    expect(plugins.runProgressText({ status: 'Queued', progress: 0, progress_message: '' })).toBeNull()
+    expect(plugins.runProgressText({ status: 'Completed', progress: 100, progress_message: 'x' })).toBeNull()
+  })
+})
+
 describe('user plugins', () => {
   it('uploadPlugin POSTs multipart without a JSON content type', async () => {
     const file = new File(['zip-bytes'], 'plugin.zip', { type: 'application/zip' })

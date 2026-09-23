@@ -102,9 +102,21 @@
                   :key="run.name"
                   class="flex items-center justify-between gap-2 text-xs"
                 >
-                  <span class="truncate text-foreground">{{ pluginLabel(run.plugin) }}</span>
+                  <span class="min-w-0 flex-1 truncate text-foreground">
+                    {{ pluginLabel(run.plugin) }}
+                    <span v-if="runProgressText(run)" class="text-muted-foreground" :title="run.progress_message">
+                      · {{ runProgressText(run) }}
+                    </span>
+                  </span>
                   <Badge :variant="statusVariant(run.status)">{{ run.status }}</Badge>
                   <span class="flex items-center gap-2">
+                    <router-link
+                      v-if="isModelRun(run)"
+                      :to="runModelRoute(route.params.id, run.task || task.name, run.name)"
+                      class="text-primary hover:underline"
+                      title="Open this model in the 3D viewer"
+                      @click.stop
+                    >View 3D</router-link>
                     <a
                       v-if="run.status === 'Completed' && run.output_file"
                       :href="runDownloadUrl(run.name)"
@@ -429,6 +441,9 @@ import {
   shouldRenderVector,
   inputChoices,
   inputsPayload,
+  isModelRun,
+  runModelRoute,
+  runProgressText,
 } from '@/lib/plugins'
 import { detectionStyle, detectionLegend } from '@/lib/detections'
 import { segmentationStyle, segmentationLegend } from '@/lib/segmentation'
@@ -753,6 +768,8 @@ async function loadRunOverlays(taskName) {
   // supersedes the previous one instead of stacking another layer.
   for (const run of latestRunPerPlugin(runs)) {
     if (run.status !== 'Completed' || !run.output_file) continue
+    // 3D models are not map layers; the run row links to the viewer instead.
+    if (run.output_kind === 'model') continue
     const key = `plugin:${run.plugin}`
     if (overlayLayers[key]) continue
     const label = pluginLabel(run.plugin)
