@@ -60,7 +60,7 @@ x-frappe-volumes: &frappe-volumes
 
 services:
   caddy:
-    image: ghcr.io/fardani235/webodm-caddy:2@sha256:d00926425324ee2cc5890e0fd5979d0fcae8b35e27cc757e4176ac15c9aebc7c
+    image: ghcr.io/fardani235/webodm-caddy:2@sha256:3a38c2a00f536c1a6bacc7c7aef402987551baea9caa0184a14b096a3bdafb2c
     # build:
     #   context: ./infra/caddy
     restart: unless-stopped
@@ -319,7 +319,7 @@ services:
           memory: 1G
 
   geospatial:
-    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:2ee963ad5051e84d766d5b2ed397fbea587b482560fb670aafdc8503ea8cd115
+    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:bc8c1ecccbc7d4f32df4e5c68fbebdb4af35c11e78702a5ec717718017efe1d8
     # build:
     #   context: ./services/geospatial
     #   dockerfile: Dockerfile
@@ -355,7 +355,7 @@ services:
     # Sandbox for user-uploaded analysis plugins (services/plugin-runner).
     # No published image yet: built from source until CI pushes one, then pin
     # it like the others with `scripts/pin-images.sh` and drop the build block.
-    image: ghcr.io/fardani235/webodm-plugin-runner:1@sha256:55e84a010c0f42f9a5d570ef19cac0101c1e0af0fca119f99476fecada3d657c
+    image: ghcr.io/fardani235/webodm-plugin-runner:1@sha256:d34257dd401ad563ad3b0eb236b8bb26c7d90dc2d3053299574cb8ef65d70238
     build:
       context: ./services/plugin-runner
       dockerfile: Dockerfile
@@ -410,7 +410,7 @@ services:
       start_period: 60s
 
   backup:
-    image: ghcr.io/fardani235/webodm-backup:1@sha256:0f7007f0d583da5e8069ef2d58cf6ecd22e00082508c192f9965f1843485c38b
+    image: ghcr.io/fardani235/webodm-backup:1@sha256:28e3e09cd9308ed1ff2b052c17f45fefe8f5891ba02863c9ac938497cec68a9c
     # build:
     #   context: ./infra/backup
     restart: unless-stopped
