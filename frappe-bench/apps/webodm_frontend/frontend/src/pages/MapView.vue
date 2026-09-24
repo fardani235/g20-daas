@@ -79,6 +79,14 @@
               </Button>
             </div>
 
+            <p
+              v-if="task.status === 'Completed' && (orthoSummary || rasterMetaLoading)"
+              class="mt-2 text-xs text-muted-foreground"
+              title="Orthophoto: size, bands, ground sample distance, CRS, file size"
+            >
+              {{ orthoSummary || 'Reading orthophoto metadata…' }}
+            </p>
+
             <div class="mt-2 pt-2 border-t border-border space-y-2">
               <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Analysis</p>
               <div v-if="runnablePlugins.length" class="flex flex-wrap gap-1.5">
@@ -262,10 +270,37 @@
             <div v-if="overlays.length" class="p-3 border-b border-border">
               <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Layers</p>
               <div v-for="o in overlays" :key="o.key" class="py-1">
-                <label class="flex items-center gap-2 text-foreground cursor-pointer">
-                  <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded" />
-                  {{ o.label }}
-                </label>
+                <div class="flex items-center gap-2">
+                  <label class="flex min-w-0 flex-1 items-center gap-2 text-foreground cursor-pointer">
+                    <input type="checkbox" :checked="o.visible" @change="toggleOverlay(o)" class="rounded" />
+                    <span class="truncate">{{ o.label }}</span>
+                  </label>
+                  <button
+                    v-if="rasterMeta[o.key]"
+                    type="button"
+                    class="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    :class="{ 'text-foreground': rasterMetaOpen[o.key] }"
+                    :title="rasterMetaOpen[o.key] ? 'Hide raster details' : 'Raster details'"
+                    :aria-expanded="!!rasterMetaOpen[o.key]"
+                    @click="toggleRasterDetails(o.key)"
+                  >
+                    <Info class="size-3.5" />
+                  </button>
+                </div>
+                <dl
+                  v-if="rasterMetaOpen[o.key] && rasterMeta[o.key]"
+                  class="mt-1 ml-6 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs"
+                >
+                  <template v-for="row in rasterDetailRows(rasterMeta[o.key])" :key="row.label">
+                    <dt class="text-muted-foreground">{{ row.label }}</dt>
+                    <dd class="break-words text-foreground">{{ row.value }}</dd>
+                  </template>
+                  <dd v-if="rasterMeta[o.key].status === 'Failed'" class="col-span-2">
+                    <button type="button" class="text-primary hover:underline" @click="refreshRasterMetadata(o.key)">
+                      Retry extraction
+                    </button>
+                  </dd>
+                </dl>
                 <div v-if="o.legend?.length" class="mt-1 ml-6 space-y-0.5">
                   <div
                     v-for="item in o.legend"
@@ -402,6 +437,7 @@ import {
   Check,
   CircleX,
   CloudUpload,
+  Info,
   Layers,
   Minus,
   Play,
@@ -448,6 +484,13 @@ import {
 import { detectionStyle, detectionLegend } from '@/lib/detections'
 import { segmentationStyle, segmentationLegend } from '@/lib/segmentation'
 import { applyModelChoice, matchingModel } from '@/lib/knownModels'
+import {
+  getRasterMetadata,
+  summarize as summarizeRaster,
+  detailRows as rasterDetailRows,
+  maxNativeZoomFor,
+  DEFAULT_MAX_NATIVE_ZOOM,
+} from '@/lib/rasterMetadata'
 
 const route = useRoute()
 const router = useRouter()
@@ -509,6 +552,46 @@ const showMarkers = ref(true)
 const currentImages = ref([])
 const currentTask = ref(null)
 const hasDsm = computed(() => !!currentTask.value?.dsm)
+// Normalized header metadata of the selected task's rasters, keyed by dataset
+// (`api.task.get_raster_metadata`). Drives the card summary, the per-layer
+// details in the Layers panel and each tile layer's native zoom.
+const rasterMeta = ref({})
+const rasterMetaLoading = ref(false)
+const rasterMetaOpen = ref({}) // { dataset: bool } details expanded in the Layers panel
+const orthoSummary = computed(() => summarizeRaster(rasterMeta.value.orthophoto))
+
+async function loadRasterMetadata(task, { refresh = false, dataset } = {}) {
+  if (!task || task.status !== 'Completed') { rasterMeta.value = {}; return }
+  rasterMetaLoading.value = true
+  try {
+    const out = await getRasterMetadata(task.name, { refresh, dataset })
+    if (selectedTask.value !== task.name) return // user moved on while we fetched
+    if (dataset) rasterMeta.value = { ...rasterMeta.value, [dataset]: out }
+    else rasterMeta.value = out || {}
+    // Now that the GSD is known, stop asking the tiler for zooms it can only upsample.
+    for (const key of Object.keys(overlayLayers)) {
+      const layer = overlayLayers[key]
+      const meta = rasterMeta.value[key]
+      if (layer?.options && meta) layer.options.maxNativeZoom = maxNativeZoomFor(meta)
+    }
+  } catch (e) {
+    // Metadata is a nicety; the map works without it.
+    if (selectedTask.value === task.name && !dataset) rasterMeta.value = {}
+  } finally {
+    rasterMetaLoading.value = false
+  }
+}
+
+function toggleRasterDetails(key) {
+  rasterMetaOpen.value = { ...rasterMetaOpen.value, [key]: !rasterMetaOpen.value[key] }
+}
+
+async function refreshRasterMetadata(key) {
+  if (!currentTask.value) return
+  await loadRasterMetadata(currentTask.value, { refresh: true, dataset: key })
+  if (rasterMeta.value[key]?.status === 'Failed') toast.error('Metadata could not be read; see the error log')
+  else toast.success('Metadata refreshed')
+}
 const volumeBaseMethod = ref(loadVolumeBaseMethod())
 const hasGps = computed(() =>
   currentImages.value.some(img => {
@@ -736,7 +819,8 @@ async function loadOverlays(task) {
       + `&z={z}&x={x}&y={y}`
     const layer = L.tileLayer(url, {
       bounds: bounds || undefined,
-      maxNativeZoom: 22,
+      // Refined from the raster's GSD once its metadata arrives.
+      maxNativeZoom: maxNativeZoomFor(rasterMeta.value[key]) ?? DEFAULT_MAX_NATIVE_ZOOM,
       maxZoom: 24,
       tileSize: 256,
       opacity: 1,
@@ -950,10 +1034,13 @@ async function selectTask(task) {
   }
   currentImages.value = full.images || []
   currentTask.value = full
+  rasterMeta.value = {}
+  rasterMetaOpen.value = {}
   measure.clear()
   dataBounds = null // recomputed by the two plotting calls below
   plotImageMarkers(full.images)
   loadOverlays(full)
+  loadRasterMetadata(full)
   if (showFlightPath.value) buildFlightPath(currentImages.value)
 }
 
