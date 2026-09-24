@@ -78,7 +78,18 @@ script runs.
   "inputs":        {"raster": "/sandbox/runs/3f9a.../inputs/raster.tif"},
   "params":        {"threshold": 120.0, "mode": "above"},
   "context":       {"task": {"name": "p5nfvcmuif", "title": "Site A", "epsg": 32613, "wkt": "PROJCS[...]",
-                             "resolution": 5.0, "processing_options": [{"name": "dsm", "value": true}]}},
+                             "resolution": 5.0, "processing_options": [{"name": "dsm", "value": true}],
+                             "rasters": {"orthophoto": {"width": 14718, "height": 11640, "band_count": 4,
+                                                        "dtype": "uint8", "crs": {"epsg": 32613, "wkt": null, "units": "metre"},
+                                                        "georeference": "full", "pixel_size": [0.05, 0.05],
+                                                        "geotransform": [321875.39, 0.05, 0.0, 5158255.82, 0.0, -0.05],
+                                                        "bounds": [321875.39, 5157673.86, 322611.26, 5158255.82],
+                                                        "bounds_4326": [6.676, 46.549, 6.686, 46.554], "nodata": null,
+                                                        "is_tiled": true, "block_size": [256, 256], "compression": "deflate",
+                                                        "overviews": [2, 4, 8, 16, 32, 64], "is_cog": true,
+                                                        "color_interpretation": ["red", "green", "blue", "alpha"],
+                                                        "file_size": 214119658, "status": "Extracted", "...": "..."},
+                                         "dsm": {"band_count": 1, "dtype": "float32", "nodata": -9999.0, "...": "..."}}}},
   "output_path":   "/sandbox/runs/3f9a.../output.tif",
   "result_path":   "/sandbox/runs/3f9a.../result.json",
   "progress_path": "/sandbox/runs/3f9a.../progress.json",
@@ -90,7 +101,7 @@ script runs.
 |---|---|
 | `inputs` | One absolute path per input declared in the manifest, keyed by the input's `name`. Optional inputs the user left out (or the task lacks) are absent. These are private copies; you may read them freely. |
 | `params` | The parameters, already validated against your `params_schema`, with the organization's saved defaults applied. |
-| `context` | Read-only facts about the task: `name`, `title`, `epsg`/`wkt` (its CRS, when known), `resolution` and the ODM `processing_options` it was run with (a list of `{name, value}`). Use it to adapt defaults; never required. |
+| `context` | Read-only facts about the task: `name`, `title`, `epsg`/`wkt` (its CRS, when known), `resolution`, the ODM `processing_options` it was run with (a list of `{name, value}`) and `rasters` — the normalized header metadata of each raster the task has (`orthophoto` / `dsm` / `dtm`: size, `band_count`, `dtype`, `crs`, `georeference`, `pixel_size`, `geotransform` (GDAL order), `bounds` / `bounds_4326`, `nodata` (`null` when unset, `"nan"` for NaN), `is_tiled` / `block_size`, `compression`, `overviews`, `is_cog`, `color_interpretation`, `file_size`; `status` is `Failed` with an `error` if it could not be read). Lets you pick a tile size, an overview level or a target resolution before opening the file. Use it to adapt defaults; never required. |
 | `output_path` | Where you **must** write your result. The extension is `.tif` for `raster` plugins, `.geojson` for `vector` plugins and `.glb` for `model` plugins. |
 | `result_path` | Optional. Write `{"metadata": {...}}` here to report numbers/strings alongside the output. |
 | `progress_path` | Optional. Write `{"percent": 0-100, "message": "short status"}` here whenever your progress changes (write to a temp file and `os.replace` it so readers never see a half-written file). The platform polls it every couple of seconds and shows it on the run while it is running. |

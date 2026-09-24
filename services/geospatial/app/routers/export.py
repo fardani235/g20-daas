@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 
@@ -6,6 +7,8 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from app.utils import raster
+
+log = logging.getLogger("webodm.geospatial.export")
 
 router = APIRouter()
 
@@ -40,7 +43,8 @@ async def cogify(req: CogifyRequest):
     """Convert a raster to a Cloud Optimized GeoTIFF and return its georeferencing.
 
     Returns the output path plus extent (GeoJSON Polygon, EPSG:4326), epsg, and wkt
-    so the caller (Frappe) can persist them on the task without needing GDAL itself.
+    so the caller (Frappe) can persist them on the task without needing GDAL itself,
+    and ``metadata`` (``raster.read_metadata`` of the output; null if that failed).
     """
     if not os.path.isabs(req.path):
         raise HTTPException(status_code=400, detail="path must be absolute")
@@ -54,6 +58,15 @@ async def cogify(req: CogifyRequest):
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"cogify failed: {e}")
 
+    # Full header metadata of the *output* in the same round trip, so the
+    # caller can persist it without a second request. Best-effort: a metadata
+    # failure must not turn a successful conversion into an error.
+    metadata = None
+    try:
+        metadata = await run_in_threadpool(raster.read_metadata, out_path)
+    except Exception as e:
+        log.warning("metadata after cogify failed for %s: %s", out_path, e)
+
     return {
         "path": out_path,
         "is_cog": True,
@@ -64,6 +77,7 @@ async def cogify(req: CogifyRequest):
         "band_count": georef["band_count"],
         "width": georef["width"],
         "height": georef["height"],
+        "metadata": metadata,
     }
 
 

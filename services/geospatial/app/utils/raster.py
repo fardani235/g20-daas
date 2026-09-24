@@ -5,6 +5,8 @@ Cloud Optimized GeoTIFFs and to read their georeferencing (bounds reprojected
 to EPSG:4326, plus the source CRS as an EPSG code or WKT string).
 """
 
+import logging
+import math
 import os
 
 import rasterio
@@ -14,6 +16,8 @@ from rio_tiler.io import Reader
 from rio_tiler.colormap import cmap as default_cmaps
 from rio_tiler.constants import WGS84_CRS
 from rio_cogeo.profiles import cog_profiles
+
+log = logging.getLogger("webodm.geospatial.raster")
 
 
 def is_cog(path: str) -> bool:
@@ -104,6 +108,222 @@ def read_georef(path: str) -> dict:
             ]],
         }
         return result
+
+
+class RasterMetadataError(ValueError):
+    """The file is missing, not a raster GDAL can open, or unreadable."""
+
+
+def _polygon(minx, miny, maxx, maxy) -> dict:
+    return {
+        "type": "Polygon",
+        "coordinates": [[
+            [minx, miny], [maxx, miny], [maxx, maxy], [minx, maxy], [minx, miny],
+        ]],
+    }
+
+
+def _json_number(value):
+    """Floats that JSON can carry: NaN/inf become strings, ints stay ints."""
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(f):
+        return "nan"
+    if math.isinf(f):
+        return "inf" if f > 0 else "-inf"
+    return f
+
+
+def _crs_info(crs) -> dict:
+    out = {"epsg": None, "wkt": None, "units": None, "is_geographic": False, "is_projected": False}
+    if crs is None:
+        return out
+    try:
+        epsg = crs.to_epsg()
+    except Exception:
+        epsg = None
+    out["epsg"] = int(epsg) if epsg is not None else None
+    try:
+        out["wkt"] = crs.to_wkt()
+    except Exception:
+        out["wkt"] = None
+    try:
+        out["is_geographic"] = bool(crs.is_geographic)
+        out["is_projected"] = bool(crs.is_projected)
+        if crs.is_geographic:
+            out["units"] = "degree"
+        else:
+            out["units"] = crs.linear_units or None
+    except Exception:
+        pass
+    return out
+
+
+def read_metadata(path: str) -> dict:
+    """Normalized metadata of a raster, read from its headers only.
+
+    Nothing here touches pixel data: dimensions, CRS, geotransform, block
+    layout, compression, overviews and colour interpretation are all in the
+    file header (and the overview IFDs), so this is cheap even for a
+    multi-gigabyte orthophoto. Statistics are deliberately *not* computed.
+
+    ``georeference`` summarises how usable the georeferencing is:
+      - ``full``: a CRS and a real geotransform (``bounds_4326``/``extent`` set)
+      - ``no_crs``: a geotransform but no CRS (native bounds only)
+      - ``no_transform``: a CRS but an identity transform (pixel space)
+      - ``none``: neither
+
+    Raises ``RasterMetadataError`` if the file is missing or GDAL cannot open it.
+    """
+    if not os.path.isfile(path):
+        raise RasterMetadataError(f"raster not found: {path}")
+
+    try:
+        ds = rasterio.open(path)
+    except Exception as e:  # rasterio.errors.RasterioIOError and friends
+        raise RasterMetadataError(f"cannot open raster: {e}") from e
+
+    with ds:
+        transform = ds.transform
+        has_transform = not transform.is_identity
+        crs = _crs_info(ds.crs)
+        has_crs = ds.crs is not None
+
+        if has_crs and has_transform:
+            georeference = "full"
+        elif has_transform:
+            georeference = "no_crs"
+        elif has_crs:
+            georeference = "no_transform"
+        else:
+            georeference = "none"
+
+        bounds = None
+        pixel_size = None
+        geotransform = None
+        if has_transform:
+            b = ds.bounds
+            bounds = [float(b.left), float(b.bottom), float(b.right), float(b.top)]
+            pixel_size = [abs(float(transform.a)), abs(float(transform.e))]
+            # GDAL order: (x0, xres, xrot, y0, yrot, -yres)
+            geotransform = [float(v) for v in transform.to_gdal()]
+
+        bounds_4326 = None
+        extent = None
+        if georeference == "full":
+            try:
+                minx, miny, maxx, maxy = transform_bounds(
+                    ds.crs, "EPSG:4326", *bounds, densify_pts=21
+                )
+                if all(math.isfinite(v) for v in (minx, miny, maxx, maxy)):
+                    bounds_4326 = [minx, miny, maxx, maxy]
+                    extent = _polygon(minx, miny, maxx, maxy)
+            except Exception as e:
+                log.warning("bounds reprojection failed for %s: %s", path, e)
+
+        bands = []
+        for i in range(1, ds.count + 1):
+            try:
+                ci = ds.colorinterp[i - 1].name
+            except Exception:
+                ci = None
+            try:
+                rows, cols = ds.block_shapes[i - 1]  # rasterio: (rows, cols)
+                block = [int(cols), int(rows)]        # ours: [width, height]
+            except Exception:
+                block = None
+            try:
+                overviews = [int(o) for o in ds.overviews(i)]
+            except Exception:
+                overviews = []
+            bands.append({
+                "index": i,
+                "dtype": ds.dtypes[i - 1],
+                "color_interpretation": ci,
+                "nodata": _json_number(ds.nodatavals[i - 1]),
+                "overviews": overviews,
+                "block_size": block,
+            })
+
+        has_colormap = False
+        if any(b["color_interpretation"] == "palette" for b in bands):
+            try:
+                has_colormap = bool(ds.colormap(1))
+            except Exception:
+                has_colormap = False
+
+        # Driver-level structure tags (TIFF: COMPRESSION / INTERLEAVE / PREDICTOR).
+        try:
+            structure = ds.tags(ns="IMAGE_STRUCTURE")
+        except Exception:
+            structure = {}
+        compression = None
+        if ds.compression is not None:
+            compression = ds.compression.name.lower()
+        elif structure.get("COMPRESSION"):
+            compression = str(structure["COMPRESSION"]).lower()
+        interleave = None
+        if ds.interleaving is not None:
+            interleave = ds.interleaving.name.lower()
+        elif structure.get("INTERLEAVE"):
+            interleave = str(structure["INTERLEAVE"]).lower()
+
+        try:
+            tags = ds.tags()
+        except Exception:
+            tags = {}
+
+        first = bands[0] if bands else {}
+        # Same rule as rasterio's (deprecated) ``is_tiled``: a strip spans the
+        # full raster width, a tile does not.
+        is_tiled = bool(bands) and all(
+            b["block_size"] is not None and b["block_size"][0] != ds.width for b in bands
+        )
+
+        out = {
+            "path": path,
+            "file_size": int(os.path.getsize(path)),
+            "driver": ds.driver,
+            "width": int(ds.width),
+            "height": int(ds.height),
+            "band_count": int(ds.count),
+            "dtype": first.get("dtype"),
+            "dtypes": [b["dtype"] for b in bands],
+            "crs": crs,
+            "georeference": georeference,
+            "geotransform": geotransform,
+            "pixel_size": pixel_size,
+            "bounds": bounds,
+            "bounds_4326": bounds_4326,
+            "extent": extent,
+            "nodata": _json_number(ds.nodata),
+            "bands": bands,
+            "color_interpretation": [b["color_interpretation"] for b in bands],
+            "has_colormap": has_colormap,
+            "is_tiled": is_tiled,
+            "block_size": first.get("block_size"),
+            "compression": compression,
+            "interleave": interleave,
+            "predictor": structure.get("PREDICTOR"),
+            "overviews": first.get("overviews", []),
+            "overview_count": len(first.get("overviews", [])),
+            "software": tags.get("TIFFTAG_SOFTWARE"),
+            "area_or_point": tags.get("AREA_OR_POINT"),
+        }
+
+    # COG validation reads IFD offsets only, but it is TIFF-specific and may
+    # emit warnings for odd files; keep it best-effort and outside the `with`.
+    out["is_cog"] = is_cog(path) if out["driver"] == "GTiff" else False
+    log.info(
+        "raster metadata %s: %dx%d x%d %s crs=%s georef=%s tiled=%s cog=%s",
+        path, out["width"], out["height"], out["band_count"], out["dtype"],
+        crs["epsg"] or ("wkt" if crs["wkt"] else None), georeference, is_tiled, out["is_cog"],
+    )
+    return out
 
 
 def tile_info(path: str) -> dict:

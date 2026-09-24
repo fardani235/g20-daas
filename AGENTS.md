@@ -499,3 +499,29 @@ All DocTypes live in `webodm_core`:
   `FRAPPE_ROLE=init`, then `FRAPPE_ROLE=exec ... frappe --site ci.localhost run-tests --app webodm_core --module ...`.
 - Local test data: `~/Downloads/{j1u49j8ore,if7iq9jhap}_*` (ortho/DSM/LAZ/GLB from real tasks, EPSG:32632);
   `plugins/3d-reconstruction/tools/preview.py out.glb out.png` renders a GLB without a browser.
+
+## Phase 15: Orthophoto / raster metadata (2026-09-24)
+
+- Geospatial service: `raster.read_metadata(path)` (header-only: size, bands, dtype, CRS
+  epsg/wkt/units, `georeference` full|no_crs|no_transform|none, geotransform in GDAL order,
+  pixel size, native + 4326 bounds, nodata (NaN → `"nan"` so JSON stays valid), tiling/block
+  size, compression/interleave/predictor, overviews, `is_cog`, colorinterp, colormap, file
+  size, `TIFFTAG_SOFTWARE`). Exposed as `GET /raster/metadata?path=` (`app/routers/raster.py`;
+  400/404/422) and embedded as `metadata` in the `/export/cogify` response so Frappe gets it
+  in the same round trip. 70 ms on the 170 MP survey ortho. Gotcha: rasterio `block_shapes`
+  are `(rows, cols)`; `ds.is_tiled` is deprecated → re-implemented (block width ≠ raster width).
+  Tests: `tests/test_raster_metadata.py` (sparse 30000² raster asserts time + tracemalloc peak).
+- Frappe: child table `WebODM Raster Metadata` on `WebODM Task.raster_metadata`, one row per
+  orthophoto/dsm/dtm with typed columns (`file_size` is **Long Int** — Frappe `Int` is a 32-bit
+  Postgres `int`; `nodata` is text + `has_nodata` Check so None/NaN survive Frappe's None→0
+  Float coercion; `crs_wkt` only when no EPSG; `geotransform` JSON text for full precision).
+  `processing/raster_metadata.py`: `normalize`, `row_to_dict`, `record` (upsert via direct
+  child insert / `db.set_value`, no `task.save`), `capture` (uses cogify's embedded metadata
+  or calls `plugins.geospatial.raster_metadata`), `refresh`. `_download_assets` calls
+  `capture` after cogify; failures → `status=Failed` row + `frappe.log_error("WebODM Raster
+  Metadata")`, never the task. Fills `task.resolution` (cm/px) from the ortho GSD when unset.
+- API: `webodm_core.api.task.get_raster_metadata(task_name, dataset?, refresh?)` — stored rows,
+  lazily extracts missing/stale (file_url mismatch) rows, only retries Failed with `refresh=1`.
+  Rows also ride along in `get_task_progress` (`task.as_dict()`). Plugins get the same dicts as
+  `context.task.rasters` (`runner.task_context`); documented in `docs/plugins/user-plugin-guide.md`.
+  Spec: `openspec/specs/raster-metadata/spec.md`.

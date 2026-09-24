@@ -15,7 +15,8 @@ storage. Point cloud endpoints are stubbed pending Phase 4.
 | GET | `/health` | ✅ | Liveness check |
 | GET | `/tiles/info?path=` | ✅ | Bounds (EPSG:4326), zoom range, band stats |
 | GET | `/tiles/tile/{z}/{x}/{y}.png?path=&kind=` | ✅ | XYZ tile PNG; `kind` = `orthophoto`\|`dsm`\|`dtm` |
-| POST | `/export/cogify` | ✅ | Convert raster → COG (in place), return georef |
+| POST | `/export/cogify` | ✅ | Convert raster → COG (in place), return georef + `metadata` |
+| GET | `/raster/metadata?path=` | ✅ | Header-only raster metadata (size, bands, CRS, transform, blocks, overviews…) |
 | POST | `/export/raster` | 🚧 Stub | GeoTIFF/PNG/KMZ export |
 | POST | `/export/hillshade` | 🚧 Stub | Hillshade from DEM |
 | POST | `/export/colormap` | 🚧 Stub | Apply custom colormap |
@@ -38,7 +39,34 @@ Request: `{ "path": "/abs/path/raster.tif", "dst_path": null }`
 (`dst_path` optional; defaults to converting in place, idempotent if already a COG).
 
 Response: `path`, `is_cog`, `epsg`, `wkt`, `extent` (GeoJSON Polygon, EPSG:4326),
-`bounds_4326` `[minx,miny,maxx,maxy]`, `band_count`, `width`, `height`.
+`bounds_4326` `[minx,miny,maxx,maxy]`, `band_count`, `width`, `height`, and
+`metadata` (the `/raster/metadata` document of the output, or `null` if reading it failed).
+
+### `/raster/metadata`
+
+`GET /raster/metadata?path=/abs/path/raster.tif` — everything GDAL knows from the
+file header, without reading pixels (milliseconds for a multi-GB orthophoto):
+
+| Key | Meaning |
+|---|---|
+| `driver`, `file_size` | GDAL driver short name (`GTiff`), size on disk in bytes |
+| `width`, `height`, `band_count`, `dtype`, `dtypes` | Raster grid; `dtype` is band 1 |
+| `crs` | `{epsg, wkt, units, is_geographic, is_projected}` — all `null`/false without a CRS |
+| `georeference` | `full` \| `no_crs` \| `no_transform` \| `none` |
+| `geotransform` | 6 numbers in GDAL order `[x0, xres, xrot, y0, yrot, -yres]` (`null` without a transform) |
+| `pixel_size` | `[xres, yres]` absolute, in CRS units |
+| `bounds`, `bounds_4326`, `extent` | Native `[minx,miny,maxx,maxy]`; EPSG:4326 bounds and GeoJSON Polygon when `georeference` is `full` |
+| `nodata` | Dataset nodata, `null` when unset; NaN is the string `"nan"` |
+| `is_tiled`, `block_size` | Internal tiling and `[width, height]` of a block (band 1) |
+| `compression`, `interleave`, `predictor` | From the TIFF image structure (`deflate`, `pixel`, `2`…) |
+| `overviews`, `overview_count` | Decimation factors of band 1's overviews |
+| `is_cog` | rio-cogeo validation result (GeoTIFF only) |
+| `color_interpretation`, `has_colormap` | Per-band names (`red`, `alpha`, `gray`, `palette`…); colour table present |
+| `bands` | Per band: `index`, `dtype`, `color_interpretation`, `nodata`, `overviews`, `block_size` |
+| `software`, `area_or_point` | `TIFFTAG_SOFTWARE` (e.g. `ODM 3.5.6`) and `AREA_OR_POINT` |
+
+Errors: 400 relative path, 404 missing file, 422 GDAL cannot open the file.
+A raster without a CRS is not an error (`georeference: "no_crs"`).
 
 ## Quick Start
 
@@ -78,6 +106,7 @@ app/
 ├── routers/
 │   ├── tiles.py         # /info, /tile/{z}/{x}/{y}.png  (rio-tiler)
 │   ├── export.py        # /cogify (implemented); raster/hillshade/... (stub)
+│   ├── raster.py        # /metadata (header-only raster metadata)
 │   └── pointcloud.py    # export, to-potree (stub)
 ├── models/
 │   └── task.py          # Pydantic request models

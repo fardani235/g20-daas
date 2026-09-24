@@ -106,3 +106,30 @@ def validate_operation(op_id: str, params: dict, timeout: int = 30) -> dict:
         raise GeospatialError(str(detail or e)) from e
     except Exception as e:
         raise GeospatialUnavailable(f"analysis service unreachable: {e}") from e
+
+
+def raster_metadata(path: str, timeout: int = 60) -> dict:
+    """Header-only raster metadata via ``GET /raster/metadata``.
+
+    Raises ``GeospatialError`` when the service rejected the file (corrupt,
+    not a raster: HTTP 4xx with a ``detail``) and ``GeospatialUnavailable``
+    when it could not be reached. A raster without a CRS is *not* an error;
+    the returned document says so in ``georeference``.
+    """
+    url = f"{geospatial_url().rstrip('/')}/raster/metadata"
+    try:
+        resp = requests.get(url, params={"path": path}, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            detail = e.response.text if e.response is not None else ""
+        raise GeospatialError(f"raster metadata failed: {detail or e}") from e
+    except Exception as e:
+        raise GeospatialUnavailable(f"geospatial service unreachable: {e}") from e
+    if not isinstance(data, dict):
+        raise GeospatialError("raster metadata failed: unexpected response")
+    return data

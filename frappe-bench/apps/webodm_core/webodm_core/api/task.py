@@ -385,3 +385,55 @@ def get_task_progress():
         except Exception:
             frappe.log_error(f"Could not enqueue poll for {task_name}", "WebODM Processing")
     return task.as_dict()
+
+
+@frappe.whitelist(allow_guest=False)
+def get_raster_metadata(task_name=None, dataset=None, refresh=0):
+    """Normalized header metadata of a task's rasters (orthophoto / dsm / dtm).
+
+    With ``dataset`` returns that raster's metadata dict (or ``None`` if the
+    task has no such raster); without it returns ``{dataset: dict | None}`` for
+    all three. The values come from the ``WebODM Raster Metadata`` rows filled
+    when the outputs landed. A row that is missing or describes a different
+    file than the task currently holds is (re-)extracted on the spot;
+    ``refresh=1`` forces re-extraction (e.g. after a Failed row). Extraction
+    problems never raise here: the returned dict has ``status: "Failed"`` and
+    an ``error``.
+
+    The shape is the one plugins see in ``context.task.rasters`` and the map
+    / tile code can use for pixel size, bounds, band layout and nodata.
+    """
+    from frappe.utils import cint
+
+    from webodm_core.webodm_core.processing import raster_metadata as rm
+
+    raw = frappe.request.data if frappe.request else None
+    if isinstance(raw, bytes):
+        raw = raw.decode()
+    data = frappe.parse_json(raw) if raw else frappe.form_dict
+    task_name = task_name or data.get("task_name")
+    dataset = dataset or data.get("dataset")
+    refresh = cint(refresh if refresh else data.get("refresh"))
+    if not task_name:
+        frappe.throw("task_name is required")
+    if dataset and dataset not in rm.RASTER_DATASETS:
+        frappe.throw(f"Unknown dataset: {dataset}. Expected one of {', '.join(rm.RASTER_DATASETS)}.")
+
+    task = _get_task_checked(task_name, "read")
+
+    out = {}
+    for ds in ([dataset] if dataset else rm.RASTER_DATASETS):
+        file_url = task.get(ds)
+        if not file_url:
+            out[ds] = None
+            continue
+        row = rm.find_row(task.name, ds)
+        stale = row is None or row.file_url != file_url
+        if refresh or stale:
+            # Reads are cheap (header only), but this is a synchronous call into
+            # the geospatial service; only do it when the stored row cannot be
+            # trusted, so a Failed row does not re-run on every viewer poll.
+            row = rm.capture(task, ds, file_url) or row
+        out[ds] = rm.row_to_dict(row, task) if row else None
+
+    return out[dataset] if dataset else out
