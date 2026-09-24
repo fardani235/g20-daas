@@ -11,6 +11,7 @@ from webodm_core.plugins.files import (
     abs_path_for_file_url,
     save_private_file_from_stream,
 )
+from webodm_core.webodm_core.processing import raster_metadata
 from webodm_core.webodm_core.processing.node_client import (
     NodeODMClient,
     NodeODMError,
@@ -441,7 +442,8 @@ def _download_assets(client: NodeODMClient, node_task_id: str, task: Document):
                     # For georeferenced rasters, convert to COG in place and persist
                     # the extent / EPSG / WKT so the map can locate the layer.
                     if field in RASTER_EXTENT_FIELDS:
-                        georef = _cogify_raster(abs_path_for_file_doc(file_doc))
+                        raster_path = abs_path_for_file_doc(file_doc)
+                        georef = _cogify_raster(raster_path)
                         if georef:
                             extent = georef.get("extent")
                             if extent:
@@ -452,6 +454,14 @@ def _download_assets(client: NodeODMClient, node_task_id: str, task: Document):
                                 task.db_set("epsg", georef["epsg"])
                             if georef.get("wkt") and not task.get("wkt"):
                                 task.db_set("wkt", georef["wkt"])
+                        # Header metadata (size, bands, tiling, overviews...) for the
+                        # viewer and analysis plugins. cogify already returns it for
+                        # the COG it wrote; otherwise the raster is read as-is.
+                        # Best-effort: a metadata failure never fails the task.
+                        raster_metadata.record(
+                            task, field, raster_path,
+                            metadata=(georef or {}).get("metadata"),
+                        )
 
                 # Fallback: if model not found as GLB, bundle GLTF files as zip.
                 if not task.get("model"):

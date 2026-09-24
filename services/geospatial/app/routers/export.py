@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 
@@ -7,6 +8,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.utils import raster
 
+log = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -40,7 +42,10 @@ async def cogify(req: CogifyRequest):
     """Convert a raster to a Cloud Optimized GeoTIFF and return its georeferencing.
 
     Returns the output path plus extent (GeoJSON Polygon, EPSG:4326), epsg, and wkt
-    so the caller (Frappe) can persist them on the task without needing GDAL itself.
+    so the caller (Frappe) can persist them on the task without needing GDAL itself,
+    and ``metadata`` — the full normalized header metadata of the resulting COG
+    (``raster.read_metadata``) — so the pipeline needs no second round-trip.
+    ``metadata`` is None if that read fails; the conversion itself still counts.
     """
     if not os.path.isabs(req.path):
         raise HTTPException(status_code=400, detail="path must be absolute")
@@ -54,6 +59,12 @@ async def cogify(req: CogifyRequest):
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"cogify failed: {e}")
 
+    try:
+        metadata = await run_in_threadpool(raster.read_metadata, out_path)
+    except Exception as e:
+        log.warning("cogify: metadata read failed for %s: %s", out_path, e)
+        metadata = None
+
     return {
         "path": out_path,
         "is_cog": True,
@@ -64,6 +75,7 @@ async def cogify(req: CogifyRequest):
         "band_count": georef["band_count"],
         "width": georef["width"],
         "height": georef["height"],
+        "metadata": metadata,
     }
 
 

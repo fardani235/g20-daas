@@ -499,3 +499,34 @@ All DocTypes live in `webodm_core`:
   `FRAPPE_ROLE=init`, then `FRAPPE_ROLE=exec ... frappe --site ci.localhost run-tests --app webodm_core --module ...`.
 - Local test data: `~/Downloads/{j1u49j8ore,if7iq9jhap}_*` (ortho/DSM/LAZ/GLB from real tasks, EPSG:32632);
   `plugins/3d-reconstruction/tools/preview.py out.glb out.png` renders a GLB without a browser.
+
+## Phase 15: Raster metadata extraction (2026-09-24)
+
+- Geospatial: `raster.read_metadata(path)` (header-only rasterio read: driver, file size, size,
+  bands, dtype, EPSG/WKT/units, `is_georeferenced`, GDAL-order geotransform, pixel size, native +
+  4326 bounds/extent, nodata, block size/tiled, compression, overviews, `is_cog`, colour interp).
+  `GET /raster/metadata?path=` (new `routers/raster.py`, 422 for unreadable files);
+  `/export/cogify` response gained `metadata` (same dict for the written COG) so the pipeline
+  needs no second call. NaN nodata is sent as the string `"nan"` (strict JSON). rio-cogeo calls a
+  raster smaller than one 512px tile a valid COG even when striped — tests use ≥1024px fixtures.
+  Frappe has no GDAL, so all extraction lives in the service.
+- Frappe: new child DocType `WebODM Raster Metadata` (Table `raster_metadata` on `WebODM Task`,
+  one row per orthophoto/dsm/dtm). Arrays are split into Float columns (a list in a JSON column
+  breaks Frappe saves), `nodata` is Data text (Float can't hold null/NaN), `file_size` is
+  **Long Int** (`Int` validates against int32 and a 3 GiB ortho tripped it). Rows are upserted
+  directly (`frappe.db.delete` + child `insert`), never via `task.save()`, so the task runner
+  stays the single writer of the parent.
+- `processing/raster_metadata.py`: `normalize` (service dict → columns), `to_public` (row →
+  array form; EPSG 0 → null), `store/get/get_all`, `extract` (service call, raises), `record`
+  (pipeline hook: uses cogify's inline metadata else fetches; never raises; failures become a row
+  with `error`), `backfill(limit)` for pre-existing tasks (`bench execute`). `_download_assets`
+  calls `record` after cogify for each raster.
+- API `api/raster.py`: `get_metadata(task_name, dataset, refresh)` (read; refresh needs write;
+  extracts on demand for legacy tasks) and `list_metadata(task_name)`. `runner.task_context`
+  adds `context.task.raster_metadata` for user plugins (failed rows omitted).
+- Postgres gotcha: changing an existing `Int` column to `Long Int` via migrate fails
+  (`SET DEFAULT ''` on bigint) — only matters for a site that saw the intermediate schema; fresh
+  installs are fine. Frappe tests for a worktree: `/tmp/oak-frappe-test.sh`-style throwaway
+  postgres/redis + `webodm-frappe:16.34.0` with the worktree's `webodm_core` mounted (see Phase 14).
+  `test_plugin_model_output.TestModelRunExecution` is not re-runnable on the same DB (project named
+  by title is left behind) — pre-existing.

@@ -26,6 +26,7 @@
   "orthophoto_extent",
   "dsm_extent",
   "dtm_extent",
+  "raster_metadata",
   "processing_state_section",
   "dispatch_attempts",
   "poll_failures",
@@ -164,6 +165,14 @@
    "read_only": 1
   },
   {
+   "description": "Header metadata of each output raster (size, bands, CRS, pixel size, bounds, tiling, overviews...), extracted automatically after processing. One row per dataset.",
+   "fieldname": "raster_metadata",
+   "fieldtype": "Table",
+   "label": "Raster Metadata",
+   "options": "WebODM Raster Metadata",
+   "read_only": 1
+  },
+  {
    "fieldname": "processing_state_section",
    "fieldtype": "Section Break",
    "label": "Processing State",
@@ -208,7 +217,7 @@
    "in_standard_filter": 1
   }
  ],
- "modified": "2026-09-21 00:00:00.000000",
+ "modified": "2026-09-24 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "WebODM Core",
  "name": "WebODM Task",

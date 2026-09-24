@@ -1,0 +1,314 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-24 00:00:00.000000",
+ "description": "Normalized header metadata of one task raster (orthophoto, DSM, DTM), read by the geospatial service when the raster becomes available. Arrays (geotransform, bounds) are stored as scalar columns so rows stay queryable and JSON columns never hold lists.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "dataset",
+  "driver",
+  "file_size",
+  "width",
+  "height",
+  "band_count",
+  "dtype",
+  "color_interp",
+  "georeferencing_section",
+  "is_georeferenced",
+  "has_transform",
+  "epsg",
+  "crs_units",
+  "crs_wkt",
+  "pixel_size_x",
+  "pixel_size_y",
+  "origin_x",
+  "origin_y",
+  "rotation_x",
+  "rotation_y",
+  "min_x",
+  "min_y",
+  "max_x",
+  "max_y",
+  "lon_min",
+  "lat_min",
+  "lon_max",
+  "lat_max",
+  "nodata",
+  "storage_section",
+  "is_tiled",
+  "block_width",
+  "block_height",
+  "compression",
+  "overview_count",
+  "overview_levels",
+  "is_cog",
+  "extraction_section",
+  "extracted_at",
+  "error"
+ ],
+ "fields": [
+  {
+   "description": "Task field the raster came from: orthophoto, dsm or dtm.",
+   "fieldname": "dataset",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Dataset",
+   "reqd": 1
+  },
+  {
+   "description": "GDAL driver short name, e.g. GTiff.",
+   "fieldname": "driver",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Driver"
+  },
+  {
+   "fieldname": "file_size",
+   "fieldtype": "Long Int",
+   "label": "File Size (bytes)",
+   "description": "Long Int: orthophotos routinely exceed the 2 GiB an Int can hold."
+  },
+  {
+   "fieldname": "width",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Width (px)"
+  },
+  {
+   "fieldname": "height",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Height (px)"
+  },
+  {
+   "fieldname": "band_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Bands"
+  },
+  {
+   "description": "NumPy-style data type of band 1, e.g. uint8, float32.",
+   "fieldname": "dtype",
+   "fieldtype": "Data",
+   "label": "Data Type"
+  },
+  {
+   "description": "Comma-separated per-band colour interpretation, e.g. red,green,blue,alpha.",
+   "fieldname": "color_interp",
+   "fieldtype": "Data",
+   "label": "Color Interpretation"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "georeferencing_section",
+   "fieldtype": "Section Break",
+   "label": "Georeferencing"
+  },
+  {
+   "default": "0",
+   "description": "Set when the raster has both a CRS and a real geotransform.",
+   "fieldname": "is_georeferenced",
+   "fieldtype": "Check",
+   "label": "Georeferenced"
+  },
+  {
+   "default": "0",
+   "description": "Set when the raster has a non-identity geotransform (possibly without a CRS).",
+   "fieldname": "has_transform",
+   "fieldtype": "Check",
+   "label": "Has Geotransform"
+  },
+  {
+   "description": "EPSG code of the raster CRS; 0 when unknown (see CRS WKT).",
+   "fieldname": "epsg",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "EPSG"
+  },
+  {
+   "description": "CRS linear unit (metre, degree, ...).",
+   "fieldname": "crs_units",
+   "fieldtype": "Data",
+   "label": "CRS Units"
+  },
+  {
+   "description": "CRS as WKT, only when no EPSG code is available.",
+   "fieldname": "crs_wkt",
+   "fieldtype": "Long Text",
+   "label": "CRS WKT"
+  },
+  {
+   "description": "Pixel width in CRS units (ground sample distance).",
+   "fieldname": "pixel_size_x",
+   "fieldtype": "Float",
+   "label": "Pixel Size X",
+   "precision": "9"
+  },
+  {
+   "fieldname": "pixel_size_y",
+   "fieldtype": "Float",
+   "label": "Pixel Size Y",
+   "precision": "9"
+  },
+  {
+   "description": "Geotransform: X of the top-left corner.",
+   "fieldname": "origin_x",
+   "fieldtype": "Float",
+   "label": "Origin X",
+   "precision": "9"
+  },
+  {
+   "description": "Geotransform: Y of the top-left corner.",
+   "fieldname": "origin_y",
+   "fieldtype": "Float",
+   "label": "Origin Y",
+   "precision": "9"
+  },
+  {
+   "description": "Geotransform row-rotation term (0 for north-up rasters).",
+   "fieldname": "rotation_x",
+   "fieldtype": "Float",
+   "label": "Rotation X",
+   "precision": "9"
+  },
+  {
+   "fieldname": "rotation_y",
+   "fieldtype": "Float",
+   "label": "Rotation Y",
+   "precision": "9"
+  },
+  {
+   "description": "Bounds in the raster CRS.",
+   "fieldname": "min_x",
+   "fieldtype": "Float",
+   "label": "Min X",
+   "precision": "9"
+  },
+  {
+   "fieldname": "min_y",
+   "fieldtype": "Float",
+   "label": "Min Y",
+   "precision": "9"
+  },
+  {
+   "fieldname": "max_x",
+   "fieldtype": "Float",
+   "label": "Max X",
+   "precision": "9"
+  },
+  {
+   "fieldname": "max_y",
+   "fieldtype": "Float",
+   "label": "Max Y",
+   "precision": "9"
+  },
+  {
+   "description": "Bounds in EPSG:4326.",
+   "fieldname": "lon_min",
+   "fieldtype": "Float",
+   "label": "Lon Min",
+   "precision": "9"
+  },
+  {
+   "fieldname": "lat_min",
+   "fieldtype": "Float",
+   "label": "Lat Min",
+   "precision": "9"
+  },
+  {
+   "fieldname": "lon_max",
+   "fieldtype": "Float",
+   "label": "Lon Max",
+   "precision": "9"
+  },
+  {
+   "fieldname": "lat_max",
+   "fieldtype": "Float",
+   "label": "Lat Max",
+   "precision": "9"
+  },
+  {
+   "description": "NoData value as text (\"-9999\", \"255\", \"nan\"); empty when the raster declares none. Text because Float cannot store null or NaN.",
+   "fieldname": "nodata",
+   "fieldtype": "Data",
+   "label": "NoData"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "storage_section",
+   "fieldtype": "Section Break",
+   "label": "Storage Layout"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_tiled",
+   "fieldtype": "Check",
+   "label": "Tiled"
+  },
+  {
+   "description": "Internal block (tile or strip) width in pixels.",
+   "fieldname": "block_width",
+   "fieldtype": "Int",
+   "label": "Block Width"
+  },
+  {
+   "fieldname": "block_height",
+   "fieldtype": "Int",
+   "label": "Block Height"
+  },
+  {
+   "description": "Compression method (deflate, lzw, jpeg, ...); empty when uncompressed.",
+   "fieldname": "compression",
+   "fieldtype": "Data",
+   "label": "Compression"
+  },
+  {
+   "fieldname": "overview_count",
+   "fieldtype": "Int",
+   "label": "Overview Count"
+  },
+  {
+   "description": "Comma-separated overview decimation factors, e.g. 2,4,8,16.",
+   "fieldname": "overview_levels",
+   "fieldtype": "Data",
+   "label": "Overview Levels"
+  },
+  {
+   "default": "0",
+   "description": "Validated as a Cloud Optimized GeoTIFF.",
+   "fieldname": "is_cog",
+   "fieldtype": "Check",
+   "label": "COG"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "extraction_section",
+   "fieldtype": "Section Break",
+   "label": "Extraction"
+  },
+  {
+   "fieldname": "extracted_at",
+   "fieldtype": "Datetime",
+   "label": "Extracted At",
+   "read_only": 1
+  },
+  {
+   "description": "Why extraction failed; the other columns are empty when set.",
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "modified": "2026-09-24 00:10:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Raster Metadata",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -68,6 +68,22 @@ class TestTaskContext(FrappeTestCase):
         ctx = runner.task_context(frappe._dict(name="t2", processing_options=None))
         self.assertEqual(ctx["task"]["processing_options"], [])
         self.assertIsNone(ctx["task"]["epsg"])
+        self.assertEqual(ctx["task"]["raster_metadata"], {})
+
+    def test_context_carries_raster_metadata_minus_failed_rows(self):
+        from webodm_core.webodm_core.processing import raster_metadata as rm
+        from webodm_core.webodm_core.processing.test_raster_metadata import SERVICE_META
+
+        rows = [
+            frappe._dict(dataset="orthophoto", **rm.normalize(SERVICE_META)),
+            frappe._dict(dataset="dsm", error="not a readable raster"),
+        ]
+        ctx = runner.task_context(frappe._dict(name="t3", processing_options=None, raster_metadata=rows))
+        meta = ctx["task"]["raster_metadata"]
+        self.assertEqual(list(meta), ["orthophoto"])
+        self.assertEqual(meta["orthophoto"]["band_count"], 4)
+        self.assertEqual(meta["orthophoto"]["geotransform"], SERVICE_META["geotransform"])
+        json.dumps(ctx)  # must be serialisable into request.json
 
 
 class TestProgressPolling(FrappeTestCase):

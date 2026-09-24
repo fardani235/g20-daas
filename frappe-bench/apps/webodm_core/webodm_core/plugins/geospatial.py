@@ -90,6 +90,29 @@ def vector_to_geojson(path: str, output_path: str, timeout: int = 120) -> dict:
         raise GeospatialUnavailable(f"analysis service unreachable: {e}") from e
 
 
+def fetch_raster_metadata(path: str, timeout: int = 60) -> dict:
+    """Read a raster's normalized header metadata via ``GET /raster/metadata``.
+
+    ``GeospatialError`` means the service answered but could not read the file
+    (corrupt, unsupported, not a raster) — retrying will not help.
+    ``GeospatialUnavailable`` means the service itself was unreachable.
+    """
+    url = f"{geospatial_url().rstrip('/')}/raster/metadata"
+    try:
+        resp = requests.get(url, params={"path": path}, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            detail = e.response.text if e.response is not None else ""
+        raise GeospatialError(f"raster metadata read failed: {detail or e}") from e
+    except Exception as e:
+        raise GeospatialUnavailable(f"geospatial service unreachable: {e}") from e
+
+
 def validate_operation(op_id: str, params: dict, timeout: int = 30) -> dict:
     """Ask the analysis service to validate params/preconditions without running."""
     url = f"{geospatial_url().rstrip('/')}/analysis/{op_id}/validate"

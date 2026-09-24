@@ -14,8 +14,9 @@ storage. Point cloud endpoints are stubbed pending Phase 4.
 |---|---|---|---|
 | GET | `/health` | ✅ | Liveness check |
 | GET | `/tiles/info?path=` | ✅ | Bounds (EPSG:4326), zoom range, band stats |
+| GET | `/raster/metadata?path=` | ✅ | Normalized header metadata (size, bands, dtype, CRS, geotransform, bounds, nodata, tiling, compression, overviews, COG flag) |
 | GET | `/tiles/tile/{z}/{x}/{y}.png?path=&kind=` | ✅ | XYZ tile PNG; `kind` = `orthophoto`\|`dsm`\|`dtm` |
-| POST | `/export/cogify` | ✅ | Convert raster → COG (in place), return georef |
+| POST | `/export/cogify` | ✅ | Convert raster → COG (in place), return georef + `metadata` |
 | POST | `/export/raster` | 🚧 Stub | GeoTIFF/PNG/KMZ export |
 | POST | `/export/hillshade` | 🚧 Stub | Hillshade from DEM |
 | POST | `/export/colormap` | 🚧 Stub | Apply custom colormap |
@@ -38,7 +39,33 @@ Request: `{ "path": "/abs/path/raster.tif", "dst_path": null }`
 (`dst_path` optional; defaults to converting in place, idempotent if already a COG).
 
 Response: `path`, `is_cog`, `epsg`, `wkt`, `extent` (GeoJSON Polygon, EPSG:4326),
-`bounds_4326` `[minx,miny,maxx,maxy]`, `band_count`, `width`, `height`.
+`bounds_4326` `[minx,miny,maxx,maxy]`, `band_count`, `width`, `height`, and
+`metadata` — the `/raster/metadata` dict for the written COG (`null` if that
+read failed; the conversion itself still succeeded).
+
+### `/raster/metadata`
+
+Header-only read (`rasterio.open` + IFD fields, no pixel I/O), so it costs the
+same for a 50 GB orthophoto as for a fixture. Every key is always present;
+fields that do not apply are `null`:
+
+| Key | Meaning |
+|---|---|
+| `driver`, `file_size`, `width`, `height`, `band_count`, `dtype` | Format, bytes on disk, pixels, bands, NumPy dtype of band 1 |
+| `epsg`, `crs_wkt`, `crs_units` | CRS as EPSG code, or WKT when it has none; `metre`/`degree`/... |
+| `is_georeferenced` | CRS **and** a non-identity geotransform |
+| `geotransform` | GDAL order `[origin_x, pixel_w, rot_x, origin_y, rot_y, -pixel_h]` |
+| `pixel_size` | `[x, y]` in CRS units (positive) |
+| `bounds`, `bounds_4326`, `extent` | Native `[minx,miny,maxx,maxy]`; the same in EPSG:4326; GeoJSON Polygon |
+| `nodata` | Number, or the string `"nan"` (a NaN cannot travel through JSON), or `null` |
+| `block_width`, `block_height`, `is_tiled` | Internal tile/strip layout |
+| `compression`, `overviews`, `is_cog` | e.g. `deflate`; decimation factors `[2,4,8]`; rio-cogeo validation |
+| `color_interp` | Per band, e.g. `["red","green","blue","alpha"]`, `["gray"]`, `["palette"]` |
+
+Errors: 400 relative path, 404 missing file, 422 not a readable raster
+(corrupt, truncated header, unsupported format) with GDAL's reason in `detail`.
+A raster with a geotransform but no CRS is reported, not rejected
+(`is_georeferenced: false`, native `bounds` set, `bounds_4326: null`).
 
 ## Quick Start
 
@@ -78,11 +105,12 @@ app/
 ├── routers/
 │   ├── tiles.py         # /info, /tile/{z}/{x}/{y}.png  (rio-tiler)
 │   ├── export.py        # /cogify (implemented); raster/hillshade/... (stub)
+│   ├── raster.py        # /metadata (header-only raster metadata)
 │   └── pointcloud.py    # export, to-potree (stub)
 ├── models/
 │   └── task.py          # Pydantic request models
 └── utils/
-    ├── raster.py        # is_cog, to_cog, read_georef, tile_info, render_tile
+    ├── raster.py        # is_cog, to_cog, read_georef, read_metadata, tile_info, render_tile
     └── storage.py       # file path resolution
 
 Dockerfile

@@ -54,7 +54,10 @@ def _remove(path: str):
 
 
 def task_context(task) -> dict:
-    """Read-only facts about the task a user plugin may want (CRS, ODM options)."""
+    """Read-only facts about the task a user plugin may want (CRS, ODM options,
+    per-raster header metadata)."""
+    from webodm_core.webodm_core.processing import raster_metadata
+
     options = task.get("processing_options")
     for _ in range(3):
         if isinstance(options, str):
@@ -64,6 +67,13 @@ def task_context(task) -> dict:
                 break
         else:
             break
+    # Rows already loaded with the task; failed extractions (error set) are left
+    # out so a plugin can treat "present" as "trustworthy".
+    rasters = {
+        row.dataset: raster_metadata.to_public(row)
+        for row in (task.get("raster_metadata") or [])
+        if not row.get("error")
+    }
     return {
         "task": {
             "name": task.name,
@@ -72,6 +82,7 @@ def task_context(task) -> dict:
             "wkt": task.get("wkt"),
             "resolution": task.get("resolution"),
             "processing_options": options if isinstance(options, (list, dict)) else [],
+            "raster_metadata": rasters,
         }
     }
 
