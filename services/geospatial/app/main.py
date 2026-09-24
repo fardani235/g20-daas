@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import tiles, export, pointcloud, volume, analysis
+from app.routers import tiles, export, pointcloud, volume, analysis, raster
 
 app = FastAPI(
     title="G20 Tech Geospatial Service",
@@ -19,6 +19,7 @@ app.add_middleware(
 
 app.include_router(tiles.router, prefix="/tiles", tags=["tiles"])
 app.include_router(export.router, prefix="/export", tags=["export"])
+app.include_router(raster.router, prefix="/raster", tags=["raster"])
 app.include_router(pointcloud.router, prefix="/pointcloud", tags=["pointcloud"])
 app.include_router(volume.router, prefix="/volume", tags=["volume"])
 app.include_router(analysis.router, prefix="/analysis", tags=["analysis"])

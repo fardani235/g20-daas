@@ -1,0 +1,338 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-24 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "dataset",
+  "file_url",
+  "status",
+  "error",
+  "extracted_at",
+  "raster_section",
+  "driver",
+  "width",
+  "height",
+  "band_count",
+  "dtype",
+  "color_interpretation",
+  "has_colormap",
+  "nodata",
+  "has_nodata",
+  "file_size",
+  "software",
+  "georef_section",
+  "georeference",
+  "epsg",
+  "crs_wkt",
+  "crs_units",
+  "pixel_size_x",
+  "pixel_size_y",
+  "geotransform",
+  "min_x",
+  "min_y",
+  "max_x",
+  "max_y",
+  "west",
+  "south",
+  "east",
+  "north",
+  "layout_section",
+  "is_tiled",
+  "block_width",
+  "block_height",
+  "compression",
+  "interleave",
+  "overview_count",
+  "overview_levels",
+  "is_cog"
+ ],
+ "fields": [
+  {
+   "fieldname": "dataset",
+   "fieldtype": "Select",
+   "label": "Dataset",
+   "options": "orthophoto\ndsm\ndtm",
+   "in_list_view": 1,
+   "reqd": 1,
+   "description": "Which task output this row describes."
+  },
+  {
+   "fieldname": "file_url",
+   "fieldtype": "Data",
+   "label": "File URL",
+   "read_only": 1,
+   "description": "The raster file these values were read from; a mismatch with the task field means the row is stale."
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Extracted\nFailed",
+   "in_list_view": 1,
+   "default": "Extracted",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "extracted_at",
+   "fieldtype": "Datetime",
+   "label": "Extracted At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "raster_section",
+   "fieldtype": "Section Break",
+   "label": "Raster"
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Data",
+   "label": "Driver",
+   "read_only": 1,
+   "description": "GDAL driver short name, e.g. GTiff."
+  },
+  {
+   "fieldname": "width",
+   "fieldtype": "Int",
+   "label": "Width (px)",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "height",
+   "fieldtype": "Int",
+   "label": "Height (px)",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "band_count",
+   "fieldtype": "Int",
+   "label": "Bands",
+   "read_only": 1
+  },
+  {
+   "fieldname": "dtype",
+   "fieldtype": "Data",
+   "label": "Data Type",
+   "read_only": 1,
+   "description": "Pixel data type of band 1 (uint8, float32, ...)."
+  },
+  {
+   "fieldname": "color_interpretation",
+   "fieldtype": "Data",
+   "label": "Color Interpretation",
+   "read_only": 1,
+   "description": "Comma-separated per band: red,green,blue,alpha / gray / palette."
+  },
+  {
+   "fieldname": "has_colormap",
+   "fieldtype": "Check",
+   "label": "Has Colormap",
+   "read_only": 1
+  },
+  {
+   "fieldname": "nodata",
+   "fieldtype": "Data",
+   "label": "NoData",
+   "read_only": 1,
+   "description": "Dataset nodata as text so None and NaN are representable; see Has NoData."
+  },
+  {
+   "fieldname": "has_nodata",
+   "fieldtype": "Check",
+   "label": "Has NoData",
+   "read_only": 1
+  },
+  {
+   "fieldname": "file_size",
+   "fieldtype": "Long Int",
+   "label": "File Size (bytes)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "software",
+   "fieldtype": "Data",
+   "label": "Software",
+   "read_only": 1,
+   "description": "TIFFTAG_SOFTWARE, e.g. ODM 3.5.6."
+  },
+  {
+   "fieldname": "georef_section",
+   "fieldtype": "Section Break",
+   "label": "Georeferencing"
+  },
+  {
+   "fieldname": "georeference",
+   "fieldtype": "Select",
+   "label": "Georeference",
+   "options": "full\nno_crs\nno_transform\nnone",
+   "read_only": 1,
+   "description": "full: CRS + transform; no_crs: transform only; no_transform: CRS only; none.",
+   "default": "none"
+  },
+  {
+   "fieldname": "epsg",
+   "fieldtype": "Int",
+   "label": "EPSG",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "crs_wkt",
+   "fieldtype": "Long Text",
+   "label": "CRS WKT",
+   "read_only": 1,
+   "description": "Only stored when no EPSG code identifies the CRS."
+  },
+  {
+   "fieldname": "crs_units",
+   "fieldtype": "Data",
+   "label": "CRS Units",
+   "read_only": 1,
+   "description": "metre, degree, US survey foot, ..."
+  },
+  {
+   "fieldname": "pixel_size_x",
+   "fieldtype": "Float",
+   "label": "Pixel Size X",
+   "read_only": 1,
+   "description": "In CRS units."
+  },
+  {
+   "fieldname": "pixel_size_y",
+   "fieldtype": "Float",
+   "label": "Pixel Size Y",
+   "read_only": 1
+  },
+  {
+   "fieldname": "geotransform",
+   "fieldtype": "Code",
+   "label": "GeoTransform",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "Six numbers in GDAL order [x0, xres, xrot, y0, yrot, -yres], full precision."
+  },
+  {
+   "fieldname": "min_x",
+   "fieldtype": "Float",
+   "label": "Min X",
+   "read_only": 1,
+   "description": "Native bounds in the raster CRS."
+  },
+  {
+   "fieldname": "min_y",
+   "fieldtype": "Float",
+   "label": "Min Y",
+   "read_only": 1
+  },
+  {
+   "fieldname": "max_x",
+   "fieldtype": "Float",
+   "label": "Max X",
+   "read_only": 1
+  },
+  {
+   "fieldname": "max_y",
+   "fieldtype": "Float",
+   "label": "Max Y",
+   "read_only": 1
+  },
+  {
+   "fieldname": "west",
+   "fieldtype": "Float",
+   "label": "West (lon)",
+   "read_only": 1,
+   "description": "Bounds in EPSG:4326; only meaningful when Georeference is full."
+  },
+  {
+   "fieldname": "south",
+   "fieldtype": "Float",
+   "label": "South (lat)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "east",
+   "fieldtype": "Float",
+   "label": "East (lon)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "north",
+   "fieldtype": "Float",
+   "label": "North (lat)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "layout_section",
+   "fieldtype": "Section Break",
+   "label": "Layout"
+  },
+  {
+   "fieldname": "is_tiled",
+   "fieldtype": "Check",
+   "label": "Tiled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "block_width",
+   "fieldtype": "Int",
+   "label": "Block Width",
+   "read_only": 1
+  },
+  {
+   "fieldname": "block_height",
+   "fieldtype": "Int",
+   "label": "Block Height",
+   "read_only": 1
+  },
+  {
+   "fieldname": "compression",
+   "fieldtype": "Data",
+   "label": "Compression",
+   "read_only": 1
+  },
+  {
+   "fieldname": "interleave",
+   "fieldtype": "Data",
+   "label": "Interleave",
+   "read_only": 1
+  },
+  {
+   "fieldname": "overview_count",
+   "fieldtype": "Int",
+   "label": "Overview Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "overview_levels",
+   "fieldtype": "Data",
+   "label": "Overview Levels",
+   "read_only": 1,
+   "description": "Comma-separated decimation factors, e.g. 2,4,8,16."
+  },
+  {
+   "fieldname": "is_cog",
+   "fieldtype": "Check",
+   "label": "Cloud Optimized",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "modified": "2026-09-24 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Raster Metadata",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

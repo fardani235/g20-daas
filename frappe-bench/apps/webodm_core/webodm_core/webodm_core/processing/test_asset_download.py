@@ -95,10 +95,24 @@ class TestDownloadAssets(FrappeTestCase):
             "odm_texturing/odm_textured_model_geo.glb": glb,
             "odm_report/report.pdf": b"%PDF ignored",
         })
-        georef = {"extent": {"type": "Polygon", "coordinates": []}, "epsg": 32633, "wkt": "PROJCS[...]"}
+        metadata = {
+            "driver": "GTiff", "width": 4000, "height": 3000, "band_count": 4, "dtype": "uint8",
+            "crs": {"epsg": 32633, "wkt": "PROJCS[...]", "units": "metre"}, "georeference": "full",
+            "geotransform": [500000.0, 0.05, 0.0, 4500000.0, 0.0, -0.05], "pixel_size": [0.05, 0.05],
+            "bounds": [500000.0, 4499850.0, 500200.0, 4500000.0],
+            "bounds_4326": [15.0, 40.6, 15.01, 40.61], "nodata": None,
+            "color_interpretation": ["red", "green", "blue", "alpha"], "is_tiled": True,
+            "block_size": [256, 256], "compression": "deflate", "interleave": "pixel",
+            "overviews": [2, 4, 8], "is_cog": True, "file_size": len(ortho), "software": "ODM 3.5.6",
+        }
+        georef = {"extent": {"type": "Polygon", "coordinates": []}, "epsg": 32633, "wkt": "PROJCS[...]",
+                  "metadata": metadata}
 
-        with patch.object(task_runner, "_cogify_raster", return_value=georef) as cog:
+        with patch.object(task_runner, "_cogify_raster", return_value=georef) as cog, \
+             patch.object(task_runner.raster_metadata.geospatial, "raster_metadata") as meta_svc:
             task_runner._download_assets(_FakeClient(z), "U-DL", self.task)
+        # Metadata came with the cogify response: no second round trip.
+        meta_svc.assert_not_called()
 
         t = frappe.get_doc("WebODM Task", self.task.name)
         self.assertEqual(t.status, "Completed")
@@ -114,11 +128,37 @@ class TestDownloadAssets(FrappeTestCase):
         self.assertTrue(t.orthophoto_extent)
         self.assertTrue(t.dsm_extent)
         self.assertFalse(t.dtm_extent)
+        # One normalized metadata row per raster present, none for laz/glb.
+        rows = {r.dataset: r for r in t.raster_metadata}
+        self.assertEqual(set(rows), {"orthophoto", "dsm"})
+        self.assertEqual(rows["orthophoto"].status, "Extracted")
+        self.assertEqual((rows["orthophoto"].width, rows["orthophoto"].height), (4000, 3000))
+        self.assertEqual(rows["orthophoto"].epsg, 32633)
+        self.assertEqual(rows["orthophoto"].file_url, t.orthophoto)
+        self.assertEqual(rows["dsm"].file_url, t.dsm)
+        self.assertEqual(rows["orthophoto"].overview_levels, "2,4,8")
+        # Orthophoto GSD (0.05 m) -> task resolution 5 cm/px
+        self.assertAlmostEqual(float(t.resolution), 5.0, places=2)
         # File docs carry real sizes/hashes and are attached to the task
         ortho_file = frappe.get_doc("File", {"file_url": t.orthophoto})
         self.assertEqual(ortho_file.file_size, len(ortho))
         self.assertEqual(ortho_file.attached_to_name, self.task.name)
         self.assertEqual(self._scratch_entries(), [], "scratch dir must be removed")
+
+    def test_geospatial_down_still_completes_and_records_failed_metadata(self):
+        from webodm_core.plugins.geospatial import GeospatialUnavailable
+        z = _zip({"odm_orthophoto/odm_orthophoto.tif": b"II*\x00ortho"})
+        with patch.object(task_runner, "_cogify_raster", return_value=None), \
+             patch.object(task_runner.raster_metadata.geospatial, "raster_metadata",
+                          side_effect=GeospatialUnavailable("connection refused")) as meta_svc, \
+             patch("frappe.log_error"):
+            task_runner._download_assets(_FakeClient(z), "U-DL", self.task)
+        t = frappe.get_doc("WebODM Task", self.task.name)
+        self.assertEqual(t.status, "Completed", "metadata failure must never fail the task")
+        meta_svc.assert_called_once()  # cogify carried nothing -> separate fetch attempted
+        self.assertEqual(len(t.raster_metadata), 1)
+        self.assertEqual(t.raster_metadata[0].status, "Failed")
+        self.assertIn("connection refused", t.raster_metadata[0].error)
 
     def test_gltf_fallback_bundles_texturing_dir_when_no_glb(self):
         z = _zip({
@@ -127,7 +167,8 @@ class TestDownloadAssets(FrappeTestCase):
             "odm_texturing/odm_textured_model_geo.mtl": b"newmtl x",
             "odm_texturing/tex.png": b"\x89PNG",
         })
-        with patch.object(task_runner, "_cogify_raster", return_value=None):
+        with patch.object(task_runner, "_cogify_raster", return_value=None), \
+             patch.object(task_runner.raster_metadata, "capture"):
             task_runner._download_assets(_FakeClient(z), "U-DL", self.task)
 
         t = frappe.get_doc("WebODM Task", self.task.name)
@@ -156,7 +197,8 @@ class TestDownloadAssets(FrappeTestCase):
 
     def test_zip_without_known_assets_is_failed(self):
         z = _zip({"odm_report/report.pdf": b"%PDF"})
-        with patch.object(task_runner, "_cogify_raster", return_value=None):
+        with patch.object(task_runner, "_cogify_raster", return_value=None), \
+             patch.object(task_runner.raster_metadata, "capture"):
             task_runner._download_assets(_FakeClient(z), "U-DL", self.task)
         self.assertEqual(frappe.get_doc("WebODM Task", self.task.name).status, "Failed")
         self.assertEqual(self._scratch_entries(), [])

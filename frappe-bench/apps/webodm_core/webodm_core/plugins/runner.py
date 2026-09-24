@@ -22,6 +22,7 @@ from webodm_core.plugins.files import abs_path_for_file_url as _abs_path_for_fil
 from webodm_core.plugins.files import save_private_file_from_path
 from webodm_core.plugins.geospatial import GeospatialError, run_operation
 from webodm_core.plugins.sandbox import run_user_plugin
+from webodm_core.webodm_core.processing import raster_metadata
 
 # Task fields that can supply an operation input.
 DATASET_FIELDS = ("orthophoto", "dsm", "dtm", "point_cloud", "model")
@@ -64,6 +65,10 @@ def task_context(task) -> dict:
                 break
         else:
             break
+    try:
+        rasters = raster_metadata.rows_for_task(task)
+    except Exception:
+        rasters = {}
     return {
         "task": {
             "name": task.name,
@@ -72,6 +77,10 @@ def task_context(task) -> dict:
             "wkt": task.get("wkt"),
             "resolution": task.get("resolution"),
             "processing_options": options if isinstance(options, (list, dict)) else [],
+            # Normalized header metadata per raster the task has (orthophoto /
+            # dsm / dtm): size, bands, dtype, CRS, pixel size, bounds, nodata,
+            # tiling, overviews. Same shape as api.task.get_raster_metadata.
+            "rasters": rasters,
         }
     }
 
