@@ -525,3 +525,13 @@ All DocTypes live in `webodm_core`:
   Rows also ride along in `get_task_progress` (`task.as_dict()`). Plugins get the same dicts as
   `context.task.rasters` (`runner.task_context`); documented in `docs/plugins/user-plugin-guide.md`.
   Spec: `openspec/specs/raster-metadata/spec.md`.
+- Frontend: `lib/rasterMetadata.js` — `getRasterMetadata(task, {dataset, refresh})` + pure helpers
+  (`summarize`, `detailRows`, `formatPixelSize` (cm/px for metric CRS), `formatBytes`, `crsLabel`,
+  `gsdMetres`, `maxNativeZoomFor` = smallest web-mercator zoom whose pixels are ≤ the GSD at the
+  raster's latitude). MapView: one-line ortho summary on the selected task card, ⓘ per raster layer
+  in the Layers panel (details `<dl>` + *Retry extraction* for Failed rows), and `maxNativeZoom` of
+  each tile layer set from the GSD once metadata arrives (was hard-coded 22). Console: collapsible
+  *Raster metadata* card grid (`[data-raster]`), header *Resolution* falls back to the ortho GSD;
+  refetches when a polled task turns Completed. Tests: `lib/rasterMetadata.test.js`,
+  `pages/Console.rasterMetadata.test.js` (mounts the page with `vue-router` mocked).
+
