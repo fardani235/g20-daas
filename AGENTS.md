@@ -615,6 +615,12 @@ All DocTypes live in `webodm_core`:
   clears output fields/extents/CRS (`epsg` → 0: Int columns are NOT NULL), asset + metadata rows,
   old output `File`s, and the `raw/` + `assets/` prefixes — never `inputs/`. Object deletion is
   best-effort. Tests: `TestReprocessing` in `test_asset_relay.py`.
+- Node tokens are **derived, not stored**: `compute.node_token(name)` = HMAC-SHA256 over
+  `webodm-node-token:<site>:<instance name>` with env-only `WEBODM_NODE_TOKEN_SECRET` (≥32 chars,
+  Docker secret `node_token_secret`, Frappe services only). The `token` Password field was removed
+  from `WebODM Compute Instance` (a Password field is still a DB credential decryptable with the
+  site `encryption_key`). `request_for_task` preflights the secret before inserting anything;
+  poll/cancel/console/readiness recompute the token. Rotating the secret orphans live nodes' tokens.
 - Test-env gotcha: a sibling worktree session may share `/tmp` helper scripts and `oaktest-*`
   docker resources; use worktree-specific names (`oak-*`, `/tmp/oak-frappe-test.sh`).
 - Tests: provisioner 26, geospatial 152 (13 new), frontend 201, webodm_core 364 (`storage/test_storage`,

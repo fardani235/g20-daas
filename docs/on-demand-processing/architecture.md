@@ -64,8 +64,14 @@ untouched.
 | `GET` | `/instances` | every managed instance (for the orphan sweep) |
 
 The service is stateless: every answer comes from the provider API plus a
-probe. The app generates the node token, passes it in `create`, stores it
-(Password field) and uses it for the probe header and for talking to the node.
+probe. The app derives the node token from the new record's name
+(`compute.node_token`, HMAC-SHA256 under the env-only
+`WEBODM_NODE_TOKEN_SECRET`), passes it in `create`, and recomputes it whenever
+it probes or talks to the node. It is stored nowhere on our side: not in the
+`WebODM Compute Instance` record, not in site config. The only copy at rest is
+the node's own user-data (readable by the provisioning identity via
+`DescribeInstanceAttribute` and by the node via IMDS), which dies with the
+instance.
 
 ### 2.3 App side (`webodm_core.webodm_core.processing.compute`)
 
@@ -241,13 +247,16 @@ the previous behaviour.
 | Storage writer | Frappe | get/put/delete under `orgs/*` |
 | Raster converter | geospatial | get `raw/`, `assets/`, `plugin-runs/`; put `assets/*.tif` |
 | Signer (optional) | — | get `assets/*` for presigned URLs; unused by shipped code |
-| Node token | app ↔ node | per run, baked at boot, Password field |
+| Node token | app ↔ node | per run, **derived** (`compute.node_token`: HMAC of the instance name under `WEBODM_NODE_TOKEN_SECRET`), baked into the node at boot, never stored — the DB holds only the instance name |
 | Provisioner API token | app ↔ provisioner | env-only shared secret |
 
 Credentials live in Docker secrets → container env. `configure_site.py`
 writes only non-secret values to site config; botocore exceptions are
 translated before they can be logged (`StorageError` messages carry an error
-code, never a request or key). The provisioner is on the `backend` network
+code, never a request or key). No credential lives in the database: node
+tokens are derived on demand, and the static `WebODM Processing Node.token`
+(Frappe Password field, encrypted with the site `encryption_key`) is the one
+pre-existing exception, kept for the fallback registry and out of scope here. The provisioner is on the `backend` network
 only; nodes accept traffic from the app host's egress address only. Org
 isolation: DocType permission hooks for compute records, key-prefix checks
 for storage, both enforced in code and covered by tests.

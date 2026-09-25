@@ -442,8 +442,11 @@ class TestBackfill(_Base):
             self.assertGreaterEqual(stats["assets"], 1)
             t = frappe.get_doc("WebODM Task", self.task.name)
             p = self._prefix()
-            self.assertEqual(t.images[0].storage_key, p + "inputs/DJI_0009.JPG")
-            self.assertEqual(store.objects[p + "inputs/DJI_0009.JPG"], b"\xff\xd8legacy")
+            # The key follows the unique on-disk name (Frappe suffixes a colliding
+            # upload name), so match on prefix and original filename.
+            key = t.images[0].storage_key
+            self.assertTrue(key.startswith(p + "inputs/") and key.endswith("DJI_0009.JPG"), key)
+            self.assertEqual(store.objects[key], b"\xff\xd8legacy")
             row = {r.kind: r for r in t.assets}["orthophoto"]
             self.assertEqual(row.storage_key, p + "assets/orthophoto.tif")
             self.assertEqual(store.objects[row.storage_key], b"II*\x00legacy")

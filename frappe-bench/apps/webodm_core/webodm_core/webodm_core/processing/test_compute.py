@@ -69,6 +69,76 @@ class TestInstanceClass(unittest.TestCase):
             self.assertEqual(compute.instance_class_for({}, available={"small": {}}, default="small"), "small")
 
 
+class TestNodeToken(unittest.TestCase):
+    """Node tokens are derived, never stored: the DB holds only the instance name."""
+
+    def test_deterministic_and_name_bound(self):
+        with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "k" * 40}), \
+                patch.object(frappe.local, "site", "webodm.local", create=True):
+            a = compute.node_token("CI-1")
+            self.assertEqual(a, compute.node_token("CI-1"))
+            self.assertNotEqual(a, compute.node_token("CI-2"))
+            self.assertGreaterEqual(len(a), 40)
+            self.assertNotIn("=", a)
+            self.assertRegex(a, r"^[A-Za-z0-9_-]+$")  # URL-safe: goes into user-data and a header
+        with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "other" * 8}), \
+                patch.object(frappe.local, "site", "webodm.local", create=True):
+            self.assertNotEqual(a, compute.node_token("CI-1"))  # secret rotation invalidates
+        with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "k" * 40}), \
+                patch.object(frappe.local, "site", "other.site", create=True):
+            self.assertNotEqual(a, compute.node_token("CI-1"))  # site-bound
+
+    def test_missing_or_weak_secret_refuses(self):
+        for value in ("", "short"):
+            with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: value}), \
+                    self.assertRaises(compute.ProvisionerError):
+                compute.node_token("CI-1")
+
+    def test_request_never_writes_a_token_and_fails_before_creating_without_secret(self):
+        task = _task(images=[])
+        client = MagicMock()
+        client.provider.return_value = {"enabled": True, "provider": "aws", "classes": {"cpu": {}}, "default_class": "cpu"}
+        client.create.return_value = {"handle": "aws:i-1", "provider": "aws", "instance_class": "cpu", "hourly_cost": 0.3}
+        inserted = {}
+
+        def get_doc(d):
+            inst = _task(name="CI-NEW", **{k: v for k, v in d.items() if k != "doctype"})
+            inserted.update(d)
+            inst.insert = MagicMock()
+            return inst
+
+        common = dict(check_capacity=patch.object(compute, "check_capacity"),
+                      client=patch.object(compute, "ProvisionerClient", return_value=client),
+                      get_doc=patch("frappe.get_doc", side_effect=get_doc),
+                      commit=patch("frappe.db.commit"), conf=patch("frappe.conf", {}))
+        with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "k" * 40}), \
+                patch.object(frappe.local, "site", "webodm.local", create=True), \
+                common["check_capacity"], common["client"], common["get_doc"], common["commit"], common["conf"]:
+            name = compute.request_for_task(task)
+            expected = compute.node_token("CI-NEW")
+        self.assertEqual(name, "CI-NEW")
+        self.assertNotIn("token", inserted)
+        # the provisioner got the token derived from the record's name, nothing else stores it
+        self.assertEqual(client.create.call_args.args[1], expected)
+
+        client.create.reset_mock()
+        with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: ""}), \
+                common["check_capacity"], common["client"], common["get_doc"], common["commit"], common["conf"], \
+                self.assertRaises(compute.ProvisionerError):
+            compute.request_for_task(task)
+        client.create.assert_not_called()
+
+    def test_node_for_instance_derives_token(self):
+        inst = frappe._dict(name="CI-1", status="Ready", hostname="1.2.3.4", port=3000)
+        with patch("frappe.db.get_value", return_value=inst), \
+                patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "k" * 40}), \
+                patch.object(frappe.local, "site", "webodm.local", create=True):
+            node = compute.node_for_instance("CI-1")
+            expected = compute.node_token("CI-1")
+        self.assertEqual(node["token"], expected)
+        self.assertEqual(node["hostname"], "1.2.3.4")
+
+
 class TestCapacity(unittest.TestCase):
     def test_caps(self):
         with patch("frappe.conf", {"compute_max_instances": 3, "compute_max_instances_per_org": 1}), \
@@ -132,6 +202,7 @@ class TestAcquireNode(unittest.TestCase):
 
     def setUp(self):
         patch("frappe.log_error").start()
+        patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "s" * 40}).start()
         self.addCleanup(patch.stopall)
 
     def test_no_provisioner_uses_static_node(self):
@@ -295,15 +366,15 @@ class TestProcessTaskWithCompute(unittest.TestCase):
 class TestCheckProvisioning(unittest.TestCase):
     def setUp(self):
         patch("frappe.log_error").start()
+        patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "s" * 40}).start()
         self.addCleanup(patch.stopall)
         self.task = _task(status="Provisioning", compute_instance="CI-1")
 
     def _inst(self, **kw):
         inst = _task(name="CI-1", status=kw.pop("status", "Provisioning"), handle=kw.pop("handle", "aws:i-1"),
                      requested_at=kw.pop("requested_at", now_datetime()), creation=now_datetime(),
-                     token="tok", last_error=None, ready_at=None, terminated_at=None, estimated_hourly_cost=0.5,
+                     last_error=None, ready_at=None, terminated_at=None, estimated_hourly_cost=0.5,
                      destroy_attempts=0, expires_at=None, max_lifetime_seconds=3600, task="T-1")
-        inst.get_password = MagicMock(return_value="tok")
         for k, v in kw.items():
             setattr(inst, k, v)
         return inst
@@ -330,7 +401,7 @@ class TestCheckProvisioning(unittest.TestCase):
         self.assertEqual(inst.writes["status"], "Ready")
         self.assertEqual(inst.writes["hostname"], "203.0.113.9")
         self.assertEqual(inst.writes["port"], 3000)
-        client.describe.assert_called_once_with("aws:i-1", token="tok")
+        client.describe.assert_called_once_with("aws:i-1", token=compute.node_token("CI-1"))
         enq.assert_called_once_with("T-1")
         self.assertEqual(self.task.writes, {})  # process_task flips it to Running
 

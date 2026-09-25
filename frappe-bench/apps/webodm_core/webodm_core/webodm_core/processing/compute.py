@@ -34,8 +34,10 @@ Credentials live in the provisioner only.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import os
-import secrets
 
 import frappe
 import requests
@@ -66,6 +68,34 @@ class ProvisionerUnavailable(ProvisionerError):
 
 class CapacityExceeded(Exception):
     """A concurrency cap is reached; the task should wait, not fail."""
+
+
+# -- node tokens ----------------------------------------------------------------
+
+NODE_TOKEN_SECRET_ENV = "WEBODM_NODE_TOKEN_SECRET"
+
+
+def node_token(instance_name: str) -> str:
+    """The per-run NodeODM bearer token for ``instance_name`` — derived, never stored.
+
+    ``HMAC-SHA256(secret, "webodm-node-token:<site>:<instance name>")``, URL-safe
+    base64 (43 chars). The secret comes from the process environment only
+    (``WEBODM_NODE_TOKEN_SECRET``, a Docker secret); the database holds just
+    the instance name, so a database read — even together with site config —
+    yields no node credential. Anything that needs to talk to a node (dispatch,
+    poll, cancel, console, the readiness probe) recomputes the token on the
+    spot. Rotating the secret invalidates the tokens of live nodes: do it when
+    no instance is Ready (runbook §8).
+    """
+    secret = os.environ.get(NODE_TOKEN_SECRET_ENV, "")
+    if len(secret) < 32:
+        raise ProvisionerError(
+            f"{NODE_TOKEN_SECRET_ENV} is not set (or shorter than 32 characters); "
+            "on-demand nodes cannot be provisioned without it"
+        )
+    msg = f"webodm-node-token:{frappe.local.site}:{instance_name}".encode()
+    digest = hmac.new(secret.encode(), msg, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
 
 # -- config -------------------------------------------------------------------
@@ -263,10 +293,8 @@ def node_for_instance(instance_name: str) -> dict | None:
     )
     if not inst or not inst.hostname or inst.status not in ("Ready", "Terminating"):
         return None
-    doc = frappe.get_doc("WebODM Compute Instance", instance_name)
-    token = doc.get_password("token", raise_exception=False) if doc.token else None
-    return {"name": inst.name, "hostname": inst.hostname, "port": inst.port, "token": token,
-            "compute_instance": inst.name}
+    return {"name": inst.name, "hostname": inst.hostname, "port": inst.port,
+            "token": node_token(inst.name), "compute_instance": inst.name}
 
 
 def request_for_task(task) -> str:
@@ -289,7 +317,9 @@ def request_for_task(task) -> str:
         task.processing_options, len(task.images or []), available=classes or None, default=default_class,
     )
     lifetime = min(max_lifetime(), cint(info.get("max_lifetime_seconds") or 0) or max_lifetime())
-    token = secrets.token_urlsafe(32)
+    # Fail before creating anything if the token secret is missing: the node
+    # would boot with a token nobody can reproduce.
+    node_token("preflight")
 
     inst = frappe.get_doc({
         "doctype": "WebODM Compute Instance",
@@ -297,7 +327,6 @@ def request_for_task(task) -> str:
         "organization": task.organization,
         "status": "Requested",
         "instance_class": instance_class,
-        "token": token,
         "requested_at": now_datetime(),
         "max_lifetime_seconds": lifetime,
         "expires_at": add_to_date(now_datetime(), seconds=lifetime),
@@ -306,6 +335,9 @@ def request_for_task(task) -> str:
     inst.insert(ignore_permissions=True)
     frappe.db.commit()  # the record must survive even if the create call below dies
 
+    # The token is a function of the record's name; it is baked into the node
+    # at boot and never written anywhere on our side.
+    token = node_token(inst.name)
     try:
         created = client.create(
             instance_class, token,
@@ -371,8 +403,7 @@ def check_provisioning(task_name: str):
         return
 
     try:
-        token = inst.get_password("token", raise_exception=False) if inst.token else None
-        state = ProvisionerClient().describe(inst.handle, token=token)
+        state = ProvisionerClient().describe(inst.handle, token=node_token(inst.name))
     except ProvisionerUnavailable as e:
         inst.db_set({"last_error": str(e)[:1000]})
         return  # try again next sweep; the timeout above bounds this

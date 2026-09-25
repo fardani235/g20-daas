@@ -78,11 +78,24 @@ self-destruct at lifetime budget + 10 min, someone terminated it).
 budget hit (`compute instance exceeded its … lifetime budget`), raise
 `WEBODM_COMPUTE_MAX_LIFETIME_SECONDS`. Press Start to retry.
 
-### Console empty during Running on a cloud node
+### Console empty during Running on a cloud node; polls fail with 401 after a secret change
 
-*Cause:* the console proxies to the task's node; `401` means the recorded
-token does not match the node (the token is baked in at boot from the create
-call). Only happens if the record was edited. Not fatal — processing continues.
+*Cause:* the console and poller derive the node's token from
+`WEBODM_NODE_TOKEN_SECRET` + the instance name; the node has the token baked
+in from boot. A mismatch means the secret was rotated (or differs between
+`frappe-web`/`frappe-worker`) while the node was live. The poll budget then
+fails the task and the sweep destroys the node.
+
+*Do:* keep the same secret file on all three Frappe services; rotate only with
+no live instances (runbook §8). Restart the task afterwards.
+
+### Tasks fall back to the static node with *WEBODM_NODE_TOKEN_SECRET is not set*
+
+*Cause:* the provisioner is configured but the token secret is missing or
+shorter than 32 characters. Provisioning refuses before creating anything.
+
+*Do:* `scripts/init-secrets.sh` generates `secrets/node_token_secret.txt`;
+recreate `frappe-web`, `frappe-worker`, `frappe-scheduler`.
 
 ### Instance stuck in Terminating; Error Log `WebODM Compute ALERT: destroy attempt N failed`
 

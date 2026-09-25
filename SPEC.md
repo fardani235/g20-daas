@@ -177,7 +177,8 @@ Organization-scoped.
 - provider: Data               (aws, fixed ... informational)
 - handle: Data                 (opaque provisioner handle, e.g. aws:i-0abc)
 - instance_class: Data         (cpu, cpu-large ... chosen from processing options)
-- hostname: Data, port: Int, token: Password   (NodeODM endpoint + per-run bearer token)
+- hostname: Data, port: Int    (NodeODM endpoint; the per-run bearer token is derived from
+                                WEBODM_NODE_TOKEN_SECRET + record name, never stored)
 - requested_at, ready_at, terminated_at: Datetime
 - max_lifetime_seconds: Int, expires_at: Datetime   (hard budget)
 - destroy_attempts: Int, last_error: Small Text

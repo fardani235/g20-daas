@@ -120,6 +120,11 @@ SHALL require a per-run bearer token; the provisioner SHALL be reachable only
 inside the stack; no credential SHALL appear in site config, the database,
 logs, error messages or the frontend.
 
+#### Scenario: Node token not persisted
+
+- **WHEN** an instance is requested
+- **THEN** its per-run bearer token is derived from an environment-only secret and the record name, and no token value is written to the compute instance record or site config
+
 #### Scenario: Error mapping
 
 - **WHEN** a provider or storage call fails

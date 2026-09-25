@@ -5,7 +5,8 @@ cd "$(dirname "$0")/.."
 mkdir -p secrets
 umask 077
 
-for name in db_password admin_password redis_cache_password redis_queue_password frappe_admin_password provisioner_api_token; do
+for name in db_password admin_password redis_cache_password redis_queue_password frappe_admin_password \
+            provisioner_api_token node_token_secret; do
   path="secrets/${name}.txt"
   if [ -f "$path" ]; then
     echo "OK: $path already exists (skipping)"

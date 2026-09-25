@@ -223,7 +223,13 @@ volume is, and the app treats stopped as gone. `terminate` only.
   container needs recreating.
 * **Provisioner API token**: regenerate `secrets/provisioner_api_token.txt`,
   recreate `provisioner` and the three Frappe services together.
-* **Node tokens** are per run and die with the node.
+* **Node token secret** (`secrets/node_token_secret.txt`): every live node's
+  token is derived from it, so rotating it while instances are Ready makes the
+  app unable to talk to them — polls fail as transport errors and the tasks
+  end Failed after the poll budget, the sweep destroys the nodes. Rotate when
+  `WebODM Compute Instance` has nothing in Requested/Provisioning/Ready (drain
+  by emptying `PROVISIONER_URL` first), then recreate the three Frappe
+  services. Node tokens themselves are per run and die with the node.
 
 ## 9. Upgrading NodeODM on the nodes
 

@@ -281,7 +281,9 @@ WEBODM_COMPUTE_MAX_LIFETIME_SECONDS=43200
 ```
 
 `scripts/init-secrets.sh` already generated `secrets/provisioner_api_token.txt`
-(the shared secret the app presents to the provisioner). Then:
+(the shared secret the app presents to the provisioner) and
+`secrets/node_token_secret.txt` (the HMAC key node tokens are derived from —
+no node credential is ever stored in the database). Then:
 
 ```bash
 docker compose build provisioner       # until CI publishes the image

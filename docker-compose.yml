@@ -50,6 +50,9 @@ x-frappe-env-base: &frappe-env-base
   # node per task; the provisioner's own env decides the provider (AWS).
   PROVISIONER_URL: ${PROVISIONER_URL:-}
   PROVISIONER_API_TOKEN_FILE: /run/secrets/provisioner_api_token
+  # Per-run NodeODM bearer tokens are HMAC-derived from this secret and the
+  # instance record name, so no node credential is ever stored in the DB.
+  WEBODM_NODE_TOKEN_SECRET_FILE: /run/secrets/node_token_secret
   WEBODM_COMPUTE_MAX_INSTANCES: ${WEBODM_COMPUTE_MAX_INSTANCES:-5}
   WEBODM_COMPUTE_MAX_INSTANCES_PER_ORG: ${WEBODM_COMPUTE_MAX_INSTANCES_PER_ORG:-2}
   WEBODM_COMPUTE_PROVISION_TIMEOUT_SECONDS: ${WEBODM_COMPUTE_PROVISION_TIMEOUT_SECONDS:-900}
@@ -78,6 +81,7 @@ x-frappe-secrets: &frappe-secrets
   - s3_app_access_key_id
   - s3_app_secret_access_key
   - provisioner_api_token
+  - node_token_secret
 
 x-frappe-volumes: &frappe-volumes
   - frappe_sites:/workspace/frappe-bench/sites
@@ -602,3 +606,7 @@ secrets:
     file: ./secrets/aws_provisioner_secret_access_key.txt
   provisioner_api_token:
     file: ./secrets/provisioner_api_token.txt
+  # HMAC key for per-run node tokens (Frappe services only; the provisioner
+  # never sees it — it receives each derived token in the create request).
+  node_token_secret:
+    file: ./secrets/node_token_secret.txt
