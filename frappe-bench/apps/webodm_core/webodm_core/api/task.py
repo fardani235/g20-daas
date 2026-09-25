@@ -33,15 +33,26 @@ def process_task():
         frappe.throw("task_name is required")
 
     task = _get_task_checked(task_name, "write")
-    if task.status not in ("Pending", "Failed"):
+    if task.status not in ("Pending", "Failed", "Cancelled", "Completed"):
         frappe.throw(f"Task {task_name} cannot be started (status: {task.status})")
 
     # Pending -> Queued is the explicit user handoff. The scheduler sweep only
     # picks up Queued, so this assignment is what actually starts the task;
-    # without it the task sits parked forever. A Failed task can be restarted:
-    # counters reset so it gets a full set of dispatch attempts again.
+    # without it the task sits parked forever. A Failed / Cancelled / Completed
+    # task can be (re)started: counters reset so it gets a full set of dispatch
+    # attempts again, and any previous compute instance link is dropped (a new
+    # one is provisioned if needed). Re-processing reads the inputs from the
+    # cache when warm and from object storage otherwise.
+    #
+    # Previous outputs are wiped first. The output relay resumes across polls
+    # by treating "asset row with key + field set" as already collected, so
+    # leftovers from an earlier run would make it skip the new results and
+    # report success while still serving the old ones.
+    from webodm_core.storage import assets as storage_assets
+    storage_assets.reset_outputs(task)
+
     task.db_set({
-        "status": "Queued", "progress": 1, "node_task_id": None,
+        "status": "Queued", "progress": 1, "node_task_id": None, "compute_instance": None,
         "dispatch_attempts": 0, "poll_failures": 0, "next_attempt_at": None, "last_error": None,
     })
 
@@ -62,18 +73,19 @@ def cancel_task():
         frappe.throw("task_name is required")
 
     task = _get_task_checked(task_name, "write")
-    # Queued is cancellable too: it is the window between the user pressing
-    # Start and the node accepting the task, and it would otherwise be the one
-    # state the user cannot back out of.
-    if task.status not in ("Pending", "Queued", "Running"):
+    # Queued and Provisioning are cancellable too: they are the window between
+    # the user pressing Start and the node accepting the task, and would
+    # otherwise be the states the user cannot back out of.
+    if task.status not in ("Pending", "Queued", "Provisioning", "Running"):
         frappe.throw(f"Task {task_name} cannot be cancelled (status: {task.status})")
+
+    from webodm_core.webodm_core.processing import task_runner
 
     node_task_id = task.node_task_id
     if node_task_id:
-        from webodm_core.webodm_core.processing.node_client import NodeODMClient
-        nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
-        if nodes:
-            client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
+        node = task_runner._node_for_task(task)
+        if node:
+            client = task_runner._client_for(node)
             # Fail loud: if the node doesn't acknowledge the cancel, do NOT mark the
             # task Cancelled — otherwise the UI claims "Cancelled" while ODM keeps
             # running. Surface the error and leave the task in its current state.
@@ -83,8 +95,8 @@ def cancel_task():
                 frappe.log_error(f"Cancel failed for {task_name}: {e}", "WebODM Processing")
                 frappe.throw(f"Could not cancel task on the processing node: {e}")
 
-    task.db_set("status", "Cancelled")
-    task.db_set("progress", 0)
+    # Terminal state: releases any on-demand node (best-effort, sweep retries).
+    task_runner._finish(task, "Cancelled", progress=0)
     return f"Task {task_name} cancelled"
 
 
@@ -306,6 +318,15 @@ def upload_images():
     task.save()
     frappe.db.commit()
 
+    # Canonical copy: uploads land on the host first (EXIF extraction above is
+    # unchanged) and are then copied to object storage in the background. The
+    # dispatch step syncs anything still missing, so nothing depends on this
+    # job having finished.
+    from webodm_core import storage
+    if storage.configured():
+        from webodm_core.storage import assets as storage_assets
+        storage_assets.enqueue_input_sync(task.name)
+
     _maybe_autostart(task.name)
 
     return task.as_dict()
@@ -340,14 +361,15 @@ def get_task_console():
         # Task has not been dispatched to a processing node yet — no console yet.
         return result
 
-    nodes = frappe.get_all("WebODM Processing Node", fields=["hostname", "port", "token"])
-    if not nodes:
+    from webodm_core.webodm_core.processing import task_runner
+    from webodm_core.webodm_core.processing.node_client import NodeODMError
+
+    node = task_runner._node_for_task(task)
+    if not node:
         return result
 
-    from webodm_core.webodm_core.processing.node_client import NodeODMClient, NodeODMError
-
     try:
-        client = NodeODMClient(nodes[0]["hostname"], nodes[0]["port"], nodes[0].get("token"))
+        client = task_runner._client_for(node)
         lines = client.task_output(node_task_id, line)
         if isinstance(lines, list):
             result["lines"] = lines
@@ -384,6 +406,13 @@ def get_task_progress():
             enqueue_poll(task_name)
         except Exception:
             frappe.log_error(f"Could not enqueue poll for {task_name}", "WebODM Processing")
+    elif task.status == "Provisioning":
+        # Same idea for a task waiting on a node: nudge the readiness check.
+        from webodm_core.webodm_core.processing.compute import enqueue_provision_check
+        try:
+            enqueue_provision_check(task_name)
+        except Exception:
+            frappe.log_error(f"Could not enqueue provision check for {task_name}", "WebODM Processing")
     return task.as_dict()
 
 

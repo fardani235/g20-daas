@@ -35,6 +35,16 @@ def _env(name, default=None, required=False):
     return v
 
 
+def _int_env(name, default):
+    raw = os.environ.get(name)
+    if raw in (None, ""):
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        sys.exit(f"[configure] {name} must be an integer, got {raw!r}")
+
+
 def _redis_url(host, port, password):
     auth = f":{urllib.parse.quote(password, safe='')}@" if password else ""
     return f"redis://{auth}{host}:{port}"
@@ -91,6 +101,27 @@ def common_site_config(site):
         # `plugin_sandbox` volume, mounted at the same path in the runner.
         "plugin_runner_url": _env("PLUGIN_RUNNER_URL", "http://plugin-runner:5001"),
         "plugin_sandbox_dir": _env("PLUGIN_SANDBOX_DIR", "/sandbox"),
+        # On-demand compute (webodm_core.webodm_core.processing.compute). Empty
+        # provisioner_url = no provider: tasks run on the static node as before.
+        "provisioner_url": _env("PROVISIONER_URL", ""),
+        "compute_max_instances": _int_env("WEBODM_COMPUTE_MAX_INSTANCES", 5),
+        "compute_max_instances_per_org": _int_env("WEBODM_COMPUTE_MAX_INSTANCES_PER_ORG", 2),
+        "compute_provision_timeout_seconds": _int_env("WEBODM_COMPUTE_PROVISION_TIMEOUT_SECONDS", 900),
+        "compute_max_lifetime_seconds": _int_env("WEBODM_COMPUTE_MAX_LIFETIME_SECONDS", 43200),
+        "compute_orphan_grace_seconds": _int_env("WEBODM_COMPUTE_ORPHAN_GRACE_SECONDS", 600),
+        "compute_large_task_images": _int_env("WEBODM_COMPUTE_LARGE_TASK_IMAGES", 500),
+        # Object storage (webodm_core.storage). Non-secret settings only: the
+        # bucket empty = host disk is the only store. Credentials stay in the
+        # process environment (WEBODM_S3_ACCESS_KEY_ID / _SECRET_ACCESS_KEY)
+        # and are never written to any config file.
+        "storage_bucket": _env("WEBODM_S3_BUCKET", ""),
+        "storage_prefix": _env("WEBODM_S3_PREFIX", ""),
+        "storage_region": _env("WEBODM_S3_REGION", ""),
+        "storage_endpoint_url": _env("WEBODM_S3_ENDPOINT_URL", ""),
+        "storage_force_path_style": _env("WEBODM_S3_FORCE_PATH_STYLE", "0") in ("1", "true", "True"),
+        "storage_presign_ttl": _int_env("WEBODM_S3_PRESIGN_TTL", 900),
+        "storage_cache_max_bytes": _int_env("WEBODM_CACHE_MAX_BYTES", 50 * 1024 * 1024 * 1024),
+        "storage_cache_idle_seconds": _int_env("WEBODM_CACHE_IDLE_SECONDS", 7 * 24 * 3600),
         "root_login": _env("FRAPPE_ROOT_USER", "frappe_admin"),
         "root_password": _env("FRAPPE_ROOT_PASSWORD", required=True),
         "use_redis_auth": bool(_env("REDIS_CACHE_PASSWORD") or _env("REDIS_QUEUE_PASSWORD")),

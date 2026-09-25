@@ -145,10 +145,19 @@
 - [ ] Implement band formula computation (NDVI, etc.)
 - [ ] Implement HSV blending
 
-### Storage ⬜
-- [ ] Implement shared volume file resolution
-- [ ] Implement task directory discovery
-- [ ] Implement asset listing endpoint
+### Storage ✅ (object storage, 2026-09-25)
+- [x] Object storage as canonical store (`webodm_core/storage`, S3/MinIO, org-namespaced keys)
+- [x] Host serving cache with idle/LRU eviction; cache-first, S3-second serving
+- [x] Geospatial reads `s3://` rasters via `/vsis3/`; COG conversion S3 → S3
+- [x] Backfill of legacy host-only blobs
+- [ ] Presigned download URLs (signer identity and TTL exist; not wired to the UI)
+
+### On-demand compute ✅ (2026-09-25) — see `docs/on-demand-processing/`
+- [x] Provisioner service with one provider interface; AWS EC2 (CPU) implemented
+- [x] Provisioning task state, readiness polling, release on terminal state, sweep, caps
+- [x] Static node fallback unchanged
+- [ ] vast.ai GPU provider (next phase: new provider module + config only)
+- [ ] Warm pool / autoscaling, spot pricing (explicitly later)
 
 ## Phase 5: Vue Frontend ✅ (Core), ⬜ (Extended)
 

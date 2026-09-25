@@ -32,7 +32,8 @@
           <div class="text-xs text-muted-foreground mt-1 flex items-center gap-2">
             <Badge :variant="statusVariant(task.status)">{{ task.status }}</Badge>
             <span v-if="task.images?.length">📷 {{ task.images.length }}</span>
-            <span v-if="task.progress > 0">{{ task.progress }}%</span>
+            <span v-if="task.status === 'Provisioning'" class="text-muted-foreground" title="A processing node is being started on demand for this task. This usually takes a few minutes.">starting node…</span>
+            <span v-else-if="task.progress > 0">{{ task.progress }}%</span>
           </div>
           <div v-if="task.progress > 0 && task.status !== 'Completed'" class="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
             <div class="h-full bg-primary rounded-full transition-all" :style="{ width: task.progress + '%' }"></div>
@@ -60,7 +61,7 @@
                 Start
               </Button>
               <Button
-                v-if="['Pending', 'Queued', 'Running'].includes(task.status)"
+                v-if="['Pending', 'Queued', 'Provisioning', 'Running'].includes(task.status)"
                 variant="outline"
                 size="sm"
                 class="text-destructive"

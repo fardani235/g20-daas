@@ -4,9 +4,19 @@ Standalone FastAPI microservice for raster tile serving and COG processing.
 Part of the WebODM Frappe rework.
 
 The service is **stateless**: it never touches Frappe storage or auth. Frappe
-resolves a task's raster to an absolute on-disk path (permission-checked) and
-passes that path to this service, which reads the file directly from shared
-storage. Point cloud endpoints are stubbed pending Phase 4.
+resolves a task's raster (permission-checked) to either an absolute path on the
+shared volume — the host serving cache — or an `s3://bucket/key` URI, and
+passes that to this service. Local paths are read from disk; object URIs are
+read straight from S3 through GDAL's `/vsis3/` with HTTP range requests, which
+is what makes tiling a Cloud-Optimized GeoTIFF in object storage cheap (a few
+small reads per tile, never a download). Point cloud endpoints are stubbed
+pending Phase 4.
+
+Object storage is opt-in and environment-configured (`S3_BUCKETS` allow-list,
+`S3_ENDPOINT_URL` for MinIO-style services, `AWS_REGION`, `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` or their `*_FILE` variants, `COG_SCRATCH_DIR`); see
+`app/utils/objectstore.py` and `docs/on-demand-processing/configuration.md`.
+Without it every path must be local, exactly as before.
 
 ## API
 
@@ -15,7 +25,7 @@ storage. Point cloud endpoints are stubbed pending Phase 4.
 | GET | `/health` | ✅ | Liveness check |
 | GET | `/tiles/info?path=` | ✅ | Bounds (EPSG:4326), zoom range, band stats |
 | GET | `/tiles/tile/{z}/{x}/{y}.png?path=&kind=` | ✅ | XYZ tile PNG; `kind` = `orthophoto`\|`dsm`\|`dtm` |
-| POST | `/export/cogify` | ✅ | Convert raster → COG (in place), return georef + `metadata` |
+| POST | `/export/cogify` | ✅ | Convert raster → COG (in place, or S3 → S3), return georef + `metadata` |
 | GET | `/raster/metadata?path=` | ✅ | Header-only raster metadata (size, bands, CRS, transform, blocks, overviews…) |
 | POST | `/export/raster` | 🚧 Stub | GeoTIFF/PNG/KMZ export |
 | POST | `/export/hillshade` | 🚧 Stub | Hillshade from DEM |
@@ -35,8 +45,13 @@ storage. Point cloud endpoints are stubbed pending Phase 4.
 
 ### `/export/cogify`
 
-Request: `{ "path": "/abs/path/raster.tif", "dst_path": null }`
-(`dst_path` optional; defaults to converting in place, idempotent if already a COG).
+Request: `{ "path": "/abs/path/raster.tif", "output_path": null }`
+(`output_path` optional; defaults to converting in place, idempotent if already a
+COG; `dst_path` is accepted as the older name). Both fields take an absolute path
+or an `s3://bucket/key` URI. With an object source `output_path` is required;
+the COG is built in `COG_SCRATCH_DIR` (container scratch, never the shared
+volume) and uploaded, so an S3 → S3 conversion touches no host disk. The
+embedded `metadata` is read from the *output*, i.e. from the S3 object.
 
 Response: `path`, `is_cog`, `epsg`, `wkt`, `extent` (GeoJSON Polygon, EPSG:4326),
 `bounds_4326` `[minx,miny,maxx,maxy]`, `band_count`, `width`, `height`, and

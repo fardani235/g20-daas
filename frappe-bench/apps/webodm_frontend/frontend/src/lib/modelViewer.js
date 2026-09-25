@@ -235,7 +235,7 @@ export function keyAction(event) {
 // Page state helpers.
 // ---------------------------------------------------------------------------
 
-export const PROCESSING_STATUSES = ['Pending', 'Queued', 'Running']
+export const PROCESSING_STATUSES = ['Pending', 'Queued', 'Provisioning', 'Running']
 
 /**
  * What to show when a task has no model to display. Returns null when the

@@ -133,3 +133,34 @@ def raster_metadata(path: str, timeout: int = 60) -> dict:
     if not isinstance(data, dict):
         raise GeospatialError("raster metadata failed: unexpected response")
     return data
+
+
+def cogify(path: str, output_path: str | None = None, timeout: int = 900) -> dict:
+    """Convert a raster to a Cloud-Optimized GeoTIFF via ``POST /export/cogify``.
+
+    ``path`` and ``output_path`` may be absolute paths on the shared volume or
+    ``s3://bucket/key`` URIs; with both in S3 the conversion is S3 -> S3 and
+    never touches the host. Returns the service's georeferencing dict (epsg,
+    wkt, extent, embedded ``metadata`` read from the *output*). Raises
+    ``GeospatialError`` on a 4xx (bad raster) and ``GeospatialUnavailable``
+    when the service cannot be reached or errors.
+    """
+    url = f"{geospatial_url().rstrip('/')}/export/cogify"
+    body = {"path": path}
+    if output_path:
+        body["output_path"] = output_path
+    try:
+        resp = requests.post(url, json=body, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            detail = e.response.text if e.response is not None else ""
+        if e.response is not None and e.response.status_code >= 500:
+            raise GeospatialUnavailable(f"cogify failed: {detail or e}") from e
+        raise GeospatialError(f"cogify failed: {detail or e}") from e
+    except Exception as e:
+        raise GeospatialUnavailable(f"geospatial service unreachable: {e}") from e

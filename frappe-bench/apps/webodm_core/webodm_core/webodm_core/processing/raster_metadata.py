@@ -381,6 +381,19 @@ def extract(abs_path: str):
         return None, f"unexpected error: {e}"
 
 
+def _source_path(task, dataset: str, file_url: str) -> str:
+    """Local path when cached, else the ``s3://`` URI (or the local path for host-only files)."""
+    from webodm_core.storage import assets, cache
+
+    try:
+        _kind, source = assets.raster_source(task, dataset)
+        return source
+    except cache.CacheMiss:
+        return abs_path_for_file_url(file_url)
+    except frappe.DoesNotExistError:
+        return abs_path_for_file_url(file_url)
+
+
 def _maybe_set_task_resolution(task, dataset: str, values):
     """Fill the task's ``resolution`` (cm/pixel) from the orthophoto's ground
     sampling distance when the user never set one and the CRS is metric."""
@@ -403,8 +416,10 @@ def capture(task, dataset: str, file_url: str, metadata: dict | None = None,
     and records failures, never raises. Returns the stored row or None."""
     error = None
     if not metadata:
+        # Cache first, object storage second: an evicted raster is read by the
+        # geospatial service straight from S3 (header-only, a few range reads).
         try:
-            abs_path = abs_path or abs_path_for_file_url(file_url)
+            abs_path = abs_path or _source_path(task, dataset, file_url)
         except Exception as e:
             abs_path, error = None, f"cannot resolve {file_url}: {e}"
         if abs_path:

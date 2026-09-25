@@ -56,6 +56,12 @@ COPY models/segformer-satellite-landcover.onnx /opt/webodm/models/segformer-sate
 COPY models/satellite-landcover.txt /opt/webodm/models/satellite-landcover.txt
 RUN echo "e2351ed70749afcab18e3039110dd5b4d49152a87430d146db68060c4a12ff09  /opt/webodm/models/segformer-satellite-landcover.onnx" | sha256sum -c -
 
+# Object storage (see app/utils/objectstore.py): S3_BUCKETS allow-list,
+# optional S3_ENDPOINT_URL for MinIO, credentials via AWS_* (or *_FILE).
+# Empty = local-only, which is the default.
+ENV S3_BUCKETS="" \
+    COG_SCRATCH_DIR=/tmp
+
 EXPOSE 5000
 
 # Multiple workers so one blocking request can't stall the service, and no

@@ -173,3 +173,14 @@ def get_org_invitation_permission_query_conditions(user=None):
 def has_org_invitation_permission(doc, ptype, user=None):
     # No _is_create bypass: creation is API-only (invite_member).
     return _org_has_permission(doc, user or frappe.session.user)
+
+
+def get_compute_instance_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Compute Instance", user or frappe.session.user)
+
+
+def has_compute_instance_permission(doc, ptype, user=None):
+    # Created by background jobs only (organization copied from the task), so
+    # no create bypass is needed: members read their org's instances, platform
+    # admins see everything.
+    return _org_has_permission(doc, user or frappe.session.user)

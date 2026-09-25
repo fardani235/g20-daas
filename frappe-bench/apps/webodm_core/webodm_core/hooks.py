@@ -166,6 +166,7 @@ permission_query_conditions = {
     "WebODM Organization": "webodm_core.permissions.get_organization_permission_query_conditions",
     "WebODM Org Membership": "webodm_core.permissions.get_org_membership_permission_query_conditions",
     "WebODM Org Invitation": "webodm_core.permissions.get_org_invitation_permission_query_conditions",
+    "WebODM Compute Instance": "webodm_core.permissions.get_compute_instance_permission_query_conditions",
 }
 
 has_permission = {
@@ -179,6 +180,7 @@ has_permission = {
     "WebODM Organization": "webodm_core.permissions.has_organization_permission",
     "WebODM Org Membership": "webodm_core.permissions.has_org_membership_permission",
     "WebODM Org Invitation": "webodm_core.permissions.has_org_invitation_permission",
+    "WebODM Compute Instance": "webodm_core.permissions.has_compute_instance_permission",
 }
 
 doc_events = {
@@ -188,7 +190,16 @@ doc_events = {
     "WebODM Settings": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Plugin Setting": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Plugin Run": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
+    # WebODM Compute Instance is created by background jobs only, with the
+    # organization copied from the task (no session org to stamp from).
 }
+
+# Request Events
+# ----------------
+# Transparent serving-cache fill for /private/files/<name>: if an asset was
+# evicted from the host but has an object storage copy, fetch it before
+# Frappe's private-file handler runs (see webodm_core.storage.serving).
+before_request = ["webodm_core.storage.serving.materialize_private_file"]
 
 # Scheduled Tasks
 # ---------------
@@ -198,9 +209,19 @@ scheduler_events = {
         "*/1 * * * *": [
             "webodm_core.webodm_core.processing.task_runner.process_pending_tasks",
             "webodm_core.webodm_core.processing.task_runner.update_running_tasks",
+            # On-demand compute: readiness checks for tasks waiting on a node,
+            # and the sweep that destroys done / orphaned / over-budget instances.
+            "webodm_core.webodm_core.processing.compute.update_provisioning_tasks",
+            "webodm_core.webodm_core.processing.compute.reap_job",
         ],
         "*/5 * * * *": [
             "webodm_core.plugins.sync.sync_catalog_safe",
+            # Object storage backfill: anything still host-only gets copied up.
+            "webodm_core.storage.assets.sync_pending_job",
+        ],
+        "17 * * * *": [
+            # Serving-cache eviction (idle + size budget; S3 stays authoritative).
+            "webodm_core.storage.cache.evict_job",
         ],
     },
 }
@@ -240,6 +261,9 @@ scheduler_events = {
 # -----------------------------------------------------------
 
 # ignore_links_on_delete = ["Communication", "ToDo"]
+# Compute instance records are lifecycle history (cost estimate, handle) and
+# outlive their task; the sweep treats a missing task as "destroy".
+ignore_links_on_delete = ["WebODM Compute Instance"]
 
 # Request Events
 # ----------------

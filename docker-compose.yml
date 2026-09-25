@@ -44,6 +44,33 @@ x-frappe-env-base: &frappe-env-base
   PLUGIN_RUNNER_URL: http://plugin-runner:5001
   PLUGIN_SANDBOX_DIR: /sandbox
   FRAPPE_SOCKETIO_PORT: "9000"
+  # --- On-demand compute (services/provisioner) ---------------------------
+  # Empty PROVISIONER_URL disables it: tasks run on the static `nodeodm`
+  # service exactly as before. Point it at the provisioner to provision a
+  # node per task; the provisioner's own env decides the provider (AWS).
+  PROVISIONER_URL: ${PROVISIONER_URL:-}
+  PROVISIONER_API_TOKEN_FILE: /run/secrets/provisioner_api_token
+  # Per-run NodeODM bearer tokens are HMAC-derived from this secret and the
+  # instance record name, so no node credential is ever stored in the DB.
+  WEBODM_NODE_TOKEN_SECRET_FILE: /run/secrets/node_token_secret
+  WEBODM_COMPUTE_MAX_INSTANCES: ${WEBODM_COMPUTE_MAX_INSTANCES:-5}
+  WEBODM_COMPUTE_MAX_INSTANCES_PER_ORG: ${WEBODM_COMPUTE_MAX_INSTANCES_PER_ORG:-2}
+  WEBODM_COMPUTE_PROVISION_TIMEOUT_SECONDS: ${WEBODM_COMPUTE_PROVISION_TIMEOUT_SECONDS:-900}
+  WEBODM_COMPUTE_MAX_LIFETIME_SECONDS: ${WEBODM_COMPUTE_MAX_LIFETIME_SECONDS:-43200}
+  # --- Object storage (webodm_core.storage) -------------------------------
+  # Empty WEBODM_S3_BUCKET = host disk is the only store (previous behaviour).
+  # With a bucket, S3 is canonical and private/files becomes a serving cache.
+  # Credentials come from Docker secrets (the app's *writer* identity; the
+  # geospatial service has a separate read/convert identity below).
+  WEBODM_S3_BUCKET: ${WEBODM_S3_BUCKET:-}
+  WEBODM_S3_PREFIX: ${WEBODM_S3_PREFIX:-}
+  WEBODM_S3_REGION: ${WEBODM_S3_REGION:-}
+  WEBODM_S3_ENDPOINT_URL: ${WEBODM_S3_ENDPOINT_URL:-}
+  WEBODM_S3_FORCE_PATH_STYLE: ${WEBODM_S3_FORCE_PATH_STYLE:-0}
+  WEBODM_S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_app_access_key_id
+  WEBODM_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_app_secret_access_key
+  WEBODM_CACHE_MAX_BYTES: ${WEBODM_CACHE_MAX_BYTES:-53687091200}
+  WEBODM_CACHE_IDLE_SECONDS: ${WEBODM_CACHE_IDLE_SECONDS:-604800}
 
 x-frappe-secrets: &frappe-secrets
   - admin_password
@@ -51,6 +78,10 @@ x-frappe-secrets: &frappe-secrets
   - frappe_admin_password
   - redis_cache_password
   - redis_queue_password
+  - s3_app_access_key_id
+  - s3_app_secret_access_key
+  - provisioner_api_token
+  - node_token_secret
 
 x-frappe-volumes: &frappe-volumes
   - frappe_sites:/workspace/frappe-bench/sites
@@ -330,9 +361,25 @@ services:
       # aerial-trained model; COCO (yolov8n) remains the code fallback.
       OBJECT_DETECTION_DEFAULT_MODEL: visdrone-yolov11s.onnx
       OBJECT_DETECTION_DEFAULT_LABELS: visdrone.txt
+      # Object storage: read rasters from S3 (/vsis3/ range reads) and write
+      # COGs back S3 -> S3. Same bucket as the app; its own read+convert
+      # identity (least privilege: no delete, no access to inputs/ prefixes
+      # is enforced by the IAM policy, see infra/aws/iam). Empty = local only.
+      S3_BUCKETS: ${WEBODM_S3_BUCKET:-}
+      S3_ENDPOINT_URL: ${WEBODM_S3_ENDPOINT_URL:-}
+      AWS_REGION: ${WEBODM_S3_REGION:-}
+      S3_FORCE_PATH_STYLE: ${WEBODM_S3_FORCE_PATH_STYLE:-}
+      AWS_ACCESS_KEY_ID_FILE: /run/secrets/s3_geospatial_access_key_id
+      AWS_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_geospatial_secret_access_key
+      COG_SCRATCH_DIR: /scratch
+    secrets:
+      - s3_geospatial_access_key_id
+      - s3_geospatial_secret_access_key
     volumes:
       - frappe_data:/data
       - frappe_sites:/workspace/frappe-bench/sites
+      # Container-local scratch for S3 -> S3 COG conversion; never the sites volume.
+      - geospatial_scratch:/scratch
     # backend only: the service is unauthenticated and is reached exclusively
     # through the Frappe tile proxy (webodm_core.api.tiles), never from Caddy.
     networks:
@@ -394,6 +441,68 @@ services:
           cpus: "2"
           memory: 3G
           pids: 256
+
+  provisioner:
+    # On-demand NodeODM compute (services/provisioner). Owns every cloud
+    # credential and SDK; the app only ever sees this HTTP API. No published
+    # image yet: built from source until CI pushes one, then pin it like the
+    # others with `scripts/pin-images.sh` and drop the build block.
+    image: ghcr.io/fardani235/webodm-provisioner:1
+    build:
+      context: ./services/provisioner
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # none | aws | fixed (dev only). See docs/on-demand-processing/configuration.md
+      PROVISIONER_PROVIDER: ${PROVISIONER_PROVIDER:-none}
+      PROVISIONER_API_TOKEN_FILE: /run/secrets/provisioner_api_token
+      PROVISIONER_DEPLOYMENT: ${SITE_NAME:-webodm.local}
+      PROVISIONER_NODEODM_PORT: ${PROVISIONER_NODEODM_PORT:-3000}
+      PROVISIONER_NODEODM_IMAGE: ${PROVISIONER_NODEODM_IMAGE:-opendronemap/nodeodm:latest}
+      PROVISIONER_NODEODM_ARGS: ${PROVISIONER_NODEODM_ARGS:-}
+      PROVISIONER_MAX_LIFETIME_SECONDS: ${WEBODM_COMPUTE_MAX_LIFETIME_SECONDS:-43200}
+      # AWS provider: every value explicit, none of them has a usable default.
+      PROVISIONER_AWS_REGION: ${PROVISIONER_AWS_REGION:-}
+      PROVISIONER_AWS_AMI_ID: ${PROVISIONER_AWS_AMI_ID:-}
+      PROVISIONER_AWS_AMI_PREBAKED: ${PROVISIONER_AWS_AMI_PREBAKED:-false}
+      PROVISIONER_AWS_INSTANCE_TYPES: ${PROVISIONER_AWS_INSTANCE_TYPES:-}
+      PROVISIONER_AWS_HOURLY_COSTS: ${PROVISIONER_AWS_HOURLY_COSTS:-}
+      PROVISIONER_AWS_DEFAULT_CLASS: ${PROVISIONER_AWS_DEFAULT_CLASS:-cpu}
+      PROVISIONER_AWS_SUBNET_ID: ${PROVISIONER_AWS_SUBNET_ID:-}
+      PROVISIONER_AWS_SECURITY_GROUP_IDS: ${PROVISIONER_AWS_SECURITY_GROUP_IDS:-}
+      PROVISIONER_AWS_ROOT_VOLUME_GB: ${PROVISIONER_AWS_ROOT_VOLUME_GB:-200}
+      PROVISIONER_AWS_KEY_NAME: ${PROVISIONER_AWS_KEY_NAME:-}
+      PROVISIONER_AWS_IAM_INSTANCE_PROFILE: ${PROVISIONER_AWS_IAM_INSTANCE_PROFILE:-}
+      AWS_ACCESS_KEY_ID_FILE: /run/secrets/aws_provisioner_access_key_id
+      AWS_SECRET_ACCESS_KEY_FILE: /run/secrets/aws_provisioner_secret_access_key
+      # fixed provider (development): hand back the stack's own NodeODM.
+      PROVISIONER_FIXED_ENDPOINT: ${PROVISIONER_FIXED_ENDPOINT:-nodeodm:3000}
+    secrets:
+      - provisioner_api_token
+      - aws_provisioner_access_key_id
+      - aws_provisioner_secret_access_key
+    # Reachable from the backend network only (never published, never Caddy).
+    # It needs egress to the cloud API and to the nodes' public endpoints for
+    # readiness probes, so it lives on `backend`, not an internal network.
+    networks:
+      - backend
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5002/health', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   nodeodm:
     image: opendronemap/nodeodm:latest@sha256:cb07d06e21fd6189cfad287c6fedfa0b72568100355635cd9035cb86eed42ee2
@@ -461,6 +570,7 @@ volumes:
   frappe_data:
   nodeodm_data:
   plugin_sandbox:
+  geospatial_scratch:
   backup_storage:
   caddy_data:
   caddy_config:
@@ -476,3 +586,27 @@ secrets:
     file: ./secrets/redis_queue_password.txt
   frappe_admin_password:
     file: ./secrets/frappe_admin_password.txt
+  # Object storage: two least-privilege identities for the same bucket
+  # (app = writer/reader, geospatial = read + write COGs to assets/). Empty
+  # files are fine when object storage is not configured or when the host
+  # has an instance role.
+  s3_app_access_key_id:
+    file: ./secrets/s3_app_access_key_id.txt
+  s3_app_secret_access_key:
+    file: ./secrets/s3_app_secret_access_key.txt
+  s3_geospatial_access_key_id:
+    file: ./secrets/s3_geospatial_access_key_id.txt
+  s3_geospatial_secret_access_key:
+    file: ./secrets/s3_geospatial_secret_access_key.txt
+  # On-demand compute: provisioning identity (EC2 only) and the shared token
+  # the app presents to the provisioner API.
+  aws_provisioner_access_key_id:
+    file: ./secrets/aws_provisioner_access_key_id.txt
+  aws_provisioner_secret_access_key:
+    file: ./secrets/aws_provisioner_secret_access_key.txt
+  provisioner_api_token:
+    file: ./secrets/provisioner_api_token.txt
+  # HMAC key for per-run node tokens (Frappe services only; the provisioner
+  # never sees it — it receives each derived token in the create request).
+  node_token_secret:
+    file: ./secrets/node_token_secret.txt

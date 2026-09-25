@@ -817,6 +817,13 @@ docker compose exec frappe-web bench --site webodm.local execute frappe.sendmail
 
 ## 10. Phase 8: AWS S3 Storage with Multi-Tenant Security
 
+> **Superseded (2026-09).** The s3fs-based approach below predates native
+> object storage support. The application now talks to S3 directly
+> (`WEBODM_S3_*`, org-namespaced keys, serving cache, S3 → S3 COG
+> conversion) and can provision processing nodes on demand. Follow
+> [`docs/on-demand-processing/deployment.md`](../on-demand-processing/deployment.md)
+> instead of this section; it is kept for deployments that already run it.
+
 > **IMPORTANT:** S3FS must be configured **BEFORE** Phase 5 (Build & Deploy). Complete Section 10.3 (S3FS Setup) during Phase 3 (Project Configuration).
 
 ### 10.1 Security Warning: Multi-Tenant Data Isolation

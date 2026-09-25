@@ -121,7 +121,7 @@ let pollTimer = null
 let nextLine = 0
 let stickToBottom = true
 
-const RUNNING_STATUSES = ['Pending', 'Running', 'Queued']
+const RUNNING_STATUSES = ['Pending', 'Running', 'Queued', 'Provisioning']
 const RASTER_LABELS = { orthophoto: 'Orthophoto', dsm: 'DSM', dtm: 'DTM' }
 
 // Header metadata per raster, keyed by dataset; null when the task lacks it.

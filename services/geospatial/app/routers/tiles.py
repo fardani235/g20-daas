@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from rio_tiler.errors import TileOutsideBounds
 from starlette.concurrency import run_in_threadpool
 
-from app.utils import raster
+from app.utils import objectstore, raster
 
 router = APIRouter()
 
@@ -17,8 +17,19 @@ _EMPTY_PNG = bytes.fromhex(
 
 
 def _require_raster(path: str):
+    """Accept an absolute local path (must exist) or an ``s3://`` URI (allow-listed bucket).
+
+    Object URIs are not existence-checked here: that would cost a round trip
+    per tile, and a missing object surfaces as a 422 from the read anyway.
+    """
+    if objectstore.is_object_uri(path):
+        try:
+            objectstore.parse_uri(path)
+        except objectstore.ObjectStoreError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        return
     if not os.path.isabs(path):
-        raise HTTPException(status_code=400, detail="path must be absolute")
+        raise HTTPException(status_code=400, detail="path must be absolute or an s3:// URI")
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail=f"raster not found: {path}")
 

@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from urllib.parse import urljoin
 
 import requests
+import urllib3
 
 
 class NodeODMError(Exception):
@@ -85,14 +86,18 @@ class NodeODMClient:
         options: list[dict] | None = None,
         name: str | None = None,
     ) -> dict:
-        """Create a task from on-disk images using NodeODM's chunked flow.
+        """Create a task from images using NodeODM's chunked flow.
 
-        ``images`` is an iterable of ``(filename, absolute_path)``. Instead of a
-        single ``POST /task/new`` carrying every image in one multipart body
-        (which forced the whole dataset into worker RAM), this drives
-        ``/task/new/init`` -> one ``/task/new/upload/{uuid}`` per image ->
-        ``/task/new/commit/{uuid}``. Only one image is in flight at a time, so
-        peak memory is one image rather than the sum of all of them.
+        ``images`` is an iterable of ``(filename, source)`` where ``source`` is
+        either an absolute path or a context manager yielding a readable
+        stream (how the worker hands over an image that lives in object
+        storage rather than on disk — NodeODM only takes multipart uploads and
+        cannot pull from a URL, so the worker relays the bytes either way).
+        Instead of a single ``POST /task/new`` carrying every image in one
+        multipart body (which forced the whole dataset into worker RAM), this
+        drives ``/task/new/init`` -> one ``/task/new/upload/{uuid}`` per image
+        -> ``/task/new/commit/{uuid}``. Only one image is in flight at a time,
+        so peak memory is one image rather than the sum of all of them.
         """
         # NodeODM parses /task/new/init with multer().none(), i.e. it only reads
         # multipart/form-data. A urlencoded body is silently ignored and the task
@@ -111,8 +116,9 @@ class NodeODMClient:
             raise NodeODMError(f"task/new/init returned no uuid: {init}")
 
         uploaded = 0
-        for filename, path in images:
-            with open(path, "rb") as fh:
+        for filename, source in images:
+            opener = open(source, "rb") if isinstance(source, (str, os.PathLike)) else source
+            with opener as fh:
                 self._post(
                     f"task/new/upload/{uuid}",
                     files=[("images", (filename, fh, "image/jpeg"))],
@@ -187,6 +193,34 @@ class NodeODMClient:
                 os.remove(part)
             except OSError:
                 pass
+
+    def stream_asset(self, task_id: str, asset: str, sink):
+        """Stream ``asset`` into ``sink(stream)`` without touching disk.
+
+        ``sink`` receives a readable stream of the response body (e.g. to be
+        handed to an object storage multipart upload) and its return value is
+        passed through. Same error semantics as ``download_asset``: a JSON
+        body means NodeODM refused (``NodeODMError``), a network failure is a
+        ``NodeODMTransportError``. Errors raised by ``sink`` itself propagate.
+        """
+        try:
+            with self._session.get(
+                self._url(f"task/{task_id}/download/{asset}"),
+                timeout=self.transfer_timeout,
+                stream=True,
+            ) as r:
+                r.raise_for_status()
+                if "json" in (r.headers.get("Content-Type") or "").lower():
+                    err = r.json() if r.content else {}
+                    raise NodeODMError(
+                        f"Download {asset} failed: {err.get('error', 'unexpected JSON response')}"
+                    )
+                r.raw.decode_content = True
+                return sink(r.raw)
+        except (requests.RequestException, urllib3.exceptions.HTTPError) as e:
+            # urllib3 errors surface when the sink reads r.raw directly
+            # (connection reset mid-body); they are transport failures too.
+            raise NodeODMTransportError(f"Download {asset} failed: {e}")
 
     def find_best_node(self, nodes: list[dict]) -> dict | None:
         best = None
