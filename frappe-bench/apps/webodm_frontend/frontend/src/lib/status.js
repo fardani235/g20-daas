@@ -5,6 +5,8 @@ const VARIANTS = {
   'in progress': 'default',
   pending: 'warning',
   queued: 'warning',
+  // A processing node is being provisioned on demand for the task.
+  provisioning: 'warning',
   cancelled: 'secondary',
   canceled: 'secondary',
   planned: 'outline',

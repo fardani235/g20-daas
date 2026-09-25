@@ -12,7 +12,7 @@ import warnings
 from fastapi import APIRouter, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
 
-from app.utils import raster
+from app.utils import objectstore, raster
 
 log = logging.getLogger("webodm.geospatial.raster")
 
@@ -35,14 +35,22 @@ async def raster_metadata(path: str = Query(..., description="Absolute path of t
     it (corrupt / not a raster). Georeferencing problems are *not* errors: a
     raster without a CRS still returns 200 with ``georeference: "no_crs"``.
     """
-    if not os.path.isabs(path):
-        raise HTTPException(status_code=400, detail="path must be absolute")
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail=f"raster not found: {path}")
+    if objectstore.is_object_uri(path):
+        try:
+            objectstore.parse_uri(path)
+        except objectstore.ObjectStoreError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    else:
+        if not os.path.isabs(path):
+            raise HTTPException(status_code=400, detail="path must be absolute or an s3:// URI")
+        if not os.path.isfile(path):
+            raise HTTPException(status_code=404, detail=f"raster not found: {path}")
 
     try:
         return await run_in_threadpool(_read_metadata_quiet, path)
     except raster.RasterMetadataError as e:
+        if "not found" in str(e):
+            raise HTTPException(status_code=404, detail=str(e))
         log.warning("metadata failed for %s: %s", path, e)
         raise HTTPException(status_code=422, detail=f"metadata failed: {e}")
     except Exception as e:  # pragma: no cover - defensive

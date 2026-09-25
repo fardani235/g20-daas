@@ -584,11 +584,16 @@ def cancel_run(name: str):
 
 
 def _run_file_path(doc) -> str:
-    from webodm_core.plugins.files import abs_path_for_file_url
+    """Absolute path of a run's output, re-materialised from object storage if evicted."""
+    from webodm_core.storage import assets as storage_assets
+    from webodm_core.storage import cache
 
     if not doc.output_file:
-        frappe.throw(f"Run {doc.name} has no output", frappe.DoesNotExistError)
-    return abs_path_for_file_url(doc.output_file)
+        frappe.throw("Run has no output", frappe.DoesNotExistError)
+    try:
+        return storage_assets.ensure_run_output_local(doc)
+    except cache.CacheMiss as e:
+        frappe.throw(f"Run output is not available: {e}", frappe.DoesNotExistError)
 
 
 def _convert_to_geojson(path: str) -> dict:

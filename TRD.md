@@ -147,6 +147,9 @@ Defined in `webodm_frontend/frontend/package.json`:
 | `ADMIN_PASSWORD` | admin | Frappe admin password |
 | `REDIS_CACHE` | redis://redis-cache:13000 | Redis cache URL |
 | `REDIS_QUEUE` | redis://redis-queue:11000 | Redis queue URL |
+| `WEBODM_S3_BUCKET` … `WEBODM_CACHE_*` | *(empty = host disk)* | Object storage + serving cache; see `docs/on-demand-processing/configuration.md` |
+| `PROVISIONER_URL`, `WEBODM_COMPUTE_*` | *(empty = static node)* | On-demand compute; same reference |
+| `PROVISIONER_*`, `S3_*` | — | Provisioner and geospatial service env; same reference |
 
 ## 5. Task Processing Requirements
 
@@ -166,22 +169,53 @@ Communication protocol:
 
 - RQ worker concurrency: 2-4 per container
 - Task locking: Redis-based distributed locks (key: `task_lock_{task_id}`, TTL: 30s)
-- Processing node assignment: round-robin with queue depth consideration
+- Processing node assignment: a task's own on-demand compute instance when
+  one is Ready; otherwise the first static `WebODM Processing Node`.
+
+### 5.2a On-Demand Compute
+
+With `PROVISIONER_URL` set, a Queued task with no ready node asks the
+provisioner service for an instance (`services/provisioner`, one
+`Provider` interface, AWS EC2 implemented; CPU classes `cpu` / `cpu-large`
+chosen from processing options) and waits in the `Provisioning` state until
+NodeODM answers on the node's public endpoint (token-protected, firewalled to
+the app host). Terminal states release the instance; an every-minute sweep
+destroys instances whose task is done or gone, that exceeded their lifetime
+budget, that never came up, or that exist at the provider without a record.
+Global / per-organization caps bound concurrency. No provider configured (or
+the provisioner down) → the static node path, unchanged. Details:
+`docs/on-demand-processing/architecture.md`.
 
 ### 5.3 Asset Storage
 
-Assets extracted from NodeODM's `all.zip` are stored as private Frappe **File**
-records (under `sites/<site>/private/files/`) and linked from the `WebODM Task`
-via `orthophoto` / `dsm` / `dtm` / `point_cloud` / `model` fields. The geospatial
-service reads these files by absolute path (resolved and permission-checked by
-Frappe's tile proxy).
+Assets extracted from NodeODM's `all.zip` are linked from the `WebODM Task`
+via `orthophoto` / `dsm` / `dtm` / `point_cloud` / `model` fields, each a
+private Frappe **File** under `sites/<site>/private/files/`.
 
-| Asset Type | Task field | Format |
-|---|---|---|
-| Rasters | `orthophoto` / `dsm` / `dtm` | Cloud Optimized GeoTIFF |
-| Point Clouds | `point_cloud` | LAS/LAZ |
-| 3D Models | `model` | GLTF Binary (GLB) |
-| Tiles | — | Rendered on demand by geospatial service (not pre-tiled) |
+With object storage configured (`WEBODM_S3_BUCKET`), that directory is a
+**serving cache** and S3 is the system of record: outputs are relayed from the
+node straight into `orgs/<org-slug>/tasks/<task>/assets/` (rasters converted to
+COG S3 → S3 by the geospatial service), written through to the cache and
+recorded in the `WebODM Task Asset` child table with their object key. Inputs
+are copied to `…/inputs/` after upload and streamed to the node from the cache
+or from S3. The cache is evicted hourly (idle age, then LRU to a byte budget;
+only blobs with an S3 copy, never for in-flight tasks) and refilled on demand:
+tiles fall back to reading the COG in S3 via GDAL range reads, the 3D viewer
+and downloads refill before serving, plugins stage inputs from S3. Without a
+bucket configured the previous host-disk behaviour is unchanged.
+
+The geospatial service reads local files by absolute path or objects by
+`s3://` URI (allow-listed bucket), both resolved and permission-checked by
+Frappe's tile proxy.
+
+| Asset Type | Task field | Object key (under the task prefix) | Format |
+|---|---|---|---|
+| Rasters | `orthophoto` / `dsm` / `dtm` | `assets/orthophoto.tif`, `assets/dsm.tif`, `assets/dtm.tif` | Cloud Optimized GeoTIFF |
+| Point Clouds | `point_cloud` | `assets/georeferenced_model.laz` | LAS/LAZ |
+| 3D Models | `model` | `assets/model.glb` (or `model.zip`) | GLTF Binary (GLB) |
+| Inputs | `images[].image` | `inputs/<file name>` | original JPEG bytes (EXIF intact) |
+| Plugin outputs | `WebODM Plugin Run.output_file` | `plugin-runs/<run>/<file>` | GeoTIFF / GeoJSON / GLB |
+| Tiles | — | — | Rendered on demand by the geospatial service (not pre-tiled) |
 
 Each raster's georeferencing (`epsg`, `wkt`, `*_extent` GeoJSON Polygon in
 EPSG:4326) is persisted on the task at download time via `/export/cogify`.
@@ -217,6 +251,9 @@ EPSG:4326) is persisted on the task at download time via `/export/cogify`.
 
 | Requirement | Implementation |
 |---|---|
+| Cloud identities | Separate least-privilege keys: provisioning (EC2, tag-scoped), storage writer (app), raster converter (geospatial); Docker secrets → env only (`infra/aws/iam/`) |
+| Node access | Security group: NodeODM port from the app host's egress IP only + per-run bearer token |
+| Org isolation in storage | Keys namespaced `orgs/<slug>/…`, checked on every read/write; compute records org-scoped |
 | Authentication | Frappe session auth + API keys |
 | JWT for tiles | Signed, 1h expiry, per-task scope |
 | CSRF protection | Frappe built-in token system |
@@ -254,7 +291,7 @@ Single-host deployment with all services on one machine.
 - Separate Nginx reverse proxy with TLS
 - Dedicated PostgreSQL with replication
 - Geospatial service auto-scaling based on tile load
-- Object storage (S3/MinIO) for assets
+- (Object storage for assets: shipped, see §5.3)
 - CDN for tile delivery (optional)
 
 ## 10. Monitoring & Logging

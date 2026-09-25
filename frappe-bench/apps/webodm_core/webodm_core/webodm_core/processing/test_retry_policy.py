@@ -22,6 +22,9 @@ def _task(**kw):
     t.name = kw.pop("name", "T-1")
     t.status = kw.pop("status", "Queued")
     t.node_task_id = kw.pop("node_task_id", None)
+    # No on-demand node unless a test says so: the runner prefers a task's
+    # compute instance over the static node when one is linked.
+    t.compute_instance = kw.pop("compute_instance", None)
     t.dispatch_attempts = kw.pop("dispatch_attempts", 0)
     t.poll_failures = kw.pop("poll_failures", 0)
     t.title = "t"
@@ -84,6 +87,9 @@ class TestSweepHonoursBackoff(unittest.TestCase):
 
 class TestDispatchRetries(unittest.TestCase):
     def setUp(self):
+        # now_datetime() lazily caches System Settings via frappe.get_doc, which
+        # the tests below mock; warm it first so the module passes on its own.
+        now_datetime()
         self.log = patch("frappe.log_error").start()
         self.addCleanup(patch.stopall)
 
@@ -159,6 +165,7 @@ class TestDispatchRetries(unittest.TestCase):
 
 class TestPollTolerance(unittest.TestCase):
     def setUp(self):
+        now_datetime()  # see TestDispatchRetries.setUp
         self.log = patch("frappe.log_error").start()
         self.addCleanup(patch.stopall)
         self.node = {"name": "n", "hostname": "h", "port": 1}

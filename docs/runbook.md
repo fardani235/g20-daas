@@ -19,8 +19,10 @@ the `COMPOSE_PROJECT_NAME` env var when running more than one stack on a host.
 | `frappe-scheduler` | `webodm-frappe:<version>@sha256:…` | — | `bench schedule` cron loop |
 | `frappe-socketio` | `webodm-frappe:<version>@sha256:…` | — | Node socketio on 9000 (real-time updates) |
 | `geospatial` | `webodm-geospatial:1` | — | FastAPI tile/export service on 5000 |
-| `nodeodm` | `opendronemap/nodeodm:latest` | — | ODM processing engine on 3000 |
+| `nodeodm` | `opendronemap/nodeodm:latest` | — | ODM processing engine on 3000 — the static/fallback node |
+| `provisioner` | `webodm-provisioner:1` (built from `services/provisioner`) | — | On-demand NodeODM compute (AWS EC2). Holds the cloud credentials; internal API on 5002. Disabled unless `PROVISIONER_URL` is set. See `docs/on-demand-processing/runbook.md` |
 | `backup` | `webodm-backup:1` | — | systemd-cron + bench backup, hourly at 03:00 by default |
+| *(external)* object storage | S3 / MinIO | — | Canonical store for task inputs/outputs when `WEBODM_S3_BUCKET` is set; `private/files` is then a serving cache. `docker-compose.dev.yml` adds a local MinIO |
 
 Networks: `frontend` (caddy ↔ outside + caddy ↔ frappe-web/geospatial/socketio),
 `backend` (everything that needs to talk to Frappe internals), `data` (internal —
@@ -299,6 +301,16 @@ docker compose up -d
 This is the only command that deletes the `postgres_data`, `frappe_sites`,
 `frappe_assets`, `frappe_data`, etc. named volumes. **Never** use `-v` on a
 production stack as part of routine maintenance.
+
+## On-demand processing and object storage
+
+Both are opt-in and documented separately:
+[`docs/on-demand-processing/`](on-demand-processing/architecture.md) —
+deployment, configuration reference, operations runbook (lifecycle, sweep,
+caps, finding and killing instances, cache eviction), troubleshooting. The
+short version for this runbook: `PROVISIONER_URL` empty ⇒ tasks run on
+`nodeodm`; `WEBODM_S3_BUCKET` empty ⇒ host disk is the store. New Error Log
+titles: `WebODM Compute`, `WebODM Compute ALERT`, `WebODM Storage`.
 
 ## Capacity planning
 

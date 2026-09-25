@@ -12,6 +12,7 @@
   "resolution",
   "processing_options",
   "node_task_id",
+  "compute_instance",
   "images_section",
   "images",
   "outputs_section",
@@ -20,6 +21,7 @@
   "dtm",
   "point_cloud",
   "model",
+  "assets",
   "geospatial_section",
   "epsg",
   "wkt",
@@ -58,7 +60,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Pending\nQueued\nRunning\nCompleted\nFailed\nCancelled"
+   "options": "Pending\nQueued\nProvisioning\nRunning\nCompleted\nFailed\nCancelled",
+   "description": "Provisioning: waiting for an on-demand processing node to come up (only when a compute provider is configured)."
   },
   {
    "fieldname": "progress",
@@ -81,6 +84,14 @@
    "label": "Node Task ID",
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "fieldname": "compute_instance",
+   "fieldtype": "Link",
+   "label": "Compute Instance",
+   "options": "WebODM Compute Instance",
+   "read_only": 1,
+   "description": "The ephemeral node this task was provisioned on, if any. Empty when running on a static processing node."
   },
   {
    "collapsible": 1,
@@ -124,6 +135,14 @@
    "fieldname": "model",
    "fieldtype": "Attach",
    "label": "3D Model"
+  },
+  {
+   "fieldname": "assets",
+   "fieldtype": "Table",
+   "label": "Assets",
+   "options": "WebODM Task Asset",
+   "read_only": 1,
+   "description": "Per-output object storage keys and cache URLs."
   },
   {
    "collapsible": 1,
@@ -217,7 +236,7 @@
    "in_standard_filter": 1
   }
  ],
- "modified": "2026-09-24 00:00:00.000000",
+ "modified": "2026-09-25 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "WebODM Core",
  "name": "WebODM Task",

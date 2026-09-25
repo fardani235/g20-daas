@@ -18,10 +18,11 @@ import os
 import frappe
 from frappe.utils import get_site_path, now_datetime
 
-from webodm_core.plugins.files import abs_path_for_file_url as _abs_path_for_file_url
 from webodm_core.plugins.files import save_private_file_from_path
 from webodm_core.plugins.geospatial import GeospatialError, run_operation
 from webodm_core.plugins.sandbox import run_user_plugin
+from webodm_core.storage import assets as storage_assets
+from webodm_core.storage import cache
 from webodm_core.webodm_core.processing import raster_metadata
 
 # Task fields that can supply an operation input.
@@ -110,6 +111,10 @@ def execute_run(run_name: str):
         params = payload.get("params", {})
         datasets = payload.get("inputs", {})
 
+        # Inputs are staged from the serving cache, re-materialised from object
+        # storage when evicted: both the geospatial service (system plugins,
+        # shared volume) and the plugin sandbox (user plugins, copied in, no
+        # network egress of its own) need a real local file.
         inputs = {}
         for name, dataset in datasets.items():
             file_url = task.get(dataset)
@@ -117,7 +122,10 @@ def execute_run(run_name: str):
                 raise GeospatialError(
                     f"Task no longer has '{dataset}' for input '{name}'"
                 )
-            inputs[name] = _abs_path_for_file_url(file_url)
+            try:
+                inputs[name] = storage_assets.ensure_asset_local(task, dataset)
+            except cache.CacheMiss as e:
+                raise GeospatialError(f"Input '{name}' ({dataset}) is not available: {e}") from e
 
         ext = _OUTPUT_EXT.get(plugin.output_kind, "dat")
         out_dir = os.path.abspath(get_site_path("private", "files", "plugin_runs"))
@@ -151,6 +159,10 @@ def execute_run(run_name: str):
             attached_to_name=run.name,
             ignore_permissions=True,
         )
+
+        # Canonical copy in object storage (best-effort; the periodic backfill
+        # retries if storage is down right now).
+        storage_assets.store_plugin_output(run, file_doc)
 
         metadata = result.get("metadata", {}) or {}
         run.db_set("output_file", file_doc.file_url)

@@ -1,0 +1,114 @@
+# Local/dev path for on-demand processing and object storage, without a cloud
+# account:
+#
+#   * MinIO stands in for S3 (bucket auto-created by `minio-init`);
+#   * the provisioner runs the `fixed` provider, which "provisions" the stack's
+#     own NodeODM container so the whole lifecycle (Provisioning state,
+#     readiness polling, dispatch, release, sweep) can be exercised end to end.
+#
+# Usage (after `scripts/init-secrets.sh`; the S3 secret files must hold the
+# MinIO root user/password, see docs/on-demand-processing/deployment.md):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# The override only *adds* to the production file; nothing here is meant for
+# a real deployment.
+
+services:
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/s3_app_access_key_id
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/s3_app_secret_access_key
+    secrets:
+      - s3_app_access_key_id
+      - s3_app_secret_access_key
+    volumes:
+      - minio_data:/data
+    networks:
+      - backend
+    ports:
+      - "127.0.0.1:9001:9001"   # web console, localhost only
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$(cat /run/secrets/s3_app_access_key_id)" "$$(cat /run/secrets/s3_app_secret_access_key)"
+        mc mb --ignore-existing "local/${WEBODM_S3_BUCKET:-webodm-dev}"
+        echo "bucket ready: ${WEBODM_S3_BUCKET:-webodm-dev}"
+    secrets:
+      - s3_app_access_key_id
+      - s3_app_secret_access_key
+    networks:
+      - backend
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  frappe-web:
+    environment:
+      WEBODM_S3_BUCKET: ${WEBODM_S3_BUCKET:-webodm-dev}
+      WEBODM_S3_ENDPOINT_URL: http://minio:9000
+      WEBODM_S3_REGION: us-east-1
+      WEBODM_S3_FORCE_PATH_STYLE: "1"
+      PROVISIONER_URL: http://provisioner:5002
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  frappe-worker:
+    environment:
+      WEBODM_S3_BUCKET: ${WEBODM_S3_BUCKET:-webodm-dev}
+      WEBODM_S3_ENDPOINT_URL: http://minio:9000
+      WEBODM_S3_REGION: us-east-1
+      WEBODM_S3_FORCE_PATH_STYLE: "1"
+      PROVISIONER_URL: http://provisioner:5002
+      # Short budgets so the sweep is observable in a dev session.
+      WEBODM_COMPUTE_PROVISION_TIMEOUT_SECONDS: "300"
+      WEBODM_COMPUTE_MAX_LIFETIME_SECONDS: "7200"
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  frappe-scheduler:
+    environment:
+      WEBODM_S3_BUCKET: ${WEBODM_S3_BUCKET:-webodm-dev}
+      WEBODM_S3_ENDPOINT_URL: http://minio:9000
+      WEBODM_S3_REGION: us-east-1
+      WEBODM_S3_FORCE_PATH_STYLE: "1"
+      PROVISIONER_URL: http://provisioner:5002
+
+  geospatial:
+    environment:
+      S3_BUCKETS: ${WEBODM_S3_BUCKET:-webodm-dev}
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_REGION: us-east-1
+      S3_FORCE_PATH_STYLE: "true"
+      # Dev only: reuse the app identity (MinIO root). Production uses a
+      # separate least-privilege key pair in the geospatial secret files.
+      AWS_ACCESS_KEY_ID_FILE: /run/secrets/s3_app_access_key_id
+      AWS_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_app_secret_access_key
+    secrets:
+      - s3_app_access_key_id
+      - s3_app_secret_access_key
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  provisioner:
+    environment:
+      PROVISIONER_PROVIDER: fixed
+      PROVISIONER_FIXED_ENDPOINT: nodeodm:3000
+      PROVISIONER_MAX_LIFETIME_SECONDS: "7200"
+
+volumes:
+  minio_data:

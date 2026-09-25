@@ -4,12 +4,18 @@ info requests to the geospatial FastAPI service.
 Keeping the proxy in Frappe means tile URLs are same-origin and session-authed
 (Leaflet <img> requests carry the session cookie), and the geospatial service
 never needs to know about Frappe's File storage or permissions.
+
+Rasters resolve cache-first, S3-second: when the host serving cache holds the
+file its absolute path is passed as before; when it has been evicted the
+``s3://`` URI is passed instead and the geospatial service range-reads the
+COG straight from object storage (a background cache fill is kicked off so
+the next request is warm). A cold cache is slower, never wrong.
 """
 
 import frappe
 import requests
 
-from webodm_core.plugins.files import abs_path_for_file_url
+from webodm_core.storage import assets, cache
 
 # Dataset name -> (Task field holding the raster, tile render "kind").
 _DATASETS = {
@@ -37,11 +43,14 @@ def _resolve_raster_path(task_name: str, dataset: str) -> str:
     # another user's rasters (tiles/info/volume) by supplying their task id.
     task = frappe.get_doc("WebODM Task", task_name)
     task.check_permission("read")
-    file_url = task.get(field)
-    if not file_url:
+    if not task.get(field):
         frappe.throw(f"Task has no {dataset}", frappe.DoesNotExistError)
 
-    return abs_path_for_file_url(file_url)
+    try:
+        _source, path = assets.raster_source(task, dataset)
+    except cache.CacheMiss:
+        frappe.throw(f"Task {dataset} is not available on this host", frappe.DoesNotExistError)
+    return path
 
 
 @frappe.whitelist(allow_guest=False)
@@ -116,7 +125,11 @@ def _resolve_run_raster_path(run_name: str):
         frappe.throw(f"Run {run_name} does not have a raster output")
     if not run.output_file:
         frappe.throw(f"Run {run_name} has no output", frappe.DoesNotExistError)
-    return abs_path_for_file_url(run.output_file), (run.render_kind or "dem")
+    try:
+        _source, path = assets.run_output_source(run)
+    except cache.CacheMiss:
+        frappe.throw(f"Run {run_name} output is not available on this host", frappe.DoesNotExistError)
+    return path, (run.render_kind or "dem")
 
 
 @frappe.whitelist(allow_guest=False)

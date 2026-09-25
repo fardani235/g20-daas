@@ -535,3 +535,82 @@ All DocTypes live in `webodm_core`:
   refetches when a polled task turns Completed. Tests: `lib/rasterMetadata.test.js`,
   `pages/Console.rasterMetadata.test.js` (mounts the page with `vue-router` mocked).
 
+
+## Phase 16: On-demand processing + object storage (2026-09-25)
+
+- **Provisioner service** `services/provisioner/` (FastAPI, mirrors geospatial/plugin-runner):
+  `GET /provider`, `POST /instances`, `GET|DELETE /instances/{handle}`, `GET /instances`;
+  stateless, optional `PROVISIONER_API_TOKEN`. Provider seam is `app/providers/base.py`
+  (`Provider.create/describe/destroy/list_managed`, `ClassSpec`, `InstanceSpec`, `InstanceState`);
+  `app/core.py` adds handle prefixing (`aws:i-…`) and readiness = NodeODM answering `/info`
+  (with `X-Node-Token` → authenticated 200 required; without → any HTTP answer). Providers:
+  `aws` (EC2 via boto3: run/describe/terminate, tags `webodm:managed/deployment/task/org/class`,
+  `InstanceInitiatedShutdownBehavior=terminate`, user-data from `app/bootstrap/nodeodm-userdata.sh`
+  which installs Docker if absent, pulls the image if absent, runs `nodeodm --token`, and
+  schedules `shutdown -h` at lifetime+10 min) and `fixed` (dev: hands back a configured endpoint).
+  All AWS knobs are explicit env (`AwsSettings.from_env` fails loud). Tests: moto EC2 + TestClient
+  (`./venv/bin/python -m pytest`). Gotcha: moto errors on a *second* terminate of the same
+  instance (`InvalidNetworkInterfaceID.NotFound`) — `destroy` treats "describe says terminated" as
+  success. Pydantic request models must be module-level (a class defined inside `build_app`
+  with `from __future__ import annotations` is resolved as a query param).
+- **App side** `processing/compute.py`: `ProvisionerClient` (token from env
+  `PROVISIONER_API_TOKEN`, never site config), `request_for_task` (caps → `/provider` →
+  `instance_class_for(options, images)` → insert `WebODM Compute Instance` + commit → create),
+  `check_provisioning` (sweep per Provisioning task), `release_for_task`/`destroy_instance`
+  (best-effort; failure → `Terminating`, retried), `reap` (done/gone task, moved task, lifetime
+  budget → task Failed, never-ready → requeue, Terminating retry, provider orphans past grace).
+  `task_runner`: `_acquire_node` returns `(node, outcome)` in {ready, provisioning, capacity,
+  static, none}; `_node_for_task` (compute instance else `_first_node`) is used by poll, cancel
+  and console; `_finish()` writes terminal states and releases compute. New task status
+  **Provisioning**; `compute_instance` Link; `ignore_links_on_delete = ["WebODM Compute Instance"]`.
+  Use `getattr(task, "compute_instance", None)` — tests build tasks as MagicMock and `.get()` on a
+  mock is truthy (and a mock name passed to `frappe.db.get_value` hits the redis pickle path).
+- **Object storage** `webodm_core/storage/`: `__init__` (boto3 client scoped to `storage_bucket`,
+  creds from env `WEBODM_S3_*`, key layout `orgs/<slug>/tasks/<task>/{inputs,raw,assets}` +
+  `plugin-runs/<run>/`, `assert_org_key`, botocore → `StorageError/StorageUnavailable` with no
+  detail leak), `s3file.S3RangeFile` (seekable RawIOBase over range reads; `open_seekable` wraps
+  it in an 8 MB BufferedReader so `zipfile` walks a multi-GB all.zip in S3 with tens of requests),
+  `cache` (private/files *is* the cache: `ensure_local`, `resolve_source` → `("local", path)` |
+  `("s3", uri)` + background fill, `evict` idle→LRU only for rows with `storage_key`, never for
+  busy tasks), `assets` (`sync_inputs`, `input_sources` → path or stream opener, `record_asset`
+  direct child upsert, `raster_source`, `ensure_asset_local`, `store_plugin_output`,
+  `sync_pending` backfill), `serving.materialize_private_file` (`before_request` hook refilling
+  `/private/files/<name>` for logged-in users), `testing.FakeObjectStorage` + `use_fake_storage()`
+  for tests. New child `WebODM Task Asset`; `storage_key` on `WebODM Task Image` and
+  `WebODM Plugin Run`. `NodeODMClient.create_task` accepts `(filename, path | opener)`;
+  `stream_asset(task_id, asset, sink)` streams a download into a callable (catches urllib3 errors).
+  `_download_assets` → `_relay_assets_to_storage` when configured: idempotent/resumable steps,
+  `AssetRelayRetry(NodeODMTransportError)` keeps the task Running, COG conversion via
+  `geospatial.cogify(s3://raw, s3://assets)`, raw fallback copy at the poll budget, write-through
+  cache via `save_private_file_from_stream(store.open_stream(key))`. OBJ→model.zip fallback uses
+  `tempfile.TemporaryFile` (zip needs a seekable writer). Task/PluginRun `on_trash` delete the
+  prefix + release compute.
+- **Geospatial**: `app/utils/objectstore.py` (`S3_BUCKETS` allow-list, `s3://`↔`/vsis3/`,
+  `rasterio.Env(session=AWSSession(...), **gdal_options())` — rasterio refuses `AWS_ACCESS_KEY_ID`
+  as a plain option, credentials must go through the session; the nested Env inside
+  `cog_translate` inherits them). `to_cog` S3→S3 builds in `COG_SCRATCH_DIR` then uploads;
+  `read_metadata` uses `head_object` for `file_size`; routers accept `s3://` (`_require_raster`,
+  `/raster/metadata`, `/export/cogify` with `output_path`, 404 for a missing object). Tests
+  `tests/test_objectstore.py` run moto in *server* mode (`ThreadedMotoServer`) so GDAL's curl
+  reader does real range requests. Note: a 300² stripped GeoTIFF already validates as a COG —
+  fixtures must be ≥1200² to test conversion/overviews.
+- **Infra**: compose `provisioner` service (backend net, read-only, cap_drop ALL, built from
+  source), S3 env on Frappe + geospatial (`geospatial_scratch` volume at `/scratch`), 7 new
+  secrets (`s3_app_*`, `s3_geospatial_*`, `aws_provisioner_*`, `provisioner_api_token`;
+  `scripts/init-secrets.sh` generates the token and empty placeholders), `docker-compose.dev.yml`
+  (MinIO + bucket init + `fixed` provider), `configure_site.py` maps `WEBODM_S3_*`/`WEBODM_COMPUTE_*`/
+  `PROVISIONER_URL` to site config (never secrets), `entrypoint.sh` resolves the new `*_FILE`
+  secrets, CI jobs `test-provisioner` + `provisioner-image`, `infra/aws/` (IAM policies per
+  identity, bucket policy, `security-group.md`, `bake-nodeodm-ami.sh`). `webodm_core/pyproject.toml`
+  now depends on `boto3` (the 16.34.0 image lacks it — tests ran on a derived image).
+- **Frontend**: `Provisioning` → warning badge, counts as processing (viewer/console), cancellable,
+  task row shows *starting node…*.
+- **Docs**: `docs/on-demand-processing/{user-guide,deployment,runbook,troubleshooting,configuration,architecture}.md`,
+  `openspec/specs/{on-demand-processing,object-storage}/spec.md`, SPEC/TRD/README/runbook updated,
+  the s3fs section of the production guide marked superseded.
+- Tests: provisioner 26, geospatial 152 (13 new), frontend 201, webodm_core 361 (`storage/test_storage`,
+  `processing/test_compute` 40 mocked lifecycle tests, `processing/test_asset_relay` 15 FrappeTestCase
+  tests with the fake bucket). `test_retry_policy` now warms System Settings in `setUp`
+  (`now_datetime()` otherwise hits the mocked `frappe.get_doc` on a cold cache). Pre-existing:
+  `api/test_plugin_model_output.setUpClass` inserts a fixed-name project and fails on a re-run
+  against the same DB (fine on a fresh CI site).

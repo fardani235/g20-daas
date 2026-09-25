@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadRawAndAssets",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::BUCKET/PREFIXorgs/*/tasks/*/raw/*",
+        "arn:aws:s3:::BUCKET/PREFIXorgs/*/tasks/*/assets/*",
+        "arn:aws:s3:::BUCKET/PREFIXorgs/*/plugin-runs/*"
+      ]
+    },
+    {
+      "Sid": "WriteConvertedCogs",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
+      "Resource": "arn:aws:s3:::BUCKET/PREFIXorgs/*/tasks/*/assets/*.tif"
+    },
+    {
+      "Sid": "HeadObjectsNeedsList",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::BUCKET",
+      "Condition": { "StringLike": { "s3:prefix": ["PREFIXorgs/*"] } }
+    }
+  ]
+}

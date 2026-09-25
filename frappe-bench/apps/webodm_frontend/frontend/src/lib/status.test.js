@@ -18,6 +18,7 @@ describe('statusVariant', () => {
   it('maps waiting statuses to warning', () => {
     expect(statusVariant('Pending')).toBe('warning')
     expect(statusVariant('Queued')).toBe('warning')
+    expect(statusVariant('Provisioning')).toBe('warning')
   })
 
   it('maps both spellings of cancelled to secondary', () => {

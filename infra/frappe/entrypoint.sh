@@ -16,7 +16,11 @@ role="${FRAPPE_ROLE:-web}"
 echo "[entrypoint] FRAPPE_ROLE=${role}"
 
 # --- 1. Secrets: resolve *_FILE (Docker secrets) into plain env vars --------
-for var in DB_PASSWORD ADMIN_PASSWORD REDIS_CACHE_PASSWORD REDIS_QUEUE_PASSWORD FRAPPE_ROOT_PASSWORD; do
+# WEBODM_S3_* are the app's object-storage (writer) credentials and
+# PROVISIONER_API_TOKEN the shared secret for the provisioner API: they stay
+# in the process environment only (configure_site.py never writes them).
+for var in DB_PASSWORD ADMIN_PASSWORD REDIS_CACHE_PASSWORD REDIS_QUEUE_PASSWORD FRAPPE_ROOT_PASSWORD \
+           WEBODM_S3_ACCESS_KEY_ID WEBODM_S3_SECRET_ACCESS_KEY WEBODM_S3_SESSION_TOKEN PROVISIONER_API_TOKEN; do
   file_var="${var}_FILE"
   if [ -n "${!file_var:-}" ]; then
     if [ ! -r "${!file_var}" ]; then

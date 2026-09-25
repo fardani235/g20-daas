@@ -17,16 +17,24 @@ processing.
 │  (backend API) │ │    SPA      │ │  (FastAPI + GDAL)   │
 └────────┬───────┘ └─────────────┘ └─────┬──────────────┘
          │                               │
-┌────────▼───────┐              ┌────────▼──────────────┐
-│  PostgreSQL +  │              │  Shared File Storage   │
-│  PostGIS 16    │              │  (raster/pointcloud)   │
-└────────────────┘              └───────────────────────┘
-         │
-┌────────▼───────┐
-│     Redis      │
-│  (cache/queue) │
-└────────────────┘
+┌────────▼───────┐              ┌────────▼──────────────┐    ┌──────────────────┐
+│  PostgreSQL +  │              │  Serving cache         │◄──►│  Object storage  │
+│  PostGIS 16    │              │  (private/files)       │    │  S3 / MinIO      │
+└────────────────┘              └───────────────────────┘    │  (canonical)     │
+         │                                                   └──────────────────┘
+┌────────▼───────┐   ┌──────────────────┐   ┌──────────────────────┐
+│     Redis      │   │  Provisioner     │──►│ on-demand NodeODM     │
+│  (cache/queue) │   │  (AWS EC2 now)   │   │ (created per task)    │
+└────────────────┘   └──────────────────┘   └──────────────────────┘
+                     static `nodeodm` service = fallback / default
 ```
+
+Processing compute and storage are both pluggable and both optional: with
+nothing configured the stack runs the built-in `nodeodm` engine and keeps
+files on the host, as before. With a bucket and a provisioner configured,
+tasks provision a machine on demand and all inputs/outputs live in S3 (the
+host keeps a serving cache). See
+[`docs/on-demand-processing/`](docs/on-demand-processing/architecture.md).
 
 ### Repository layout
 
@@ -42,10 +50,13 @@ submodule).
 | `frappe-bench/apps/webodm_frontend/` | Vue 3 SPA + Frappe page hooks |
 | `services/geospatial/` | Standalone FastAPI tile/analysis service (hosts the **system** analysis plugins) |
 | `services/plugin-runner/` | Sandbox that executes **user** analysis plugins (uploaded per organization) |
+| `services/provisioner/` | On-demand compute service: one `Provider` interface (AWS EC2, dev `fixed`), stateless HTTP API |
+| `docs/on-demand-processing/` | User guide, deployment, runbook, troubleshooting, configuration reference, architecture for on-demand compute + object storage |
+| `infra/aws/` | IAM policies per identity, bucket policy, security group notes, NodeODM AMI bake script |
 | `docs/plugins/` | User plugin guide, example plugin, Semantic Segmentation and 3D Reconstruction plugin docs |
 | `plugins/semantic-segmentation/` | Semantic Segmentation **user** plugin (orthophoto / DSM / DTM, pluggable ONNX + rule models) |
 | `plugins/3d-reconstruction/` | 3D Reconstruction **user** plugin (DSM/DTM/LAZ/orthophoto/ODM mesh → web-ready georeferenced GLB for the 3D viewer) |
-| `infra/` | Caddy, backup, and image build assets |
+| `infra/` | Caddy, backup, Frappe entrypoint/config, AWS artefacts |
 
 ## Tech Stack
 
@@ -157,6 +168,24 @@ See [`docs/plugins/user-plugin-guide.md`](docs/plugins/user-plugin-guide.md) for
 docker compose up -d
 ```
 
+With MinIO standing in for S3 and the `fixed` compute provider (exercises the
+whole on-demand lifecycle without a cloud account):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+See [`docs/on-demand-processing/deployment.md`](docs/on-demand-processing/deployment.md).
+
+### Provisioner service
+
+```bash
+cd services/provisioner
+python -m venv venv && ./venv/bin/pip install -r requirements.txt
+./venv/bin/python -m pytest -q            # AWS provider tested against moto
+PROVISIONER_PROVIDER=fixed PROVISIONER_FIXED_ENDPOINT=127.0.0.1:3000 ./venv/bin/uvicorn app.main:app --port 5002
+```
+
 ## Project Structure
 
 ```
@@ -166,10 +195,12 @@ g20-daas/
 ├── README.md                     # This file
 ├── SPEC.md                       # Specification document
 ├── TRD.md                        # Technical requirements document
-├── docs/                         # Runbook, deployment guide, migration, plugin guide
-├── infra/                        # Caddy, backup, image build assets
-├── services/geospatial/          # Standalone FastAPI geospatial service
+├── docker-compose.dev.yml        # Dev override: MinIO + fixed compute provider
+├── docs/                         # Runbook, deployment guide, migration, plugin guide, on-demand processing
+├── infra/                        # Caddy, backup, Frappe entrypoint, AWS artefacts
+├── services/geospatial/          # Standalone FastAPI geospatial service (local + s3:// rasters)
 ├── services/plugin-runner/       # Sandbox service for user analysis plugins
+├── services/provisioner/         # On-demand compute provisioner (provider seam)
 │
 └── frappe-bench/                 # Frappe Bench root
     ├── Procfile                  # bench start process definitions

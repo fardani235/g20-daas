@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import tiles, export, pointcloud, volume, analysis, raster
+from app.utils import objectstore
 
 app = FastAPI(
     title="G20 Tech Geospatial Service",
@@ -27,4 +28,9 @@ app.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "webodm-geospatial"}
+    return {
+        "status": "ok",
+        "service": "webodm-geospatial",
+        # Which buckets this instance may read/convert (never credentials).
+        "object_storage": sorted(objectstore.allowed_buckets()),
+    }

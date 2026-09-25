@@ -9,6 +9,9 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=16.0.0" # Installed and managed by bench.
+    # Object storage (canonical store for task inputs/outputs). Only used
+    # when `storage_bucket` is configured; see webodm_core/storage.
+    "boto3>=1.34",
 ]
 
 [build-system]

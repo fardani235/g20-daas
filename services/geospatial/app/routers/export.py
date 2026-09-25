@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from app.utils import raster
+from app.utils import objectstore, raster
 
 log = logging.getLogger("webodm.geospatial.export")
 
@@ -25,10 +25,18 @@ def _run_ogr2ogr(path: str, output_path: str) -> None:
 
 
 class CogifyRequest(BaseModel):
-    # Absolute path to the source raster on shared storage.
+    # Source raster: absolute path on shared storage or an s3:// URI.
     path: str
-    # Optional separate destination; defaults to converting in place.
+    # Optional separate destination (absolute path or s3:// URI); defaults to
+    # converting in place. Required when the source is an object URI.
+    # ``output_path`` is the canonical name; ``dst_path`` is kept for callers
+    # of the original API.
+    output_path: str | None = None
     dst_path: str | None = None
+
+    @property
+    def destination(self) -> str | None:
+        return self.output_path or self.dst_path
 
 
 class VectorToGeoJSONRequest(BaseModel):
@@ -46,15 +54,34 @@ async def cogify(req: CogifyRequest):
     so the caller (Frappe) can persist them on the task without needing GDAL itself,
     and ``metadata`` (``raster.read_metadata`` of the output; null if that failed).
     """
-    if not os.path.isabs(req.path):
-        raise HTTPException(status_code=400, detail="path must be absolute")
-    if not os.path.isfile(req.path):
+    dst = req.destination
+    for label, p in (("path", req.path), ("output_path", dst)):
+        if p is None:
+            continue
+        if objectstore.is_object_uri(p):
+            try:
+                objectstore.parse_uri(p)
+            except objectstore.ObjectStoreError as e:
+                raise HTTPException(status_code=400, detail=f"{label}: {e}")
+        elif not os.path.isabs(p):
+            raise HTTPException(status_code=400, detail=f"{label} must be absolute or an s3:// URI")
+    if objectstore.is_object_uri(req.path):
+        if dst is None:
+            raise HTTPException(status_code=400, detail="output_path is required when path is an s3:// URI")
+        try:
+            if not await run_in_threadpool(objectstore.exists, req.path):
+                raise HTTPException(status_code=404, detail="raster not found in object storage")
+        except objectstore.ObjectStoreError as e:
+            raise HTTPException(status_code=502, detail=f"object storage: {e}")
+    elif not os.path.isfile(req.path):
         raise HTTPException(status_code=404, detail=f"raster not found: {req.path}")
 
     try:
         # GDAL work is blocking; keep it off the event loop.
-        out_path = await run_in_threadpool(raster.to_cog, req.path, req.dst_path)
+        out_path = await run_in_threadpool(raster.to_cog, req.path, dst)
         georef = await run_in_threadpool(raster.read_georef, out_path)
+    except objectstore.ObjectStoreError as e:
+        raise HTTPException(status_code=502, detail=f"object storage: {e}")
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"cogify failed: {e}")
 

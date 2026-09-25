@@ -196,6 +196,7 @@ describe('page state', () => {
   it('describes processing, failed, missing and no-model tasks', () => {
     expect(emptyStateFor({ status: 'Running' }).kind).toBe('processing')
     expect(emptyStateFor({ status: 'Queued' }).kind).toBe('processing')
+    expect(emptyStateFor({ status: 'Provisioning' }).kind).toBe('processing')
     expect(emptyStateFor({ status: 'Failed' }).kind).toBe('failed')
     expect(emptyStateFor({ status: 'Cancelled' }).title).toBe('Task cancelled')
     expect(emptyStateFor({ status: 'Completed' }).kind).toBe('none')
