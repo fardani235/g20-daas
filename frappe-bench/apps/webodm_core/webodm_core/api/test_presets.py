@@ -24,7 +24,7 @@ def _puser(email):
     return email
 
 
-class TestPresets(unittest.TestCase):
+class TestPresets(FrappeTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

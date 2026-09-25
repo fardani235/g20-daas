@@ -12,6 +12,7 @@ from frappe.utils import add_to_date, now_datetime
 
 from webodm_core.webodm_core.processing import compute, task_runner
 from webodm_core.webodm_core.processing.node_client import NodeODMTransportError
+from webodm_core.webodm_core.processing.testing import patch_local
 
 
 def _task(**kw):
@@ -74,7 +75,7 @@ class TestNodeToken(unittest.TestCase):
 
     def test_deterministic_and_name_bound(self):
         with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "k" * 40}), \
-                patch.object(frappe.local, "site", "webodm.local", create=True):
+                patch_local("site", "webodm.local"):
             a = compute.node_token("CI-1")
             self.assertEqual(a, compute.node_token("CI-1"))
             self.assertNotEqual(a, compute.node_token("CI-2"))
@@ -82,10 +83,10 @@ class TestNodeToken(unittest.TestCase):
             self.assertNotIn("=", a)
             self.assertRegex(a, r"^[A-Za-z0-9_-]+$")  # URL-safe: goes into user-data and a header
         with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "other" * 8}), \
-                patch.object(frappe.local, "site", "webodm.local", create=True):
+                patch_local("site", "webodm.local"):
             self.assertNotEqual(a, compute.node_token("CI-1"))  # secret rotation invalidates
         with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "k" * 40}), \
-                patch.object(frappe.local, "site", "other.site", create=True):
+                patch_local("site", "other.site"):
             self.assertNotEqual(a, compute.node_token("CI-1"))  # site-bound
 
     def test_missing_or_weak_secret_refuses(self):
@@ -112,7 +113,7 @@ class TestNodeToken(unittest.TestCase):
                       get_doc=patch("frappe.get_doc", side_effect=get_doc),
                       commit=patch("frappe.db.commit"), conf=patch("frappe.conf", {}))
         with patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "k" * 40}), \
-                patch.object(frappe.local, "site", "webodm.local", create=True), \
+                patch_local("site", "webodm.local"), \
                 common["check_capacity"], common["client"], common["get_doc"], common["commit"], common["conf"]:
             name = compute.request_for_task(task)
             expected = compute.node_token("CI-NEW")
@@ -132,7 +133,7 @@ class TestNodeToken(unittest.TestCase):
         inst = frappe._dict(name="CI-1", status="Ready", hostname="1.2.3.4", port=3000)
         with patch("frappe.db.get_value", return_value=inst), \
                 patch.dict("os.environ", {compute.NODE_TOKEN_SECRET_ENV: "k" * 40}), \
-                patch.object(frappe.local, "site", "webodm.local", create=True):
+                patch_local("site", "webodm.local"):
             node = compute.node_for_instance("CI-1")
             expected = compute.node_token("CI-1")
         self.assertEqual(node["token"], expected)

@@ -24,6 +24,7 @@ from webodm_core.storage import assets, cache, serving
 from webodm_core.storage.testing import use_fake_storage
 from webodm_core.webodm_core.processing import compute, task_runner
 from webodm_core.webodm_core.processing.node_client import NodeODMError, NodeODMTransportError
+from webodm_core.webodm_core.processing.testing import patch_local
 
 
 def _user(email):
@@ -388,7 +389,7 @@ class TestServingCache(_Base):
 
             request = MagicMock(); request.path = f.file_url
             frappe.set_user(self.user)
-            with patch.object(frappe.local, "request", request, create=True):
+            with patch_local("request", request):
                 serving.materialize_private_file()
             self.assertTrue(os.path.exists(path))
             self.assertEqual(open(path, "rb").read(), b"glTF-bytes")
@@ -396,7 +397,7 @@ class TestServingCache(_Base):
             # guests never trigger a fill
             os.remove(path)
             frappe.set_user("Guest")
-            with patch.object(frappe.local, "request", request, create=True):
+            with patch_local("request", request):
                 serving.materialize_private_file()
             self.assertFalse(os.path.exists(path))
         frappe.set_user("Administrator")
