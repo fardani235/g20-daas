@@ -113,6 +113,7 @@ class FakeObjectStorage:
         return [k for k in sorted(self.objects) if k.startswith(prefix)]
 
     def delete_prefix(self, prefix):
+        self._maybe_fail(("delete_prefix", prefix))
         keys = self.list_keys(prefix)
         for k in keys:
             self.objects.pop(k, None)

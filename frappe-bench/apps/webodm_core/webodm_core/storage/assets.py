@@ -211,6 +211,63 @@ def ensure_asset_local(task, kind: str) -> str:
     return cache.ensure_local(file_url, row.storage_key if row else None, task.organization)
 
 
+def reset_outputs(task) -> dict:
+    """Forget a task's previous outputs before it is (re)processed.
+
+    The relay is resumable by design: an asset row with a key plus a set
+    output field means "already collected", and an existing ``assets/`` object
+    without its ``raw/`` twin means "already converted". Those checks cannot
+    tell a partially collected *current* run from a fully collected *previous*
+    one, so a restart must wipe the previous run's bookkeeping first —
+    otherwise the new NodeODM outputs are skipped and the task reports success
+    while still serving the old results.
+
+    Clears: the output fields and extents, the task CRS (re-derived from the
+    new orthophoto), asset rows, raster metadata rows, the cached ``File``
+    documents of the old outputs, and the ``raw/`` + ``assets/`` objects.
+    Inputs (``images``, ``inputs/``) are untouched. Object deletion is
+    best-effort and logged: a stale object can only matter if the new run
+    writes the same key, which it then overwrites (``put`` is unconditional
+    once the row is gone).
+    """
+    from webodm_core.webodm_core.processing import raster_metadata
+
+    stats = {"files": 0, "objects": 0}
+    old_urls = [task.get(kind) for kind in ASSET_KINDS if task.get(kind)]
+
+    frappe.db.delete("WebODM Task Asset", {"parent": task.name, "parenttype": "WebODM Task"})
+    frappe.db.delete(raster_metadata.CHILD_DOCTYPE, {"parent": task.name, "parenttype": "WebODM Task"})
+    task.db_set({
+        **{kind: None for kind in ASSET_KINDS},
+        "orthophoto_extent": None, "dsm_extent": None, "dtm_extent": None,
+        # Int columns are NOT NULL in Frappe's schema; 0 is "unset" (the relay
+        # only fills epsg when falsy, so 0 is re-derived like None would be).
+        "epsg": 0, "wkt": None,
+    })
+    task.set("assets", [])
+    task.set(raster_metadata.PARENT_FIELD, [])
+
+    for url in old_urls:
+        for name in frappe.get_all(
+            "File", filters={"file_url": url, "attached_to_doctype": "WebODM Task", "attached_to_name": task.name},
+            pluck="name",
+        ):
+            try:
+                frappe.delete_doc("File", name, ignore_permissions=True, force=True, delete_permanently=True)
+                stats["files"] += 1
+            except Exception as e:
+                frappe.log_error(f"{task.name}: could not delete old output {url}: {e}", "WebODM Storage")
+
+    if storage.configured() and task.organization:
+        try:
+            store = storage.get()
+            for sub in ("raw", "assets"):
+                stats["objects"] += store.delete_prefix(storage.task_prefix(task) + sub + "/")
+        except storage.StorageError as e:
+            frappe.log_error(f"{task.name}: could not delete previous output objects: {e}", "WebODM Storage")
+    return stats
+
+
 # -- plugin outputs ---------------------------------------------------------
 
 

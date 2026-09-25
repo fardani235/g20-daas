@@ -460,3 +460,87 @@ class TestBackfill(_Base):
             cache.evict(max_bytes=0, idle_seconds=1)
             self.assertFalse(os.path.exists(path))
             self.assertEqual(open(assets.ensure_asset_local(t, "orthophoto"), "rb").read(), b"II*\x00legacy")
+
+
+class TestReprocessing(_Base):
+    """Restarting a task must not let the relay's resume logic mistake the
+    previous run's outputs for the current run's."""
+
+    def _complete(self, store, ortho: bytes, laz: bytes):
+        z = _zip({"odm_orthophoto/odm_orthophoto.tif": ortho,
+                  "odm_georeferencing/odm_georeferenced_model.laz": laz})
+        with patch.object(geospatial, "cogify", side_effect=_fake_cogify(store)), \
+                patch.object(task_runner.raster_metadata, "capture"), \
+                patch.object(compute, "release_for_task"):
+            task_runner._download_assets(_FakeClient(z), "U-RELAY", frappe.get_doc("WebODM Task", self.task.name))
+        return frappe.get_doc("WebODM Task", self.task.name)
+
+    def test_restart_serves_the_new_outputs_not_the_old(self):
+        from webodm_core.api import task as task_api
+
+        with use_fake_storage() as store:
+            t = self._complete(store, b"II*\x00run-one", b"LASF-one")
+            self.assertEqual(t.status, "Completed")
+            old_ortho_url, old_laz_url = t.orthophoto, t.point_cloud
+            p = self._prefix()
+            self.assertEqual(store.objects[p + "assets/orthophoto.tif"], b"COG:II*\x00run-one")
+
+            # Restart through the API, as the Start button does.
+            frappe.set_user(self.user)
+            with patch.object(frappe, "request", MagicMock(data=b'{"task_name": "%s"}' % self.task.name.encode())), \
+                    patch.object(task_runner, "enqueue_process"):
+                task_api.process_task()
+            frappe.set_user("Administrator")
+
+            t = frappe.get_doc("WebODM Task", self.task.name)
+            self.assertEqual(t.status, "Queued")
+            # previous bookkeeping is gone: fields, rows, metadata, objects, cache files
+            self.assertFalse(t.orthophoto or t.point_cloud or t.orthophoto_extent or t.epsg)
+            self.assertEqual(t.assets, [])
+            self.assertEqual(t.raster_metadata, [])
+            self.assertFalse([k for k in store.objects if "/assets/" in k or "/raw/" in k], list(store.objects))
+            self.assertFalse(frappe.db.exists("File", {"file_url": old_ortho_url}))
+            self.assertFalse(frappe.db.exists("File", {"file_url": old_laz_url}))
+            # inputs are untouched by a restart
+            self.assertEqual(len(t.images), 0)  # (this task has none; the prefix check above covers inputs/)
+
+            # Second run with different outputs: everything reflects run two.
+            t.db_set({"status": "Running", "node_task_id": "U-RELAY-2"})
+            t = self._complete(store, b"II*\x00run-two", b"LASF-two")
+            self.assertEqual(t.status, "Completed")
+            rows = {r.kind: r for r in t.assets}
+            self.assertEqual(store.objects[rows["orthophoto"].storage_key], b"COG:II*\x00run-two")
+            self.assertEqual(store.objects[rows["point_cloud"].storage_key], b"LASF-two")
+            with open(abs_path_for_file_url(t.orthophoto), "rb") as fh:
+                self.assertEqual(fh.read(), b"COG:II*\x00run-two")
+            with open(abs_path_for_file_url(t.point_cloud), "rb") as fh:
+                self.assertEqual(fh.read(), b"LASF-two")
+
+    def test_without_reset_stale_rows_would_be_skipped(self):
+        # Documents the failure mode the reset prevents: relay skips a kind whose
+        # row + field already exist.
+        with use_fake_storage() as store:
+            t = self._complete(store, b"II*\x00run-one", b"LASF-one")
+            t.db_set({"status": "Running"})
+            t = self._complete(store, b"II*\x00run-two", b"LASF-two")
+            self.assertEqual(store.objects[self._prefix() + "assets/orthophoto.tif"], b"COG:II*\x00run-one")
+
+    def test_reset_keeps_inputs_and_tolerates_storage_outage(self):
+        img = save_private_file_from_stream(io.BytesIO(b"\xff\xd8img"), "DJI_0001.JPG",
+                                            attached_to_doctype="WebODM Task", attached_to_name=self.task.name,
+                                            ignore_permissions=True)
+        self.task.append("images", {"image": img.file_url, "filename": "DJI_0001.JPG", "file_size": 6})
+        self.task.save(ignore_permissions=True)
+        with use_fake_storage() as store:
+            assets.sync_inputs(self.task)
+            t = self._complete(store, b"II*\x00one", b"LASF")
+            input_key = t.images[0].storage_key
+            store.fail_next = storage.StorageUnavailable("storage unreachable")
+            stats = assets.reset_outputs(t)
+            self.assertEqual(stats["objects"], 0)  # outage: object deletion skipped, logged
+            t = frappe.get_doc("WebODM Task", self.task.name)
+            self.assertEqual(t.assets, [])
+            self.assertFalse(t.orthophoto)
+            self.assertEqual(t.images[0].storage_key, input_key)
+            self.assertIn(input_key, store.objects)
+            self.assertTrue(os.path.exists(abs_path_for_file_url(img.file_url)))

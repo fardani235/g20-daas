@@ -43,6 +43,14 @@ def process_task():
     # attempts again, and any previous compute instance link is dropped (a new
     # one is provisioned if needed). Re-processing reads the inputs from the
     # cache when warm and from object storage otherwise.
+    #
+    # Previous outputs are wiped first. The output relay resumes across polls
+    # by treating "asset row with key + field set" as already collected, so
+    # leftovers from an earlier run would make it skip the new results and
+    # report success while still serving the old ones.
+    from webodm_core.storage import assets as storage_assets
+    storage_assets.reset_outputs(task)
+
     task.db_set({
         "status": "Queued", "progress": 1, "node_task_id": None, "compute_instance": None,
         "dispatch_attempts": 0, "poll_failures": 0, "next_attempt_at": None, "last_error": None,

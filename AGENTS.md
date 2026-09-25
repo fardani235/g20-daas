@@ -608,7 +608,16 @@ All DocTypes live in `webodm_core`:
 - **Docs**: `docs/on-demand-processing/{user-guide,deployment,runbook,troubleshooting,configuration,architecture}.md`,
   `openspec/specs/{on-demand-processing,object-storage}/spec.md`, SPEC/TRD/README/runbook updated,
   the s3fs section of the production guide marked superseded.
-- Tests: provisioner 26, geospatial 152 (13 new), frontend 201, webodm_core 361 (`storage/test_storage`,
+- Restart semantics: `api.task.process_task` calls `storage.assets.reset_outputs(task)` before
+  Queued. The relay's resume checks ("row with key + field set" = collected; "assets/ object
+  without raw/" = converted) cannot tell a previous run from a partial current one, so without
+  the reset a re-processed task skipped the new outputs and kept serving the old ones. The reset
+  clears output fields/extents/CRS (`epsg` → 0: Int columns are NOT NULL), asset + metadata rows,
+  old output `File`s, and the `raw/` + `assets/` prefixes — never `inputs/`. Object deletion is
+  best-effort. Tests: `TestReprocessing` in `test_asset_relay.py`.
+- Test-env gotcha: a sibling worktree session may share `/tmp` helper scripts and `oaktest-*`
+  docker resources; use worktree-specific names (`oak-*`, `/tmp/oak-frappe-test.sh`).
+- Tests: provisioner 26, geospatial 152 (13 new), frontend 201, webodm_core 364 (`storage/test_storage`,
   `processing/test_compute` 40 mocked lifecycle tests, `processing/test_asset_relay` 15 FrappeTestCase
   tests with the fake bucket). `test_retry_policy` now warms System Settings in `setUp`
   (`now_datetime()` otherwise hits the mocked `frappe.get_doc` on a cold cache). Pre-existing:

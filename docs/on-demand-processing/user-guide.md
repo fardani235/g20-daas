@@ -100,7 +100,10 @@ results you look at, so:
 
 The same is true of your uploaded imagery: it is kept in object storage, so a
 task can be **re-processed** (press Start on a Completed, Failed or Cancelled
-task) long after the local copy has been cleaned up.
+task) long after the local copy has been cleaned up. Re-processing replaces
+the previous results: the old orthophoto, elevation models, point cloud and
+model are removed the moment you press Start, and the task shows the new ones
+when it completes.
 
 Downloads (the orthophoto, point cloud, 3D model links) work the same way: a
 download of a cold result takes a moment longer to start.

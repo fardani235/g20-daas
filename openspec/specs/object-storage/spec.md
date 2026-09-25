@@ -75,6 +75,11 @@ A task SHALL be re-processable after its cache copies are gone.
 - **WHEN** a task is restarted and an image is missing on disk
 - **THEN** the image is streamed to the node directly from object storage
 
+#### Scenario: Previous outputs are replaced
+
+- **WHEN** a Completed, Failed or Cancelled task is restarted
+- **THEN** its previous output fields, asset rows, metadata rows, cached files and `raw/` + `assets/` objects are removed before the task is queued, inputs are kept, and the next completion records only the new run's outputs
+
 ### Requirement: Eviction
 
 A periodic reaper SHALL evict cache blobs idle longer than a configured age

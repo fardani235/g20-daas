@@ -154,6 +154,12 @@ just disposable now.
 5. `Completed` only after every output is in S3; then the instance is released.
 
 Every step is idempotent (exists-checks on keys and rows), so a retry resumes.
+Because those same checks would mistake a *previous* run's rows and objects
+for already-collected output, a restart (`api.task.process_task` on a
+Completed / Failed / Cancelled task) first calls `assets.reset_outputs`: it
+clears the output fields, extents and CRS, deletes the asset and metadata
+rows and the cached `File`s, and deletes the `raw/` and `assets/` objects —
+never `inputs/`. A new run therefore always starts from a clean slate.
 Transient problems (node, storage, conversion) raise `AssetRelayRetry`, a
 `NodeODMTransportError` subclass — the poller's existing tolerance keeps the
 task Running and retries next minute. When the poll budget is about to run
