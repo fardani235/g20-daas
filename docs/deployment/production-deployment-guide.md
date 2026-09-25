@@ -279,7 +279,8 @@ BACKUP_S3_ENDPOINT=
 BACKUP_SCHEDULE=0 3 * * *
 BACKUP_RETENTION_DAYS=30
 
-# Admin IP Whitelist (comma-separated, Caddy format)
+# Admin IP whitelist: space-separated IPs/CIDRs allowed to reach admin.$SITE_DOMAIN
+# (unset = private ranges only, so public access fails closed until listed)
 ADMIN_WHITELIST=YOUR_OFFICE_IP YOUR_HOME_IP
 EOF
 ```
@@ -435,7 +436,7 @@ services:
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN:-daas.g20tech.site}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@daas.g20tech.site}
-      ADMIN_WHITELIST: ${ADMIN_WHITELIST:-}
+      ADMIN_WHITELIST: ${ADMIN_WHITELIST:-private_ranges}
       # Remove Cloudflare/AWS DNS-01 vars if not using DNS challenge
       # CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
       # AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}

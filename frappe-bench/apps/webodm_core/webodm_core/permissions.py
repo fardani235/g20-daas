@@ -1,6 +1,6 @@
 import frappe
 
-from webodm_core.tenancy import get_current_org, is_platform_admin
+from webodm_core.tenancy import get_current_org, is_org_admin, is_platform_admin
 
 
 def _org_query_conditions(doctype, user):
@@ -83,7 +83,19 @@ def get_settings_permission_query_conditions(user=None):
 
 
 def has_settings_permission(doc, ptype, user=None):
-    return _org_has_permission(doc, user or frappe.session.user)
+    # Reads are org-scoped. Every write is an org-admin action, matching
+    # api/settings.save: role perms give WebODM User write on this doctype, so
+    # without the role check here a plain member reaches the same fields through
+    # /api/resource, bypassing the endpoint's admin gate.
+    user = user or frappe.session.user
+    if is_platform_admin(user):
+        return True
+    if ptype == "read":
+        return _org_has_permission(doc, user)
+    if not is_org_admin(user):
+        return False
+    # create: organization is stamped before_insert; other writes: own org only.
+    return ptype == "create" or _org_has_permission(doc, user)
 
 
 def get_plugin_permission_query_conditions(user=None):
@@ -115,9 +127,17 @@ def get_plugin_setting_permission_query_conditions(user=None):
 
 
 def has_plugin_setting_permission(doc, ptype, user=None):
-    if _is_create(ptype):
+    # Same rule as api/plugins.save_plugin_setting: enable/configure a plugin is
+    # an org-admin action. Role perms grant members write/create on this doctype,
+    # so the check must live here too or /api/resource bypasses the endpoint.
+    user = user or frappe.session.user
+    if is_platform_admin(user):
         return True
-    return _org_has_permission(doc, user or frappe.session.user)
+    if ptype == "read":
+        return _org_has_permission(doc, user)
+    if not is_org_admin(user):
+        return False
+    return ptype == "create" or _org_has_permission(doc, user)
 
 
 def get_plugin_run_permission_query_conditions(user=None):

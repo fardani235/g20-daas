@@ -130,6 +130,26 @@ class TestPluginApi(FrappeTestCase):
         with self.assertRaises(frappe.PermissionError):
             plugins_api.save_plugin_setting(plugin=PLUGIN_ID, enabled=True)
 
+    def test_member_cannot_write_plugin_setting_via_resource_hook(self):
+        # save_plugin_setting blocks members, but /api/resource/WebODM Plugin
+        # Setting goes through has_plugin_setting_permission; role perms grant
+        # WebODM User write, so the hook must block members too.
+        self._as(self.owner)
+        plugins_api.save_plugin_setting(plugin=PLUGIN_ID, enabled=True)
+        name = frappe.db.get_value("WebODM Plugin Setting",
+                                   {"plugin": PLUGIN_ID, "organization": self.org})
+        self.assertTrue(name)
+
+        self._as(self.member)
+        self.assertFalse(frappe.has_permission("WebODM Plugin Setting", "write", name))
+        with self.assertRaises(frappe.PermissionError):
+            doc = frappe.get_doc("WebODM Plugin Setting", name)
+            doc.enabled = 0
+            doc.save()
+
+        self._as(self.owner)
+        self.assertTrue(frappe.has_permission("WebODM Plugin Setting", "write", name))
+
     def test_invalid_settings_rejected(self):
         self._as(self.owner)
         with self.assertRaises(frappe.ValidationError):

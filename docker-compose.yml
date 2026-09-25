@@ -101,6 +101,9 @@ services:
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN:-${SITE_NAME:-webodm.local}}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      # Space-separated client IPs/CIDRs allowed to reach admin.$SITE_DOMAIN.
+      # Defaults to private ranges so an unset value fails closed.
+      ADMIN_WHITELIST: ${ADMIN_WHITELIST:-private_ranges}
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}

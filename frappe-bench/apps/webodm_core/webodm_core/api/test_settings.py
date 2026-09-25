@@ -20,6 +20,8 @@ class TestPerOrgSettings(FrappeTestCase):
         cls.org_b = frappe.get_doc({"doctype": "WebODM Organization", "organization_name": "Set Org B"}).insert(ignore_permissions=True).name
         cls.admin_a = _user("set_admin_a@example.com")
         frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.admin_a, "organization": cls.org_a, "role": "Owner"}).insert(ignore_permissions=True)
+        cls.member_a = _user("set_member_a@example.com")
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.member_a, "organization": cls.org_a, "role": "Member"}).insert(ignore_permissions=True)
         cls.member_b = _user("set_member_b@example.com")
         frappe.get_doc({"doctype": "WebODM Org Membership", "user": cls.member_b, "organization": cls.org_b, "role": "Member"}).insert(ignore_permissions=True)
 
@@ -47,3 +49,22 @@ class TestPerOrgSettings(FrappeTestCase):
         frappe.set_user(self.member_b)
         with self.assertRaises(frappe.PermissionError):
             settings_api.save(max_file_size_mb=999)
+
+    def test_member_cannot_write_settings_via_resource_hook(self):
+        # The API blocks members, but /api/resource/WebODM Settings goes through
+        # has_settings_permission instead. Role perms give WebODM User write, so
+        # the hook itself must enforce the org-admin rule or the endpoint is
+        # bypassable.
+        frappe.set_user(self.admin_a)
+        settings_api.get()  # ensure org A's row exists
+        name = frappe.db.get_value("WebODM Settings", {"organization": self.org_a})
+        self.assertTrue(name)
+
+        frappe.set_user(self.member_a)
+        frappe.local.webodm_org_cache = {}
+        self.assertFalse(frappe.has_permission("WebODM Settings", "write", name))
+        with self.assertRaises(frappe.PermissionError):
+            frappe.get_doc("WebODM Settings", name).save()
+
+        frappe.set_user(self.admin_a)
+        self.assertTrue(frappe.has_permission("WebODM Settings", "write", name))

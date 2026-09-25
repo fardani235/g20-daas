@@ -81,6 +81,48 @@ def test_timeout_kills_the_plugin(tmp_path, dem, run_dir):
     assert os.listdir(run_dir) == []
 
 
+def test_forked_daemon_does_not_outlive_the_run(tmp_path, dem, run_dir, monkeypatch):
+    """A plugin that setsid()s a daemon then exits must not leave it running.
+
+    Runs share the sandbox volume, so a survivor could read the next run's
+    staged inputs (another organization's data). The runner must reap anything
+    the plugin forked out of its process group on *success* too, not just on
+    timeout.
+    """
+    if not sandbox._become_child_subreaper():
+        pytest.skip("PR_SET_CHILD_SUBREAPER unavailable")
+    # The default RLIMIT_NPROC (128) counts every process of the invoking uid;
+    # a busy CI/dev host can already exceed it, which would make os.fork() fail
+    # before the plugin gets to spawn its daemon. The limit is orthogonal to the
+    # containment under test.
+    monkeypatch.setattr(sandbox, "MAX_PROCESSES", 4096)
+
+    pidfile = os.path.join(run_dir, "daemon.pid")
+    pkg = make_package(tmp_path / "daemon.zip", {"main.py": (
+        "import json, os, sys, time\n"
+        "req = json.load(open(sys.argv[1]))\n"
+        "open(req['output_path'], 'wb').write(b'x')\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        "    os.setsid()\n"
+        "    time.sleep(60)\n"
+        "    os._exit(0)\n"
+        "open(" + repr(pidfile) + ", 'w').write(str(pid))\n"
+        "os._exit(0)\n"
+    )})
+    sandbox.run_package(
+        pkg, {"raster": dem}, {}, os.path.join(run_dir, "output.dat"), run_dir, output_kind="other"
+    )
+
+    pid = int(open(pidfile).read())
+    try:
+        os.waitpid(pid, 0)  # reap it if it was reparented to the test process
+    except ChildProcessError:
+        pass
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
 def test_plugin_environment_is_scrubbed(tmp_path, dem, run_dir, monkeypatch):
     monkeypatch.setenv("SUPER_SECRET", "hunter2")
     pkg = make_package(tmp_path / "p.zip", {"main.py": (

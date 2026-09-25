@@ -39,6 +39,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 import zipfile
 
 MANIFEST_NAME = "plugin.json"
@@ -382,6 +383,87 @@ def _remove(path: str):
         pass
 
 
+def _become_child_subreaper():
+    """Make orphaned plugin processes reparent to us instead of PID 1.
+
+    Plugins are arbitrary code: one can ``fork``/``setsid`` a process out of its
+    process group and exit, leaving a daemon behind. Runs share one container and
+    one sandbox volume, so a survivor could read a later run's staged inputs
+    (another organization's data). As a child subreaper the runner is the parent
+    of anything the plugin orphans, which makes ``_descendant_pids`` find it.
+    Returns whether the kernel accepted it.
+    """
+    try:
+        import ctypes
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        PR_SET_CHILD_SUBREAPER = 36
+        return libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) == 0
+    except Exception:
+        return False
+
+
+def _descendant_pids(root: int) -> set[int]:
+    """Every live process whose parent chain leads back to ``root``."""
+    parents: dict[int, int] = {}
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        try:
+            with open(f"/proc/{pid}/stat", "rb") as fh:
+                # comm can contain spaces and parentheses; the fields we want
+                # (state, ppid) follow the last ')'.
+                fields = fh.read().rsplit(b")", 1)[-1].split()
+            parents[pid] = int(fields[1])
+        except (OSError, IndexError, ValueError):
+            continue
+    descendants: set[int] = set()
+    changed = True
+    while changed:
+        changed = False
+        for pid, ppid in parents.items():
+            if pid == root or pid in descendants:
+                continue
+            if ppid == root or ppid in descendants:
+                descendants.add(pid)
+                changed = True
+    return descendants
+
+
+def _terminate_tree(proc) -> None:
+    """Kill the plugin's process group and any process that escaped it.
+
+    Called on every exit path — success, crash and timeout. Killing only the
+    process group (as before) lets a ``setsid`` child survive; the descendant
+    sweep catches those because the runner is a child subreaper.
+    """
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except OSError:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        pass
+    mine = os.getpid()
+    for _ in range(5):
+        strays = _descendant_pids(mine)
+        if not strays:
+            return
+        for pid in strays:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        time.sleep(0.05)
+
+
 def progress_path_for(run_dir: str) -> str:
     """Where a plugin run publishes its progress; callers poll it while ``/run`` blocks."""
     return os.path.join(run_dir, "progress.json")
@@ -439,6 +521,7 @@ def run_package(
                 "work_dir": work_dir,
             }, f)
 
+        _become_child_subreaper()
         cmd = [PLUGIN_PYTHON, "-E", "-s", "-B", manifest["_entrypoint_abs"], request_path]
         with open(stdout_path, "wb") as out, open(stderr_path, "wb") as err:
             proc = subprocess.Popen(
@@ -454,15 +537,18 @@ def run_package(
             try:
                 returncode = proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                proc.wait()
-                tail = _tail(stderr_path)
-                raise PluginError(
-                    f"plugin timed out after {timeout}s" + (f":\n{tail}" if tail else "")
-                )
+                returncode = None
+            finally:
+                # On every exit path — success included — drop the process group
+                # and anything it forked out of it. A survivor would otherwise
+                # read the next run's staged inputs on the shared sandbox volume.
+                _terminate_tree(proc)
+
+        if returncode is None:
+            tail = _tail(stderr_path)
+            raise PluginError(
+                f"plugin timed out after {timeout}s" + (f":\n{tail}" if tail else "")
+            )
 
         log = _tail(stderr_path) or _tail(stdout_path)
         if returncode != 0:

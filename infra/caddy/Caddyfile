@@ -9,38 +9,63 @@
 admin.{$SITE_DOMAIN} {
     encode zstd gzip
 
-    @root path /
-    redir @root /desk permanent
+    # The Desk/admin surface is not public: only client IPs in ADMIN_WHITELIST
+    # may reach it. Defaults to private ranges so an unset value fails closed
+    # (the deployment guide's IP-whitelist control, enforced here at last).
+    @not_admin_ip not remote_ip {$ADMIN_WHITELIST:private_ranges}
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "geolocation=(), microphone=(), camera=()"
-        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; connect-src 'self' wss://admin.{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'"
-        -Server
+    handle @not_admin_ip {
+        respond "Forbidden" 403
     }
 
-    # SocketIO long-lived connections.
-    @socketio path /socket.io/*
-    reverse_proxy @socketio frappe-socketio:9000 {
-        header_up Host {host}
-        header_up X-Frappe-Site-Name {$SITE_DOMAIN}
-    }
+    handle {
+        # Unauthenticated login endpoint: same rate limit as the main vhost,
+        # in its own zone.
+        @login path /api/method/login
+        rate_limit @login {
+            zone login_admin {
+                match {
+                    path /api/method/login
+                }
+                key {remote_host}
+                window 1s
+                events 50
+            }
+        }
 
-    # Frappe static files (assets, files, public, private).
-    @assets path /assets/** /files/** /public/** /private/files/**
-    reverse_proxy @assets frappe-web:8000 {
-        header_up Host {$SITE_DOMAIN}
-    }
+        @root path /
+        redir @root /desk permanent
 
-    # Everything else → Frappe web.
-    reverse_proxy frappe-web:8000 {
-        header_up Host {$SITE_DOMAIN}
-        header_up X-Real-IP {remote}
-        header_up X-Forwarded-For {remote}
-        header_up X-Forwarded-Proto {scheme}
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "DENY"
+            Referrer-Policy "strict-origin-when-cross-origin"
+            Permissions-Policy "geolocation=(), microphone=(), camera=()"
+            Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; connect-src 'self' wss://admin.{$SITE_DOMAIN} blob:; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'"
+            -Server
+        }
+
+        # SocketIO long-lived connections.
+        @socketio path /socket.io/*
+        reverse_proxy @socketio frappe-socketio:9000 {
+            header_up Host {host}
+            header_up X-Frappe-Site-Name {$SITE_DOMAIN}
+        }
+
+        # Frappe static files (assets, files, public, private).
+        @assets path /assets/** /files/** /public/** /private/files/**
+        reverse_proxy @assets frappe-web:8000 {
+            header_up Host {$SITE_DOMAIN}
+        }
+
+        # Everything else → Frappe web.
+        reverse_proxy frappe-web:8000 {
+            header_up Host {$SITE_DOMAIN}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
     }
 }
 
