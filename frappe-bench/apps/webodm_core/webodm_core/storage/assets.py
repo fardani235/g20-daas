@@ -68,7 +68,7 @@ def sync_inputs(task, *, raise_on_error: bool = False) -> int:
             continue
         if not os.path.isfile(path):
             continue
-        key = storage.task_key(task, "inputs", os.path.basename(path))
+        key = storage.task_key(task, "inputs", f"{storage.safe_segment(row.name)}_{storage.safe_segment(row.filename or os.path.basename(path))}")
         try:
             if not store.exists(key):
                 store.put_path(path, key, storage.content_type_for(path))
