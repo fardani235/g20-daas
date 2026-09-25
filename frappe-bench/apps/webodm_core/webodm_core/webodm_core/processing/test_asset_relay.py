@@ -337,6 +337,26 @@ class TestServingCache(_Base):
         with self.assertRaises(cache.CacheMiss):
             assets.ensure_asset_local(t, "orthophoto")  # storage not configured either
 
+    def test_raster_source_rejects_a_file_not_attached_to_the_task(self):
+        # The Attach field is user-writable: pointing it at another record's
+        # private blob must not resolve, or a member could read files they do
+        # not own by URL.
+        frappe.set_user(self.user)
+        frappe.local.webodm_org_cache = {}
+        other = frappe.get_doc({"doctype": "WebODM Task", "project": self.project,
+                                "title": "Other Task", "status": "Pending"}).insert()
+        frappe.set_user("Administrator")
+        frappe.local.webodm_org_cache = {}
+        f = save_private_file_from_stream(io.BytesIO(b"x"), "other.tif",
+                                          attached_to_doctype="WebODM Task", attached_to_name=other.name,
+                                          ignore_permissions=True)
+        self.task.db_set("orthophoto", f.file_url)
+        t = frappe.get_doc("WebODM Task", self.task.name)
+        with self.assertRaises(frappe.PermissionError):
+            assets.raster_source(t, "orthophoto")
+        with self.assertRaises(frappe.PermissionError):
+            assets.ensure_asset_local(t, "orthophoto")
+
     def test_eviction_rules(self):
         f = self._asset(data=b"x" * 1000)
         path = abs_path_for_file_url(f.file_url)
@@ -400,6 +420,15 @@ class TestServingCache(_Base):
             with patch_local("request", request):
                 serving.materialize_private_file()
             self.assertFalse(os.path.exists(path))
+
+            # ...and neither does a logged-in user who cannot read the file
+            outsider = _user("relay_outsider@example.com")
+            os.remove(path)
+            frappe.set_user(outsider)
+            frappe.local.webodm_org_cache = {}
+            with patch_local("request", request):
+                serving.materialize_private_file()
+            self.assertFalse(os.path.exists(path), "unauthorized user must not fill the cache")
         frappe.set_user("Administrator")
 
 

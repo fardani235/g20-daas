@@ -28,7 +28,7 @@ from webodm_core import storage
 from webodm_core.plugins import geospatial
 from webodm_core.plugins.files import (
     abs_path_for_file_doc,
-    abs_path_for_file_url,
+    abs_path_for_attached_file,
     save_private_file_from_stream,
 )
 from webodm_core.storage import assets
@@ -437,7 +437,8 @@ def _get_task_images(task: Document) -> list[tuple[str, object]]:
         if not img.image:
             continue
         try:
-            path = abs_path_for_file_url(img.image)
+            path = abs_path_for_attached_file(img.image, attached_to_doctype="WebODM Task",
+                                              attached_to_name=task.name)
         except frappe.DoesNotExistError:
             frappe.log_error(f"No File record for {img.image}", "WebODM Processing")
             continue

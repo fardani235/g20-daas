@@ -7,9 +7,10 @@ handler: if the requested blob has been evicted from the serving cache but has
 an S3 copy, it is re-materialised first, so the URL keeps working. A cold
 fetch is slower (the download happens inside the request) but never wrong.
 
-Only logged-in users trigger a fill, and only for URLs that are registered as
-cache-backed rows; Frappe's own permission check on the ``File`` still gates
-the actual download afterwards.
+Only logged-in users trigger a fill, and then only for URLs that are registered
+as cache-backed rows *and* that the requester may read (checked on the ``File``,
+which delegates to the attached task/run). Frappe's own permission check still
+gates the actual download afterwards.
 """
 
 from __future__ import annotations
@@ -42,6 +43,15 @@ def materialize_private_file():
     if not found:
         return
     key, org = found
+    try:
+        file_doc = frappe.get_doc("File", {"file_url": _PRIVATE_PREFIX + name}, ignore_permissions=True)
+    except frappe.DoesNotExistError:
+        return
+    # Never fetch a blob the requester may not read: Frappe would deny the
+    # download afterwards anyway, so filling first would just be a way to make
+    # the deployment transfer someone else's object into the shared cache.
+    if not frappe.has_permission("File", "read", file_doc):
+        return
     try:
         cache.fill(key, local, org)
     except storage.StorageError as e:

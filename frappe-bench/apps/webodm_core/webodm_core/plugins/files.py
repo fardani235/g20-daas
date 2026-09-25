@@ -54,6 +54,31 @@ def abs_path_for_file_url(file_url: str) -> str:
     return abs_path_for_file_doc(file_doc)
 
 
+def file_doc_for_url(file_url: str, *, attached_to_doctype: str, attached_to_name: str):
+    """The File behind ``file_url``, requiring it to be attached to that document.
+
+    Attach/child-table fields are user-writable and the pipeline resolves them by
+    URL with permissions bypassed, so without this a member could point their own
+    task at another organization's private file and read it through the tile /
+    download / dispatch paths. Every user-settable pointer to a stored blob goes
+    through here (or ``abs_path_for_attached_file``).
+    """
+    file_doc = frappe.get_doc("File", {"file_url": file_url}, ignore_permissions=True)
+    if (file_doc.attached_to_doctype != attached_to_doctype
+            or file_doc.attached_to_name != attached_to_name):
+        raise frappe.PermissionError(
+            f"File {file_url} is not attached to {attached_to_doctype} {attached_to_name}"
+        )
+    return file_doc
+
+
+def abs_path_for_attached_file(file_url: str, *, attached_to_doctype: str, attached_to_name: str) -> str:
+    """``abs_path_for_file_doc`` for a File that must belong to the given document."""
+    return abs_path_for_file_doc(
+        file_doc_for_url(file_url, attached_to_doctype=attached_to_doctype, attached_to_name=attached_to_name)
+    )
+
+
 def _safe_private_name(file_name: str) -> str:
     # Same normalisation Frappe applies in save_file_on_filesystem, then make
     # the name conflict-free within private/files (random suffix on collision).

@@ -23,7 +23,7 @@ import frappe
 import requests
 from frappe.utils import get_site_path
 
-from webodm_core.plugins.files import abs_path_for_file_url
+from webodm_core.plugins.files import abs_path_for_attached_file
 
 # Room for staging and transfer on top of the plugin's own wall-clock limit.
 _HTTP_GRACE_SECONDS = 60
@@ -165,7 +165,11 @@ def run_user_plugin(
     run_dir = _new_run_dir()
     try:
         package = os.path.join(run_dir, "package.zip")
-        shutil.copyfile(abs_path_for_file_url(plugin.package), package)
+        shutil.copyfile(
+            abs_path_for_attached_file(plugin.package, attached_to_doctype="WebODM Plugin",
+                                       attached_to_name=plugin.name),
+            package,
+        )
         os.chmod(package, 0o644)
         staged_inputs = _stage_inputs(run_dir, inputs)
         sandbox_output = os.path.join(run_dir, "output" + os.path.splitext(output_path)[1])

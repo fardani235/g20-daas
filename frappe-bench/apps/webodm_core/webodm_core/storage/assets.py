@@ -25,7 +25,7 @@ import frappe
 from frappe.utils import now_datetime
 
 from webodm_core import storage
-from webodm_core.plugins.files import abs_path_for_file_url
+from webodm_core.plugins.files import abs_path_for_attached_file, abs_path_for_file_url, file_doc_for_url
 from webodm_core.storage import cache
 
 ASSET_KINDS = ("orthophoto", "dsm", "dtm", "point_cloud", "model")
@@ -63,7 +63,8 @@ def sync_inputs(task, *, raise_on_error: bool = False) -> int:
         if not row.image or row.storage_key:
             continue
         try:
-            path = abs_path_for_file_url(row.image)
+            path = abs_path_for_attached_file(row.image, attached_to_doctype="WebODM Task",
+                                              attached_to_name=task.name)
         except frappe.DoesNotExistError:
             continue
         if not os.path.isfile(path):
@@ -128,7 +129,8 @@ def input_sources(task) -> list[tuple[str, object]]:
             continue
         filename = row.filename or os.path.basename(row.image)
         try:
-            path = abs_path_for_file_url(row.image)
+            path = abs_path_for_attached_file(row.image, attached_to_doctype="WebODM Task",
+                                              attached_to_name=task.name)
         except frappe.DoesNotExistError:
             frappe.log_error(f"No File record for {row.image}", "WebODM Processing")
             path = None
@@ -198,6 +200,9 @@ def raster_source(task, dataset: str):
     file_url = task.get(dataset)
     if not file_url:
         raise frappe.DoesNotExistError(f"Task has no {dataset}")
+    # The field is user-writable: prove the blob belongs to this task before
+    # resolving it, or a member could read another org's file by URL.
+    file_doc_for_url(file_url, attached_to_doctype="WebODM Task", attached_to_name=task.name)
     row = asset_row(task, dataset)
     return cache.resolve_source(file_url, row.storage_key if row else None, task.organization)
 
@@ -207,6 +212,7 @@ def ensure_asset_local(task, kind: str) -> str:
     file_url = task.get(kind)
     if not file_url:
         raise frappe.DoesNotExistError(f"Task has no {kind}")
+    file_doc_for_url(file_url, attached_to_doctype="WebODM Task", attached_to_name=task.name)
     row = asset_row(task, kind)
     return cache.ensure_local(file_url, row.storage_key if row else None, task.organization)
 
@@ -289,12 +295,14 @@ def store_plugin_output(run, file_doc) -> str | None:
 def ensure_run_output_local(run) -> str:
     if not run.output_file:
         raise frappe.DoesNotExistError(f"Run {run.name} has no output")
+    file_doc_for_url(run.output_file, attached_to_doctype="WebODM Plugin Run", attached_to_name=run.name)
     return cache.ensure_local(run.output_file, run.get("storage_key"), run.organization)
 
 
 def run_output_source(run):
     if not run.output_file:
         raise frappe.DoesNotExistError(f"Run {run.name} has no output")
+    file_doc_for_url(run.output_file, attached_to_doctype="WebODM Plugin Run", attached_to_name=run.name)
     return cache.resolve_source(run.output_file, run.get("storage_key"), run.organization)
 
 
@@ -362,7 +370,8 @@ def sync_pending(limit: int = 20) -> dict:
                 if row and row.storage_key:
                     continue
                 try:
-                    path = abs_path_for_file_url(file_url)
+                    path = abs_path_for_attached_file(file_url, attached_to_doctype="WebODM Task",
+                                                      attached_to_name=task.name)
                 except frappe.DoesNotExistError:
                     continue
                 if not os.path.isfile(path):
