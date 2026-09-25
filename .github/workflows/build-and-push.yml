@@ -23,9 +23,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  python-syntax:
+    name: python (syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Catch syntax errors in seconds, instead of after the ~7 min Frappe
+      # image build where test discovery is otherwise the first thing to hit
+      # one. Covers the apps, services, plugins and docs examples.
+      - name: Byte-compile every tracked Python file
+        run: |
+          set -euo pipefail
+          count=$(git ls-files '*.py' | wc -l)
+          [ "$count" -gt 0 ] || { echo "no tracked Python files found"; exit 1; }
+          echo "Byte-compiling $count tracked Python files"
+          git ls-files -z '*.py' | xargs -0 python -m py_compile
+
   test-frontend:
     name: webodm_frontend (vitest)
     runs-on: ubuntu-latest
+    needs: python-syntax
     defaults:
       run:
         working-directory: frappe-bench/apps/webodm_frontend/frontend
@@ -43,6 +63,7 @@ jobs:
   test-geospatial:
     name: geospatial (pytest)
     runs-on: ubuntu-latest
+    needs: python-syntax
     defaults:
       run:
         working-directory: services/geospatial
@@ -61,6 +82,7 @@ jobs:
   test-plugin-runner:
     name: plugin-runner (pytest)
     runs-on: ubuntu-latest
+    needs: python-syntax
     defaults:
       run:
         working-directory: services/plugin-runner
@@ -87,6 +109,7 @@ jobs:
   test-provisioner:
     name: provisioner (pytest)
     runs-on: ubuntu-latest
+    needs: python-syntax
     defaults:
       run:
         working-directory: services/provisioner
@@ -104,6 +127,7 @@ jobs:
   frappe:
     name: webodm_core (build image, run tests, push)
     runs-on: ubuntu-latest
+    needs: python-syntax
     permissions:
       contents: read
       packages: write
@@ -292,6 +316,7 @@ jobs:
   caddy-image:
     name: caddy (build image, push)
     runs-on: ubuntu-latest
+    needs: python-syntax
     permissions:
       contents: read
       packages: write
@@ -319,6 +344,7 @@ jobs:
   backup-image:
     name: backup (build image, push)
     runs-on: ubuntu-latest
+    needs: python-syntax
     permissions:
       contents: read
       packages: write
