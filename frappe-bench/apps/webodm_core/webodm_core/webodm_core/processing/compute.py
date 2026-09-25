@@ -152,7 +152,7 @@ class ProvisionerClient:
         # config, the database or logs.
         token = os.environ.get("PROVISIONER_API_TOKEN")
         if token:
-            headers["Authorization"] = f"Bearer {token}"
+headers["Authorization"] = f"Bearer {token}"
         try:
             resp = requests.request(
                 method, f"{self.base_url}{path}", timeout=kw.pop("timeout", self.timeout),
