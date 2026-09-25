@@ -67,7 +67,8 @@ def file_doc_for_url(file_url: str, *, attached_to_doctype: str, attached_to_nam
     if (file_doc.attached_to_doctype != attached_to_doctype
             or file_doc.attached_to_name != attached_to_name):
         raise frappe.PermissionError(
-            f"File {file_url} is not attached to {attached_to_doctype} {attached_to_name}"
+            f"File {file_url} is not attached to {attached_to_doctype} {attached_to_name} "
+            f"(attached to {file_doc.attached_to_doctype!r}/{file_doc.attached_to_name!r})"
         )
     return file_doc
 

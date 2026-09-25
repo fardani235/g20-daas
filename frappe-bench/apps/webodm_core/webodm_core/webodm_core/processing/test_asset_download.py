@@ -217,9 +217,13 @@ class TestGetTaskImages(FrappeTestCase):
         import io as _io
         from webodm_core.plugins.files import save_private_file_from_stream
 
-        f = save_private_file_from_stream(_io.BytesIO(b"\xff\xd8img"), "gti.jpg", ignore_permissions=True)
+        f = save_private_file_from_stream(
+            _io.BytesIO(b"\xff\xd8img"), "gti.jpg",
+            attached_to_doctype="WebODM Task", attached_to_name="GTI-TASK",
+            ignore_permissions=True,
+        )
         try:
-            task = frappe._dict(images=[
+            task = frappe._dict(name="GTI-TASK", images=[
                 frappe._dict(image=f.file_url, filename="DJI_0001.JPG"),
                 frappe._dict(image="", filename="skipped.jpg"),
                 frappe._dict(image="/private/files/does_not_exist_zzz.jpg", filename="gone.jpg"),

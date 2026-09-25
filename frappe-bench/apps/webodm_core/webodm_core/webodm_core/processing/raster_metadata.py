@@ -20,7 +20,7 @@ import frappe
 from frappe.utils import cint, flt, now_datetime
 
 from webodm_core.plugins import geospatial
-from webodm_core.plugins.files import abs_path_for_attached_file
+from webodm_core.plugins.files import abs_path_for_file_url
 
 CHILD_DOCTYPE = "WebODM Raster Metadata"
 PARENT_DOCTYPE = "WebODM Task"
@@ -389,9 +389,12 @@ def _source_path(task, dataset: str, file_url: str) -> str:
         _kind, source = assets.raster_source(task, dataset)
         return source
     except cache.CacheMiss:
-        return abs_path_for_attached_file(file_url, attached_to_doctype="WebODM Task", attached_to_name=task.name)
+        # raster_source already proved the File belongs to this task (and a
+        # forged pointer raises there), so this fallback is for a legitimate
+        # host-only blob whose cache copy is gone.
+        return abs_path_for_file_url(file_url)
     except frappe.DoesNotExistError:
-        return abs_path_for_attached_file(file_url, attached_to_doctype="WebODM Task", attached_to_name=task.name)
+        return abs_path_for_file_url(file_url)
 
 
 def _maybe_set_task_resolution(task, dataset: str, values):

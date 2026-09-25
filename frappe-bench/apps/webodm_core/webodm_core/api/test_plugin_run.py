@@ -129,7 +129,9 @@ class TestPluginRun(FrappeTestCase):
                 "doctype": "File",
                 "file_name": f"{doc.name}_dsm.tif",
                 "is_private": 1,
-                "content": b"fake-dsm-bytes",
+                # unique per task: Frappe dedups identical file content, which
+                # would otherwise attach every task's DSM to the first task's File
+                "content": f"fake-dsm-{doc.name}".encode(),
                 "attached_to_doctype": "WebODM Task",
                 "attached_to_name": doc.name,
             }).save(ignore_permissions=True)
@@ -326,7 +328,8 @@ class TestPluginRun(FrappeTestCase):
             "doctype": "File",
             "file_name": f"{task_name}_{filename}",
             "is_private": 1,
-            "content": content,
+            # unique per (task, field): see _task() on Frappe's content dedup
+            "content": content + f"-{task_name}-{field}".encode(),
             "attached_to_doctype": "WebODM Task",
             "attached_to_name": task_name,
         }).save(ignore_permissions=True)

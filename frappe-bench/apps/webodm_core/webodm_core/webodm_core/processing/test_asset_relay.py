@@ -422,8 +422,8 @@ class TestServingCache(_Base):
             self.assertFalse(os.path.exists(path))
 
             # ...and neither does a logged-in user who cannot read the file
+            # (path is already gone: the guest step never refilled it)
             outsider = _user("relay_outsider@example.com")
-            os.remove(path)
             frappe.set_user(outsider)
             frappe.local.webodm_org_cache = {}
             with patch_local("request", request):

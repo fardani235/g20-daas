@@ -137,12 +137,6 @@ class TestPluginOutputs(FrappeTestCase):
             content = json.dumps(payload).encode()
         else:
             content = content + unique.encode()
-        file_doc = frappe.get_doc({
-            "doctype": "File",
-            "file_name": f"{unique}_{file_name}",
-            "is_private": 1,
-            "content": content,
-        }).save(ignore_permissions=True)
 
         frappe.set_user(self.owner)
         frappe.local.webodm_org_cache = {}
@@ -154,6 +148,15 @@ class TestPluginOutputs(FrappeTestCase):
             "output_kind": output_kind,
             "render_kind": render_kind,
         }).insert()
+        # A run's output is a File attached to the run (as the worker creates it).
+        file_doc = frappe.get_doc({
+            "doctype": "File",
+            "file_name": f"{unique}_{file_name}",
+            "is_private": 1,
+            "content": content,
+            "attached_to_doctype": "WebODM Plugin Run",
+            "attached_to_name": run.name,
+        }).save(ignore_permissions=True)
         run.db_set("output_file", file_doc.file_url)
         frappe.set_user("Administrator")
         frappe.local.webodm_org_cache = {}
