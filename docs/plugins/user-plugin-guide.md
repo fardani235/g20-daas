@@ -9,7 +9,7 @@ layer that can also be downloaded. There are two kinds:
 | Who provides them | The platform (`services/geospatial/app/analysis/ops`) | Your organization, as an uploaded package |
 | Who can see them | Every organization | Only the organization that uploaded them |
 | Where they run | Inside the geospatial service | In an isolated sandbox (`services/plugin-runner`) |
-| Examples | Hillshade, Contours, Object detection, Segmentation | Anything you write in Python — e.g. the [Semantic Segmentation plugin](semantic-segmentation.md) |
+| Examples | Hillshade, Contours, Segmentation | Anything you write in Python — e.g. the [Semantic Segmentation](semantic-segmentation.md) and [Object Detection](object-detection.md) plugins |
 
 Both kinds appear in the same **Plugins** page and run from the same task
 panel; the core processing pipeline knows nothing about individual plugins.

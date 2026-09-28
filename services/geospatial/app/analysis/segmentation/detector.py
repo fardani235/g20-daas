@@ -28,17 +28,11 @@ from rasterio.warp import transform_geom
 from scipy import ndimage
 from shapely.geometry import mapping, shape
 
-from app.analysis.detection import yolo
-from app.analysis.detection.detector import (
-    _gsd,
-    _resolve_tiling,
-    _tile_to_image,
-    _windows,
-)
+from app.analysis import tiling
 from app.analysis.segmentation import models
 from app.utils.volume import _to_meters_factor
 
-_TILE_MIN, _TILE_MAX = 64, 4096
+_TILE_MIN, _TILE_MAX = tiling.TILE_MIN, tiling.TILE_MAX
 _UNCLASSIFIED = -1
 _BACKGROUND_NAME = "background"
 
@@ -328,18 +322,18 @@ def run_segmentation(
         if ds.crs is None:
             raise ValueError("orthophoto is not georeferenced")
 
-        tile, overlap = _resolve_tiling(ds, params)
-        gsd = _gsd(ds)
+        tile, overlap = tiling.resolve_tiling(ds, params)
+        gsd = tiling.gsd(ds)
         width, height = ds.width, ds.height
 
         class_map = np.full((height, width), _UNCLASSIFIED, dtype=np.int16)
         confidence_map = np.zeros((height, width), dtype=np.float32)
 
-        for window in _windows(width, height, tile, overlap):
+        for window in tiling.windows(width, height, tile, overlap):
             tile_array = ds.read(window=window)
-            image = _tile_to_image(tile_array)
+            image = tiling.tile_to_image(tile_array)
 
-            tensor, scale, pad_x, pad_y = yolo.preprocess(image, spec.input_size)
+            tensor, scale, pad_x, pad_y = tiling.preprocess(image, spec.input_size)
             if not spec.has_batch_dim:
                 tensor = tensor[0]
 

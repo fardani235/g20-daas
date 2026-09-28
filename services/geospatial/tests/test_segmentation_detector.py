@@ -11,6 +11,7 @@ from rasterio.transform import from_origin
 from rasterio.windows import Window
 from scipy import ndimage
 
+from app.analysis import tiling
 from app.analysis.segmentation import detector, models
 from app.analysis.segmentation.detector import SegmentationParams
 from app.routers.analysis import (
@@ -73,7 +74,7 @@ def test_params_defaults_and_validation():
 
 
 def test_windows_cover_full_extent_with_overlap():
-    windows = list(detector._windows(width=100, height=100, tile=64, overlap=16))
+    windows = list(tiling.windows(width=100, height=100, tile=64, overlap=16))
     assert len(windows) >= 4
     covered = np.zeros((100, 100), dtype=bool)
     for w in windows:
@@ -86,7 +87,7 @@ def test_resolve_tiling_uses_ground_size():
     class _DS:
         res = (0.05, 0.05)
 
-    tile, overlap = detector._resolve_tiling(
+    tile, overlap = tiling.resolve_tiling(
         _DS(), SegmentationParams(tile_size_m=32.0, overlap_m=6.4)
     )
     assert tile == 640  # 32 m / 0.05 m
@@ -148,7 +149,7 @@ def test_region_across_tile_seam_is_single_and_contiguous():
     class_map = np.full((1, width), detector._UNCLASSIFIED, dtype=np.int16)
     confidence = np.zeros((1, width), dtype=np.float32)
 
-    windows = list(detector._windows(width, 1, tile=64, overlap=32))
+    windows = list(tiling.windows(width, 1, tile=64, overlap=32))
     assert len(windows) >= 3
 
     # A class-1 region that spans the first three overlapping tiles.

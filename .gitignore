@@ -10,6 +10,9 @@ plugins/*.zip
 plugins/semantic-segmentation/models/*.onnx
 plugins/semantic-segmentation/models/*.pth
 !plugins/semantic-segmentation/models/landcover-segformer-b0.onnx
+# Detector weights are never committed (large; the YOLO exports are AGPL) — tools/fetch_models.py
+plugins/object-detection/models/*.onnx
+plugins/object-detection/models/*.part
 # Docker compose override for local dev
 docker-compose.override.yml
 

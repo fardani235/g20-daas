@@ -629,3 +629,34 @@ All DocTypes live in `webodm_core`:
   (`now_datetime()` otherwise hits the mocked `frappe.get_doc` on a cold cache). Pre-existing:
   `api/test_plugin_model_output.setUpClass` inserts a fixed-name project and fails on a re-run
   against the same DB (fine on a fresh CI site).
+
+## Phase 17: Object detection becomes a user plugin + deletion cascade (2026-09-28)
+
+- New user plugin `plugins/object-detection/` (docs: `docs/plugins/object-detection.md`), built like
+  `semantic-segmentation`: `plugin.json` (vector / `detections`), `main.py`, `detplugin/` (orthophoto
+  open + GSD, tiling with `tile_size_m`/`overlap_m`, letterbox, YOLO `(N,4+nc,anchors)` and torchvision
+  `boxes/scores/labels` decoding, padding/interior-edge artifact drop, per-class NMS, GeoJSON with
+  `class/class_id/confidence/area_m2`), model cards `models/*.json` (`deepforest-tree-crowns` MIT,
+  default; `visdrone-yolov11s` AGPL-3.0). **No weights in git**: `tools/fetch_models.py` downloads +
+  sha256-verifies what the cards name (`--skip`/`--only`, prints licences); `tools/update_manifest.py`
+  regenerates the `model` enum in `plugin.json` from the cards (`build.sh` runs it, a test checks it).
+  No pre-run validation: missing weights / checksum mismatch / class-count mismatch / unsupported
+  outputs fail the run with one readable line. 102 pytest tests with tiny deterministic ONNX fixtures
+  (`tests/fixtures/make_fixtures.py`, needs `onnx` only to regenerate); CI `test-plugin-runner` runs them.
+  Gotcha fixed while porting: `rasterio.transform.xy` defaults to pixel centres — pass `offset="ul"`
+  for box corners or every box shifts by half a pixel.
+- Geospatial: removed `app/analysis/detection/`, `ops/object_detection.py`, the Dockerfile model
+  downloads (yolov8n/visdrone/deepforest + label files) and the detection tests. The helpers segmentation
+  borrowed moved to `app/analysis/tiling.py` (windows, resolve_tiling, letterbox) and
+  `segmentation/models.py` (managed dir, `resolve_asset`, `read_labels`, `load_session`). The env var
+  `OBJECT_DETECTION_MODELS_DIR` is kept as the shared models dir name so mounted volumes keep working;
+  compose no longer sets `OBJECT_DETECTION_DEFAULT_*`. Catalog sync marks the old `object-detection`
+  row unavailable and keeps its runs. 114 geospatial tests.
+- Deletion fix (backend, any client): `WebODMTask.on_trash` deletes the task's `WebODM Plugin Run`s
+  first (Frappe runs `on_trash` *before* `check_if_doc_is_linked`, so this clears the 417
+  LinkExistsError; each run's own `on_trash` drops stored outputs, Frappe drops attachments);
+  `WebODMProject.on_trash` deletes its tasks first. `Projects.vue` no longer swallows a failed
+  task delete (surfaces Frappe's `_server_messages`), `MapView.vue` shows the server detail too.
+  Regression tests: `api/test_deletion.py` (5). Worktree Frappe test recipe reused with `elm-*` names
+  (`/tmp/elm-frappe-test.sh`: throwaway postgres/redis on network `elm-test`, image
+  `webodm-frappe:16.34.0`, worktree `webodm_core` mounted at `/workspace/webodm_core`).

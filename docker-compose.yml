@@ -360,10 +360,6 @@ services:
     restart: unless-stopped
     environment:
       DATA_DIR: /data
-      # Defaults for the object-detection op. Aerial orthophotos need an
-      # aerial-trained model; COCO (yolov8n) remains the code fallback.
-      OBJECT_DETECTION_DEFAULT_MODEL: visdrone-yolov11s.onnx
-      OBJECT_DETECTION_DEFAULT_LABELS: visdrone.txt
       # Object storage: read rasters from S3 (/vsis3/ range reads) and write
       # COGs back S3 -> S3. Same bucket as the app; its own read+convert
       # identity (least privilege: no delete, no access to inputs/ prefixes

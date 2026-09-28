@@ -1,0 +1,95 @@
+{
+  "id": "object-detection",
+  "label": "Object Detection",
+  "version": "1.0.0",
+  "description": "Detect objects (tree crowns, vehicles, people, ...) on a task's orthophoto with an ONNX detector — a YOLO export or a torchvision/DeepForest export — and return their bounding boxes as GeoJSON with class and confidence. Detectors are model cards in models/: add a card and its weights, rebuild the package and upload it to bring your own model.",
+  "entrypoint": "main.py",
+  "inputs": [
+    {
+      "name": "orthophoto",
+      "label": "Orthophoto (RGB)",
+      "datasets": [
+        "orthophoto"
+      ]
+    }
+  ],
+  "params_schema": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "description": "Detector to run (a model card in models/). deepforest-tree-crowns: DeepForest — tree crowns (airborne RGB); visdrone-yolov11s: VisDrone — vehicles & people (YOLO11s, aerial). Parameters left at 0/-1 use the card's recommended values.",
+        "enum": [
+          "deepforest-tree-crowns",
+          "visdrone-yolov11s"
+        ],
+        "default": "deepforest-tree-crowns"
+      },
+      "confidence": {
+        "type": "number",
+        "title": "Confidence threshold",
+        "description": "Minimum class confidence to keep a detection; 0 uses the model's recommended value.",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0
+      },
+      "iou": {
+        "type": "number",
+        "title": "NMS IoU threshold",
+        "description": "Boxes of the same class overlapping more than this (intersection over union) are merged across tiles; 0 uses the model's recommended value.",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0
+      },
+      "tile_size": {
+        "type": "integer",
+        "title": "Tile size (px)",
+        "description": "Tile edge in orthophoto pixels; each tile is resized to the model input. 0 uses the model's recommended size (its native input when the card sets none). Ignored when a ground tile size is set.",
+        "minimum": 0,
+        "maximum": 4096,
+        "default": 0
+      },
+      "overlap": {
+        "type": "integer",
+        "title": "Tile overlap (px)",
+        "description": "Overlap between neighbouring tiles so objects on a tile edge are seen whole by one of them; at least the largest object. -1 uses the model's recommended value.",
+        "minimum": -1,
+        "maximum": 2048,
+        "default": -1
+      },
+      "tile_size_m": {
+        "type": "number",
+        "title": "Tile size (m, ground)",
+        "description": "Tile edge in ground metres, derived into pixels from the orthophoto's resolution so objects appear at the same scale on every dataset. 0 uses the model's recommended value, if any, else the pixel tile size.",
+        "minimum": 0,
+        "default": 0
+      },
+      "overlap_m": {
+        "type": "number",
+        "title": "Tile overlap (m, ground)",
+        "description": "Overlap in ground metres; -1 uses the model's recommended value, if any, else the pixel overlap.",
+        "minimum": -1,
+        "default": -1
+      },
+      "max_detections": {
+        "type": "integer",
+        "title": "Maximum detections",
+        "description": "Keep at most this many boxes (the most confident); protects the map from a runaway model.",
+        "minimum": 1,
+        "maximum": 100000,
+        "default": 5000
+      },
+      "class_filter": {
+        "type": "string",
+        "title": "Class filter",
+        "description": "Comma-separated class names to keep (see the model's classes). Empty keeps all.",
+        "default": ""
+      }
+    },
+    "required": []
+  },
+  "output_kind": "vector",
+  "render_kind": "detections",
+  "timeout_seconds": 3600
+}

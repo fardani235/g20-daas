@@ -1,0 +1,20 @@
+{
+  "id": "deepforest-tree-crowns",
+  "label": "DeepForest — tree crowns (airborne RGB)",
+  "description": "DeepForest RetinaNet tree-crown detector (Weinstein et al.), a torchvision-style export with one class. Trained on 10 cm airborne RGB from NEON sites; works on drone orthophotos of woodland and orchards. Score thresholds are naturally low for crowns, so confidence 0.2-0.4 is usual.",
+  "file": "deepforest-tree-crowns.onnx",
+  "sha256": "2b65ed073df780a0bb9184d6e120066672fe3a08adc2b57d49cc2cd0a7d47c47",
+  "family": "torchvision",
+  "classes": ["tree"],
+  "label_offset": 0,
+  "normalize": "imagenet",
+  "recommended": { "confidence": 0.3, "iou": 0.45, "tile_size": 256, "overlap": 64, "tile_size_m": 40, "overlap_m": 10 },
+  "colors": { "tree": "#2ca02c" },
+  "default": true,
+  "source": {
+    "name": "kshitijrajsharma/fair-deepforest-tree-crowns (ONNX export of weecology/DeepForest)",
+    "url": "https://huggingface.co/kshitijrajsharma/fair-deepforest-tree-crowns/resolve/main/deepforest_tree_crowns.onnx",
+    "license": "MIT",
+    "export": "torchvision RetinaNet exported without a batch dimension: input image[3,H,W] ImageNet-normalised, outputs boxes[N,4] xyxy, scores[N], labels[N] (0-based)"
+  }
+}
