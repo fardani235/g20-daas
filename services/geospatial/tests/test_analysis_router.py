@@ -42,7 +42,7 @@ def test_catalog_timeouts_are_optional():
     # Existing classic ops keep the default (no declared timeout)...
     assert by_id["contours"]["timeout_seconds"] is None
     # ...while the ML op declares a longer one.
-    assert by_id["object-detection"]["timeout_seconds"] == 1800
+    assert by_id["semantic-segmentation"]["timeout_seconds"] == 1800
 
 
 def test_catalog_declares_operation_inputs():

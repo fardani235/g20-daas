@@ -43,6 +43,32 @@ def test_resolve_rejects_symlink_escape(tmp_path, _models_dir):
         models.resolve_asset("link")
 
 
+def test_resolve_missing_file(_models_dir):
+    with pytest.raises(models.ModelError):
+        models.resolve_asset("nope.onnx")
+
+
+def test_read_labels_parses_lines(_models_dir):
+    (_models_dir / "labels.txt").write_text("background\nbuilding\n\n  road  \n")
+    assert models.read_labels("labels.txt") == ["background", "building", "road"]
+
+
+def test_read_labels_rejects_empty(_models_dir):
+    (_models_dir / "labels.txt").write_text("\n\n")
+    with pytest.raises(models.ModelError):
+        models.read_labels("labels.txt")
+
+
+def test_load_missing_model(_models_dir):
+    with pytest.raises(models.ModelError):
+        models.load_session("nope.onnx")
+
+
+def test_models_dir_defaults_when_unset(monkeypatch):
+    monkeypatch.delenv(models.MODELS_DIR_ENV, raising=False)
+    assert models.models_dir() == models.DEFAULT_MODELS_DIR
+
+
 def test_inspect_multiclass_model(_models_dir):
     _install("tiny_segmenter.onnx", _models_dir, ["background", "building"])
     session = models.load_session("tiny_segmenter.onnx")

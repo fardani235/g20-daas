@@ -1195,7 +1195,15 @@ async function deleteTask(task) {
       method: 'DELETE',
       headers,
     })
-    if (!res.ok) throw new Error('Failed to delete task')
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      let detail = body.message || body.exception || `HTTP ${res.status}`
+      try {
+        const messages = JSON.parse(body._server_messages || '[]')
+        if (messages.length) detail = JSON.parse(messages[0]).message.replace(/<[^>]+>/g, '')
+      } catch (e) { /* keep the generic detail */ }
+      throw new Error(`Failed to delete task: ${detail}`)
+    }
     tasks.value = tasks.value.filter(t => t.name !== task.name)
     if (selectedTask.value === task.name) selectedTask.value = null
     toast.success('Task deleted')

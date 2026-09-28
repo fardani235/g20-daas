@@ -203,21 +203,44 @@ function confirmDelete(project) {
   deleteTarget.value = project
 }
 
+// Frappe reports errors as `exception` (e.g. LinkExistsError) plus a
+// `_server_messages` JSON array of {message} strings; surface the first one.
+async function errorMessage(res, fallback) {
+  const body = await res.json().catch(() => ({}))
+  try {
+    const messages = JSON.parse(body._server_messages || '[]')
+    const first = messages.length ? JSON.parse(messages[0]).message : null
+    if (first) return `${fallback}: ${first.replace(/<[^>]+>/g, '')}`
+  } catch (e) {
+    // fall through to the generic fields
+  }
+  if (body.message) return `${fallback}: ${body.message}`
+  if (body.exception) return `${fallback}: ${body.exception}`
+  return `${fallback} (HTTP ${res.status})`
+}
+
 async function deleteProject() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
+    // The backend cascades: deleting the project deletes its tasks, and each
+    // task its plugin runs. Deleting the tasks first is kept so a task-level
+    // failure is reported by name; it is no longer allowed to fail silently.
     const deleteFilters = JSON.stringify([["project", "=", deleteTarget.value.name]])
     const tasksRes = await fetch(
-      `/api/resource/WebODM%20Task?filters=${encodeURIComponent(deleteFilters)}&fields=["name"]`
+      `/api/resource/WebODM%20Task?filters=${encodeURIComponent(deleteFilters)}&fields=["name","title"]`
     )
-    if (tasksRes.ok) {
-      const { data: taskList } = await tasksRes.json()
-      for (const task of taskList || []) {
-        await fetch(`/api/resource/WebODM%20Task/${encodeURIComponent(task.name)}`, {
-          method: 'DELETE',
-          headers: csrfHeaders(),
-        })
+    if (!tasksRes.ok) {
+      throw new Error(await errorMessage(tasksRes, 'Failed to list the project\'s tasks'))
+    }
+    const { data: taskList } = await tasksRes.json()
+    for (const task of taskList || []) {
+      const taskRes = await fetch(`/api/resource/WebODM%20Task/${encodeURIComponent(task.name)}`, {
+        method: 'DELETE',
+        headers: csrfHeaders(),
+      })
+      if (!taskRes.ok) {
+        throw new Error(await errorMessage(taskRes, `Failed to delete task "${task.title || task.name}"`))
       }
     }
     const res = await fetch(`/api/resource/WebODM%20Project/${encodeURIComponent(deleteTarget.value.name)}`, {
@@ -225,8 +248,7 @@ async function deleteProject() {
       headers: csrfHeaders(),
     })
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.message || 'Failed to delete project')
+      throw new Error(await errorMessage(res, 'Failed to delete project'))
     }
     projects.value = projects.value.filter(p => p.name !== deleteTarget.value.name)
     toast.success('Project deleted')

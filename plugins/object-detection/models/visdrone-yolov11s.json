@@ -1,0 +1,22 @@
+{
+  "id": "visdrone-yolov11s",
+  "label": "VisDrone — vehicles & people (YOLO11s, aerial)",
+  "description": "YOLO11s trained on the VisDrone drone-imagery benchmark: pedestrian, people, bicycle, car, van, truck, tricycle, awning-tricycle, bus, motor. Trained with the Ultralytics framework, so the weights are AGPL-3.0: fetch them only if that licence suits your deployment, or replace this card with your own detector.",
+  "file": "visdrone-yolov11s.onnx",
+  "sha256": "5abd18e5b630c330e68fe56b2bdc3875b10fbea07fe6912bde3cb9e68b58ca23",
+  "family": "yolo",
+  "classes": ["pedestrian", "people", "bicycle", "car", "van", "truck", "tricycle", "awning-tricycle", "bus", "motor"],
+  "label_offset": 0,
+  "normalize": "unit",
+  "recommended": { "confidence": 0.4, "iou": 0.45, "tile_size": 640, "overlap": 128, "tile_size_m": 32, "overlap_m": 6 },
+  "colors": {
+    "pedestrian": "#e6550d", "people": "#fd8d3c", "bicycle": "#9e9ac8", "car": "#3182bd", "van": "#6baed6",
+    "truck": "#08519c", "tricycle": "#756bb1", "awning-tricycle": "#54278f", "bus": "#31a354", "motor": "#c51b8a"
+  },
+  "source": {
+    "name": "RISEF/yolov11s-visdrone",
+    "url": "https://huggingface.co/RISEF/yolov11s-visdrone/resolve/main/weights/best.onnx",
+    "license": "AGPL-3.0",
+    "export": "Ultralytics ONNX export: input images[1,3,640,640] in [0,1], output output0[1,14,8400] (cx,cy,w,h + 10 class scores)"
+  }
+}

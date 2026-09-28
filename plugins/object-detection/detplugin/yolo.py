@@ -1,6 +1,6 @@
-"""YOLO-style preprocessing, decoding, and non-maximum suppression.
+"""YOLO-style preprocessing, decoding and non-maximum suppression.
 
-Pure functions (numpy/Pillow only) so tiling, decoding, and merging can be
+Pure functions (numpy/Pillow only) so tiling, decoding and merging can be
 tested without loading a model. The detection output contract is YOLOv8's ONNX
 form: ``(1, 4 + num_classes, anchors)`` with ``cx, cy, w, h`` in input-pixel
 coordinates and per-class probabilities already activated.
@@ -9,9 +9,11 @@ coordinates and per-class probabilities already activated.
 import numpy as np
 from PIL import Image
 
+PAD_COLOR = (114, 114, 114)
+
 
 def letterbox(image: np.ndarray, size: tuple[int, int]):
-    """Resize an ``H x W x C`` uint8 image into ``size`` (h, w) preserving aspect.
+    """Resize an ``H x W x 3`` uint8 image into ``size`` (h, w) preserving aspect.
 
     Returns ``(padded, scale, pad_x, pad_y)`` where ``padded`` is the resized
     image placed on a mid-grey canvas of exactly ``size``.
@@ -22,19 +24,21 @@ def letterbox(image: np.ndarray, size: tuple[int, int]):
     new_h, new_w = max(1, round(src_h * scale)), max(1, round(src_w * scale))
 
     pil = Image.fromarray(image).resize((new_w, new_h), Image.BILINEAR)
-    canvas = Image.new("RGB", (target_w, target_h), (114, 114, 114))
+    canvas = Image.new("RGB", (target_w, target_h), PAD_COLOR)
     pad_x = (target_w - new_w) // 2
     pad_y = (target_h - new_h) // 2
     canvas.paste(pil, (pad_x, pad_y))
     return np.asarray(canvas, dtype=np.uint8), scale, pad_x, pad_y
 
 
-def preprocess(image: np.ndarray, size: tuple[int, int]) -> tuple[np.ndarray, float, int, int]:
-    """Letterbox and normalise an ``H x W x C`` image into a ``1x3xHxW`` tensor."""
+def preprocess(image: np.ndarray, size: tuple[int, int], batch: bool = True):
+    """Letterbox and scale an ``H x W x 3`` image to [0, 1] in ``(1)x3xHxW`` layout."""
     padded, scale, pad_x, pad_y = letterbox(image, size)
     tensor = padded.astype(np.float32) / 255.0
-    tensor = np.transpose(tensor, (2, 0, 1))[None, ...]  # HWC -> 1CHW
-    return np.ascontiguousarray(tensor), scale, pad_x, pad_y
+    chw = np.ascontiguousarray(np.transpose(tensor, (2, 0, 1)))
+    if batch:
+        chw = np.ascontiguousarray(chw[None, ...])
+    return chw, scale, pad_x, pad_y
 
 
 def decode(output: np.ndarray, confidence: float) -> list[dict]:
@@ -79,7 +83,7 @@ def iou(a: dict, b: dict) -> float:
 
 
 def nms(detections: list[dict], iou_threshold: float) -> list[dict]:
-    """Greedy per-class non-maximum suppression."""
+    """Greedy per-class non-maximum suppression, highest confidence first."""
     kept: list[dict] = []
     by_class: dict[int, list[dict]] = {}
     for det in detections:

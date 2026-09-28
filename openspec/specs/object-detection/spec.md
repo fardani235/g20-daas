@@ -1,193 +1,163 @@
-# Object Detection Specification
+# Object Detection Plugin Specification
 
 ## Purpose
 
-Defines how an ONNX object-detection model is run over a task's orthophoto and
-how its detections are parameterized, produced, and presented to users.
+A user plugin (`plugins/object-detection`) that runs an ONNX object detector
+over a task's orthophoto and returns the detections as georeferenced bounding
+boxes through the existing plugin execution and output mechanisms. Object
+detection is no longer a system operation of the geospatial service; each
+organization uploads the plugin with the detectors it wants. Complements
+`user-plugins` (packaging, sandbox) and `plugin-outputs` (storage, map
+overlay, download), which apply unchanged.
 
 ## Requirements
 
-### Requirement: Detection operation availability
+### Requirement: Packaged as a user plugin
 
-The system SHALL expose object detection as a catalog operation that consumes a
-task's orthophoto and produces geospatial detections, discoverable and
-runnable through the existing plugin catalog and enablement flow.
+Object detection SHALL be delivered as a user plugin package (manifest,
+entrypoint, model cards) that an organization uploads, with `output_kind`
+`vector` and `render_kind` `detections`, and SHALL NOT exist as a system
+operation in the geospatial catalog.
 
-#### Scenario: Operation is listed
+#### Scenario: Plugin installed per organization
 
-- **WHEN** a client requests the analysis catalog
-- **THEN** object detection appears with its identifier, description, parameter
-  schema, and required `orthophoto` input
+- **WHEN** an organization owner uploads the package
+- **THEN** the plugin appears in that organization's catalog as
+  `<org-slug>.object-detection`, consuming the task orthophoto
 
-#### Scenario: Operation unavailable
+#### Scenario: System operation retired gracefully
 
-- **WHEN** object detection is not enabled for the caller's organization, or is
-  disabled platform-wide
-- **THEN** a run request is rejected as it is for any other plugin
+- **WHEN** the geospatial catalog no longer lists `object-detection`
+- **THEN** catalog sync marks the old row unavailable and its run history and
+  outputs remain queryable
 
-### Requirement: Model configuration
+### Requirement: Model cards
 
-The detection operation SHALL use an ONNX model file and a matching label set
-supplied by configuration, with a platform default that an organization may
-override, and MUST reject a run when the model or labels are missing,
-unreadable, or inconsistent. The platform default SHALL be configurable so a
-deployment can select a domain-appropriate model (for example an
-aerial-trained model for top-down imagery).
+Detectors SHALL be described by JSON model cards (id, label, ONNX file,
+family, class names, label offset, normalisation, recommended parameters,
+optional checksum, provenance and licence) so a detector can be added or
+replaced by adding a card and its weights and rebuilding the package, without
+changing plugin code. The manifest's `model` enum SHALL be generated from the
+cards.
 
-#### Scenario: Default model used
+#### Scenario: Customer adds a detector
 
-- **WHEN** no model is configured for the organization
-- **THEN** the platform default model and labels are used
+- **WHEN** a card and its `.onnx` file are added to `models/` and the package
+  is rebuilt and uploaded
+- **THEN** the new model is selectable in the run dialog and runs with its
+  card's recommended settings
 
-#### Scenario: Aerial model selected
+#### Scenario: Weights not packaged
 
-- **WHEN** a run or the platform default selects an aerial-trained model and its
-  labels
-- **THEN** detection uses that model and reports its classes
+- **WHEN** a run selects a card whose weights were not fetched or supplied
+- **THEN** the run fails with a message naming the missing file and how to
+  add it, while other models remain usable
+
+#### Scenario: No AGPL weights committed
+
+- **WHEN** the repository is inspected
+- **THEN** no detector weights are tracked; large or AGPL-licensed models are
+  fetched at build time by `tools/fetch_models.py` with their licence shown
 
 ### Requirement: Detection model families
 
-The operation SHALL support detectors with different output conventions — at
-least a YOLO-style single tensor and a torchvision-style
-`boxes`/`scores`/`labels` output — inferring the family when it is not
-specified, and SHALL allow the class-index offset to be configured for models
-whose labels do not start at zero.
+The plugin SHALL support detectors with different output conventions — a
+YOLO-style single tensor `(N, 4 + classes, anchors)` and a torchvision-style
+`boxes`/`scores`/`labels` output — inferring the family when the card says
+`auto`, and SHALL apply the card's label offset for models whose labels do
+not start at zero.
 
 #### Scenario: YOLO-family model
 
-- **WHEN** the model exposes a YOLO-style `(N, 4 + classes, anchors)` output
-- **THEN** its detections are decoded from that tensor
+- **WHEN** the model exposes a YOLO-style output
+- **THEN** its detections are decoded from that tensor and the class count is
+  checked against the card
 
 #### Scenario: Torchvision-family model
 
 - **WHEN** the model exposes `boxes`, `scores` and `labels` outputs
-- **THEN** its detections are decoded from those outputs
+- **THEN** its detections are decoded from those outputs with the card's
+  label offset
 
-#### Scenario: Unrecognized model rejected
+### Requirement: Failures are reported by the run, not pre-validated
 
-- **WHEN** the model exposes neither supported output shape
-- **THEN** the run is rejected before it is created with a clear reason
+There SHALL be no pre-run validation step. A bad or mismatched model MUST fail
+the run with a clear, actionable error visible in the run panel.
 
-#### Scenario: Label offset applied
+#### Scenario: Class count mismatch
 
-- **WHEN** a model's labels do not start at the index of the first line in the
-  label file
-- **THEN** the configured offset maps model labels onto the label file
+- **WHEN** the model predicts a different number of classes than the card lists
+- **THEN** the run fails naming both numbers
 
-#### Scenario: Curated model list offered
+#### Scenario: Checksum mismatch
 
-- **WHEN** a client requests the catalog for an operation that declares known
-  models
-- **THEN** each entry carries its model file, labels, family, label offset, and
-  recommended parameters so a UI can offer them without the user typing them
+- **WHEN** the card carries a `sha256` and the packaged weights differ
+- **THEN** the run fails naming the file and both digests
 
-#### Scenario: Organization override used
+#### Scenario: Unsupported model
 
-- **WHEN** the organization has configured a model and labels
-- **THEN** that model and its labels are used for that organization's runs
-
-#### Scenario: Missing model rejected
-
-- **WHEN** the configured model or label file cannot be read
-- **THEN** the run is rejected before it is created and the reason is reported
+- **WHEN** the model exposes neither supported output layout
+- **THEN** the run fails describing the outputs it found
 
 ### Requirement: Detection parameters
 
-The operation SHALL accept a confidence threshold, an IoU threshold, a tile
-size, a tile overlap, a maximum number of detections, and an optional class
-filter. Omitted parameters MUST fall back to documented defaults and supplied
-values MUST be validated before execution.
+The plugin SHALL accept a confidence threshold, an IoU threshold, tile size
+and overlap (in pixels or ground metres), a maximum number of detections and
+a class filter given as comma-separated names. Values left at 0/-1 MUST fall
+back to the selected card's recommended values, then to documented defaults;
+supplied values MUST be validated against the manifest before the run is
+created and again by the plugin.
 
-#### Scenario: Defaults applied
+#### Scenario: Card defaults applied
 
-- **WHEN** a run omits detection parameters
-- **THEN** the documented defaults are used
-
-#### Scenario: Invalid parameter rejected
-
-- **WHEN** a run supplies a value outside the permitted range (for example a
-  confidence threshold outside 0–1)
-- **THEN** the request is rejected and no run is created
-
-#### Scenario: Class filter restricts output
-
-- **WHEN** a run supplies a class filter
-- **THEN** only detections whose class is in the filter appear in the output
-
-#### Scenario: Class filter entered as a plain list
-
-- **WHEN** a user enters the class filter as comma- or newline-separated class
-  names
-- **THEN** those names are used as the filter without requiring JSON syntax
+- **WHEN** a run leaves the thresholds and tiling at their defaults
+- **THEN** the selected card's recommended values are used and recorded in the
+  run metadata
 
 #### Scenario: Tile size given in ground metres
 
-- **WHEN** a run supplies a tile/overlap size in ground metres
-- **THEN** the pixel tile and overlap are derived from the raster's ground
+- **WHEN** a run (or the card) supplies `tile_size_m` / `overlap_m`
+- **THEN** the pixel tile and overlap are derived from the orthophoto's ground
   sample distance, so object scale is consistent across resolutions
+
+#### Scenario: Class filter
+
+- **WHEN** a run supplies class names
+- **THEN** only detections of those classes appear; an unknown name fails the
+  run listing the model's classes
 
 ### Requirement: Tiled inference over large imagery
 
-The operation SHALL process the entire orthophoto by tiles that overlap, and
-MUST merge detections across tile boundaries so an object is reported once
-regardless of where it falls relative to a tile edge.
+The plugin SHALL process the entire orthophoto in overlapping tiles, skip
+tiles outside the valid (alpha/nodata) area, drop boxes centred in letterbox
+padding or clipped at an interior tile edge, and merge detections across
+tiles with per-class NMS so an object is reported once.
 
 #### Scenario: Object across a tile boundary
 
-- **WHEN** an object spans the boundary between two tiles
-- **THEN** it appears once in the output rather than duplicated per tile
+- **WHEN** an object spans two tiles
+- **THEN** it appears once in the output
 
-#### Scenario: Full extent is covered
+#### Scenario: Nodata collar
 
-- **WHEN** the orthophoto is larger than one tile
-- **THEN** detections are produced across the whole image extent, not only the
-  first tile
-
-#### Scenario: Padding and edge artifacts discarded
-
-- **WHEN** a detection is centred in letterbox padding, or is clipped at an
-  interior tile edge where a neighbouring tile sees it whole
-- **THEN** it is not emitted as a detection
+- **WHEN** tiles fall entirely outside the survey area
+- **THEN** they are skipped and counted in the metadata
 
 ### Requirement: Detection output
 
-The operation SHALL produce a GeoJSON `FeatureCollection` in which each feature
-is a bounding box carrying its class label, class id, and confidence score, with
-metadata reporting per-class counts and a total. Coordinates MUST be in
-EPSG:4326. An image with no detections MUST yield an empty feature collection
-with zero counts.
+The plugin SHALL produce a GeoJSON `FeatureCollection` in EPSG:4326 whose
+features are bounding-box polygons carrying `class`, `class_id`, `confidence`
+and `area_m2`, with metadata reporting per-class counts, a total, the model
+used, the tiling and a legend. An image with no detections MUST yield an
+empty collection with zero counts.
 
 #### Scenario: Detections produced
 
 - **WHEN** the model finds objects above the confidence threshold
-- **THEN** the output is a valid GeoJSON `FeatureCollection` whose features have
-  bounding-box geometry and `class`, `class_id`, and `confidence` properties
-
-#### Scenario: Metadata reports counts
-
-- **WHEN** a run completes
-- **THEN** the run metadata includes per-class detection counts and a total
+- **THEN** the output is a valid `FeatureCollection` of bounding boxes with
+  the properties above, rendered on the map with class-aware styling
 
 #### Scenario: No detections
 
-- **WHEN** the model finds nothing above the threshold
+- **WHEN** nothing scores above the threshold
 - **THEN** the run completes with an empty feature collection and zero counts
-
-### Requirement: Detections render and download
-
-Completed detections SHALL be viewable as a task map overlay distinguished by
-class and downloadable as GeoJSON. Dense detection sets MUST NOT block the
-client: when the feature count is very large the overlay is not auto-drawn, the
-user is told why, and the output remains downloadable.
-
-#### Scenario: Class-distinguished overlay
-
-- **WHEN** a completed detection output is shown on the map
-- **THEN** its features render as an overlay with class-aware styling and a
-  legend
-
-#### Scenario: Dense output does not freeze the map
-
-- **WHEN** a detection output exceeds the renderable feature limit
-- **THEN** the overlay is skipped with an explanatory message and the output
-  can still be downloaded

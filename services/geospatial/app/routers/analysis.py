@@ -37,7 +37,7 @@ async def validate_analysis(op_id: str, req: AnalysisValidateRequest):
     """Validate params (and any op-specific preconditions) without running.
 
     Lets the caller reject an impossible run before creating it — e.g. a
-    detection model that is missing, unreadable, or label-mismatched.
+    segmentation model that is missing, unreadable, or label-mismatched.
     """
     op = get_op(op_id)
     if op is None:

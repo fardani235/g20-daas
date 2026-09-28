@@ -1,39 +1,16 @@
 # Analysis models
 
-The analysis operations read their ONNX models and label files from the managed
-models directory (`OBJECT_DETECTION_MODELS_DIR`, default `/opt/webodm/models`).
-Configuration only ever names an asset *within* this directory; absolute paths,
-parent traversal, and symlink escapes are rejected.
+The semantic-segmentation operation reads its ONNX model and label file from
+the managed models directory (`OBJECT_DETECTION_MODELS_DIR`, default
+`/opt/webodm/models`; the variable name predates object detection moving out
+of this service and is kept so existing deployments keep working).
+Configuration only ever names an asset *within* this directory; absolute
+paths, parent traversal, and symlink escapes are rejected.
 
-## Object detection — default
-
-The geospatial image provisions:
-
-- `yolov8n.onnx` — YOLOv8n COCO detector (80 classes), fetched at build time
-  from the pinned Ultralytics release and verified by SHA-256.
-- `visdrone-yolov11s.onnx` — YOLO11s VisDrone detector (10 aerial classes:
-  pedestrian, people, bicycle, car, van, truck, tricycle, awning-tricycle, bus,
-  motor), fetched at build time from the pinned source and verified by SHA-256.
-- `deepforest.onnx` — DeepForest tree-crown detector (1 class `tree`), an
-  ONNX export of the MIT-licensed DeepForest RetinaNet model, pinned by SHA-256.
-- `coco.txt` / `visdrone.txt` / `tree.txt` — the matching class labels.
-
-### Choosing a detector
-
-- **Ground-level / general**: `yolov8n.onnx` + `coco.txt` (default; weak on
-  nadir imagery).
-- **Aerial vehicles/people**: `visdrone-yolov11s.onnx` + `visdrone.txt`.
-- **Trees (airborne RGB)**: `deepforest.onnx` + `tree.txt`. This is a
-  torchvision-style model, so set `family = torchvision` (or leave `auto`),
-  `label_offset = 0`, and `tile_size = 256` (its native input). Score
-  thresholds are low for tree crowns — use `confidence` around 0.2–0.4.
-
-The default platform detector is configurable with
-`OBJECT_DETECTION_DEFAULT_MODEL` / `OBJECT_DETECTION_DEFAULT_LABELS`.
-
-Recommended aerial parameters: `tile_size_m`/`overlap_m` (ground metres) so
-object scale is consistent across GSDs, `overlap_m` at least the largest object
-size, and `confidence` around 0.4–0.55.
+Object detection is no longer a system operation. It is a **user plugin**
+(`plugins/object-detection/`, docs in `docs/plugins/object-detection.md`) that
+each organization uploads with its own detector models, so no detector weights
+are provisioned here.
 
 ## Semantic segmentation — default
 
@@ -77,16 +54,11 @@ Drop additional `.onnx` models and their label files into the models directory
 then select them by name in the plugin settings or run parameters.
 
 The model must expose exactly one image input `(N, C, H, W)` with `C` in
-`{1, 3}` and one supported output:
-
-- **Detection**: a YOLO-style output `(N, 4 + num_classes, anchors)`, a
-  torchvision-style `boxes`/`scores`/`labels` triple, or both (detection must be
-  disambiguated with `family`).
-- **Segmentation**: a rank-4 per-class mask output `(N, num_classes, H, W)`
-  whose `num_classes` matches the label file. The mask must be at the model's
-  input resolution; models that emit a downsampled mask (for example base
-  SegFormer at `H/4`) must upsample before export, as
-  `segformer-satellite-landcover.onnx` does.
+`{1, 3}` and a rank-4 per-class mask output `(N, num_classes, H, W)` whose
+`num_classes` matches the label file. The mask must be at the model's input
+resolution; models that emit a downsampled mask (for example base SegFormer at
+`H/4`) must upsample before export, as `segformer-satellite-landcover.onnx`
+does.
 
 Label files have one class per line, in class-id order; the count must match the
 model's class count.
