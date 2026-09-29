@@ -45,6 +45,16 @@ class PackageError(ValueError):
     """The package or its manifest is invalid."""
 
 
+def is_valid_id(value) -> bool:
+    """A manifest/product/publisher slug: 2-64 lowercase letters, digits or hyphens."""
+    return isinstance(value, str) and bool(_ID_RE.match(value))
+
+
+def is_valid_version(value) -> bool:
+    """A dotted version string such as ``1.0.0`` (same rule as the manifest)."""
+    return isinstance(value, str) and bool(_VERSION_RE.match(value))
+
+
 def _member_is_safe(name: str) -> bool:
     if not name or name.startswith(("/", "\\")):
         return False

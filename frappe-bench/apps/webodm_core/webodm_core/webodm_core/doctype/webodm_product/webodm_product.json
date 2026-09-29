@@ -1,0 +1,193 @@
+{
+ "actions": [],
+ "autoname": "field:product_id",
+ "creation": "2026-09-29 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "product_id",
+  "title",
+  "publisher",
+  "artifact_kind",
+  "status",
+  "column_break_meta",
+  "summary",
+  "categories",
+  "icon",
+  "allow_anonymous_download",
+  "section_content",
+  "description",
+  "docs",
+  "docs_url",
+  "homepage_url",
+  "support_url",
+  "section_media",
+  "media"
+ ],
+ "fields": [
+  {
+   "fieldname": "product_id",
+   "fieldtype": "Data",
+   "label": "Product ID",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Lowercase slug used in the marketplace URL (/marketplace/<product_id>)."
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "publisher",
+   "fieldtype": "Link",
+   "label": "Publisher",
+   "options": "WebODM Publisher",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "artifact_kind",
+   "fieldtype": "Select",
+   "label": "Artifact Kind",
+   "options": "plugin\npreset\nbasemap\nmodel",
+   "default": "plugin",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Only kinds with an installer (plugin) can be published; the others are reserved so they can be added without a schema change."
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nPublished\nRetired",
+   "default": "Draft",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Published products are listed for everyone. Retired products are hidden and cannot be installed; existing installs keep working."
+  },
+  {
+   "fieldname": "column_break_meta",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "label": "Summary",
+   "description": "One line shown on catalog cards (max 200 characters)."
+  },
+  {
+   "fieldname": "categories",
+   "fieldtype": "Table MultiSelect",
+   "label": "Categories",
+   "options": "WebODM Product Category"
+  },
+  {
+   "fieldname": "icon",
+   "fieldtype": "Attach Image",
+   "label": "Icon",
+   "description": "Public image, square, shown on cards and the product page."
+  },
+  {
+   "fieldname": "allow_anonymous_download",
+   "fieldtype": "Check",
+   "label": "Allow Anonymous Download",
+   "default": "0",
+   "description": "Let signed-out visitors download release artifacts. Off by default; can only be enabled when every published release's license permits redistribution."
+  },
+  {
+   "fieldname": "section_content",
+   "fieldtype": "Section Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Markdown Editor",
+   "label": "Description",
+   "description": "Markdown. Shown on the product page."
+  },
+  {
+   "fieldname": "docs",
+   "fieldtype": "Markdown Editor",
+   "label": "Documentation",
+   "description": "Markdown. Shown under the Docs heading."
+  },
+  {
+   "fieldname": "docs_url",
+   "fieldtype": "Data",
+   "label": "Documentation URL",
+   "options": "URL"
+  },
+  {
+   "fieldname": "homepage_url",
+   "fieldtype": "Data",
+   "label": "Homepage URL",
+   "options": "URL"
+  },
+  {
+   "fieldname": "support_url",
+   "fieldtype": "Data",
+   "label": "Support URL",
+   "options": "URL"
+  },
+  {
+   "fieldname": "section_media",
+   "fieldtype": "Section Break",
+   "label": "Media"
+  },
+  {
+   "fieldname": "media",
+   "fieldtype": "Table",
+   "label": "Media",
+   "options": "WebODM Product Media"
+  }
+ ],
+ "modified": "2026-09-29 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Product",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "WebODM User"
+  }
+ ],
+ "sort_field": "title",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "title",
+ "search_fields": "title,summary"
+}

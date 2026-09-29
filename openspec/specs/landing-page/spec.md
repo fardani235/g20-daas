@@ -37,7 +37,9 @@ the flight simulation), a how-it-works pipeline, a capabilities grid, social
 proof or testimonials, a pricing section, a final call to action, and a footer.
 The G20 Tech / WebODM product copy, pricing plans, testimonial content, and
 existing in-page and route links (sign-in, get-started, about, contact) MUST be
-preserved; only presentation and the hero simulation change.
+preserved; only presentation and the hero simulation change. The navigation,
+its mobile variant and the footer SHALL also link to the public marketplace
+(`/marketplace`) so visitors can find installable products before signing in.
 
 #### Scenario: Required sections present
 
@@ -47,8 +49,8 @@ preserved; only presentation and the hero simulation change.
 
 #### Scenario: Existing links keep working
 
-- **WHEN** a visitor activates the sign-in, get-started, about, or contact
-  call-to-action on the landing page
+- **WHEN** a visitor activates the sign-in, get-started, about, contact, or
+  marketplace call-to-action on the landing page
 - **THEN** the matching existing route is opened
 
 ### Requirement: Hero flight simulation

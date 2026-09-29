@@ -426,22 +426,33 @@ pick a provider.
 
 ## 6. Plugin System
 
-Frappe's hooks system replaces the original WebODM plugin mechanism.
+Analysis plugins run on the outputs of a completed task and produce a new
+layer (raster / vector / 3D model). Two kinds share the `WebODM Plugin`
+catalog, told apart by `plugin_type`:
 
-| Plugin | Migration Strategy |
-|---|---|
-| tasknotification | Frappe notifications + email alerts |
-| contours | Geospatial service endpoint + Vue layer |
-| lightning | Leaflet layer control in Vue |
-| dronedb | Frappe DocType + API integration |
-| cesiumion | Frappe external service integration |
-| measure | Vue component + Leaflet Draw |
-| shortlinks | Frappe web page route |
-| fullscreen | Vue component toggle |
-| align-service | Frappe background job |
-| snapshot | Vue + canvas/leaflet print |
-| split-merge | Task processing pipeline extension |
-| potree-annotations | Vue 3D component integration |
+| Kind | Source | Runs in | Visible to |
+|---|---|---|---|
+| System | Synced from the geospatial service's operation catalog | `services/geospatial` | Every organization |
+| User | A zip package (`plugin.json` + entrypoint) installed for one organization — uploaded on the Plugins page or installed from the marketplace | `services/plugin-runner` sandbox (no network, resource limits) | That organization only |
+
+Specs: `openspec/specs/{plugin-catalog,plugin-execution,plugin-outputs,user-plugins}/spec.md`;
+guide: `docs/plugins/user-plugin-guide.md`.
+
+### 6.1 Marketplace
+
+A global, free catalog (`WebODM Publisher` → `WebODM Product` → `WebODM
+Product Release` → `WebODM License`) that is browsable without signing in
+(`/marketplace`). Publishers are first-party or invited partners curated by
+platform admins in Desk; releases are immutable once published and carry
+mandatory license metadata; a per-product switch (off by default, only
+allowed when the license permits redistribution) lets signed-out visitors
+download the artifact. Installing a product creates a `WebODM Entitlement`
+for the caller's organization and goes through the user-plugin install
+entrypoint, so the installed row is org-scoped and sandboxed exactly like an
+upload. Artifact kinds are a registry (`plugin` installable; `preset`,
+`basemap`, `model` reserved). No payments in this version.
+
+Spec: `openspec/specs/marketplace/spec.md`; docs: `docs/marketplace/`.
 
 ## 7. Frontend Pages
 

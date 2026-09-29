@@ -79,6 +79,15 @@ kind (`raster`/`vector`), render kind and timeout are well-formed.
 - **WHEN** a non-admin member attempts an upload
 - **THEN** it is rejected
 
+#### Scenario: Provenance of the installed row
+
+- **WHEN** a package is installed through the upload endpoint or by the
+  `marketplace` install path (the same entrypoint)
+- **THEN** the catalog entry records its `source` (`Upload` or `Marketplace`)
+  and, for marketplace installs, the product and release it came from; a
+  manual upload over a marketplace install resets the source to `Upload` and
+  closes the organization's entitlement
+
 ### Requirement: Removal
 
 An organization admin SHALL be able to remove a User plugin. Removal MUST

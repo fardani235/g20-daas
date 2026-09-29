@@ -268,15 +268,18 @@
 - [ ] Responsive layout
 - [x] Dark mode support (light/dark/system switcher)
 
-## Phase 6: Plugin System ⬜
+## Phase 6: Plugin System ✅ (reworked — see SPEC.md §6)
 
-- [ ] Map original WebODM plugin hooks to Frappe hooks
-- [ ] Create Plugin DocType for enable/disable
-- [ ] Implement plugin JS/CSS injection via hooks
-- [ ] Implement plugin API endpoints
-- [ ] Implement plugin signals (task_failed, task_duplicated, etc.)
-- [ ] Plugin upload/install from ZIP
-- [ ] Plugin admin management UI
+- [x] `WebODM Plugin` catalog (System rows synced from geospatial, User rows per organization)
+- [x] Plugin API endpoints (list / enable / configure / run / runs / outputs)
+- [x] Plugin upload/install from ZIP (`install_user_plugin`), sandboxed runner
+- [x] Plugins page (enable, configure, upload, remove)
+- [x] Marketplace: publishers, products, immutable releases with license metadata,
+      entitlements, one-click install through the upload seam, public browse +
+      product pages, anonymous-download switch, landing link (2026-09-29)
+- [ ] Marketplace follow-ups: installers for `preset` / `basemap` / `model` kinds,
+      partner self-serve publishing, update notifications on the Plugins page
+- [ ] Original WebODM plugin hooks/signals/JS injection — not planned (superseded)
 
 ## Phase 7: Core Plugins ⬜
 

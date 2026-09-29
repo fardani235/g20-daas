@@ -152,7 +152,10 @@ after_migrate = "webodm_core.install.after_migrate"
 # Every tenant-owned DocType (anything with an `organization` field, plus
 # WebODM Organization itself) MUST appear in BOTH maps below; enforce
 # organization-scoped access (deny-by-default). System presets and System
-# plugins are shared; user plugins are org-scoped.
+# plugins are shared; user plugins and marketplace entitlements are org-scoped.
+# Marketplace listings (Publisher / Product / Release / License / Category)
+# carry no organization: they are global, read by everyone (guests through
+# api/marketplace.py) and written by platform admins only via role perms.
 # api/test_tenant_doctype_coverage.py fails if a DocType is missing here.
 
 permission_query_conditions = {
@@ -167,6 +170,7 @@ permission_query_conditions = {
     "WebODM Org Membership": "webodm_core.permissions.get_org_membership_permission_query_conditions",
     "WebODM Org Invitation": "webodm_core.permissions.get_org_invitation_permission_query_conditions",
     "WebODM Compute Instance": "webodm_core.permissions.get_compute_instance_permission_query_conditions",
+    "WebODM Entitlement": "webodm_core.permissions.get_entitlement_permission_query_conditions",
 }
 
 has_permission = {
@@ -181,6 +185,7 @@ has_permission = {
     "WebODM Org Membership": "webodm_core.permissions.has_org_membership_permission",
     "WebODM Org Invitation": "webodm_core.permissions.has_org_invitation_permission",
     "WebODM Compute Instance": "webodm_core.permissions.has_compute_instance_permission",
+    "WebODM Entitlement": "webodm_core.permissions.has_entitlement_permission",
 }
 
 doc_events = {
@@ -190,6 +195,7 @@ doc_events = {
     "WebODM Settings": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Plugin Setting": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Plugin Run": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
+    "WebODM Entitlement": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     # WebODM Compute Instance is created by background jobs only, with the
     # organization copied from the task (no session org to stamp from).
 }

@@ -1,0 +1,162 @@
+{
+ "actions": [],
+ "autoname": "format:{product}-{version}",
+ "creation": "2026-09-29 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "product",
+  "version",
+  "status",
+  "published_on",
+  "column_break_artifact",
+  "artifact",
+  "artifact_hash",
+  "artifact_size",
+  "section_license",
+  "license",
+  "license_notes",
+  "section_notes",
+  "release_notes",
+  "manifest"
+ ],
+ "fields": [
+  {
+   "fieldname": "product",
+   "fieldtype": "Link",
+   "label": "Product",
+   "options": "WebODM Product",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Data",
+   "label": "Version",
+   "reqd": 1,
+   "in_list_view": 1,
+   "set_only_once": 1,
+   "description": "Dotted version such as 1.2.0. Immutable; for plugins it must equal the manifest version."
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nPublished\nYanked",
+   "default": "Draft",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Yanked releases stay visible but cannot be installed; existing installs are unaffected."
+  },
+  {
+   "fieldname": "published_on",
+   "fieldtype": "Datetime",
+   "label": "Published On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_artifact",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "artifact",
+   "fieldtype": "Attach",
+   "label": "Artifact",
+   "reqd": 1,
+   "description": "Private file. Frozen once the release is published."
+  },
+  {
+   "fieldname": "artifact_hash",
+   "fieldtype": "Data",
+   "label": "Artifact SHA-256",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "artifact_size",
+   "fieldtype": "Long Int",
+   "label": "Artifact Size (bytes)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_license",
+   "fieldtype": "Section Break",
+   "label": "License"
+  },
+  {
+   "fieldname": "license",
+   "fieldtype": "Link",
+   "label": "License",
+   "options": "WebODM License",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "license_notes",
+   "fieldtype": "Small Text",
+   "label": "License Notes",
+   "description": "Terms worth surfacing beyond the license itself, e.g. model weights and their licenses."
+  },
+  {
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "release_notes",
+   "fieldtype": "Text",
+   "label": "Release Notes"
+  },
+  {
+   "fieldname": "manifest",
+   "fieldtype": "Code",
+   "label": "Manifest",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "Normalized manifest extracted from the artifact (plugin kind)."
+  }
+ ],
+ "modified": "2026-09-29 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Product Release",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "WebODM User"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "version"
+}

@@ -324,6 +324,13 @@ curl -b cj.txt -H "X-Frappe-CSRF-Token: $CSRF" \
 The response is the installed catalog entry (`name`, `version`, `enabled`,
 `runnable`, …) plus `created: true|false` (install vs. upgrade).
 
+**From the marketplace:** plugins published by the platform or a partner are
+installed from *Marketplace → product → Install* (organization owners). The
+result is the same kind of row, badged **Marketplace** on the Plugins page,
+and it upgrades through the product page (*Update to vX*). Uploading your own
+package with the same `id` replaces the marketplace copy and turns the row
+back into **Custom**. See [`docs/marketplace/`](../marketplace/README.md).
+
 ---
 
 ## 7. Enable, disable or remove
@@ -334,6 +341,7 @@ The response is the installed catalog entry (`name`, `version`, `enabled`,
 | Change default parameters | gear icon | `save_plugin_setting` with `{"plugin": …, "settings": {…}}` |
 | Upgrade | *Upload plugin* with the same `id` | `upload_plugin` |
 | Remove | trash icon → confirm | `remove_plugin` with `{"plugin": "<org-slug>.<id>"}` |
+| Uninstall a marketplace install | trash icon, or *Uninstall* on the product page | `remove_plugin`, or `webodm_core.api.marketplace.uninstall_product` |
 
 Disabling keeps the plugin, its settings and its run history; members simply
 cannot start new runs. **Removing** deletes the plugin, its package, its

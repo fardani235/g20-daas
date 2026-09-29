@@ -152,6 +152,8 @@ describe('user plugins', () => {
 
   it('labels plugin origin', () => {
     expect(plugins.pluginTypeLabel({ plugin_type: 'User' })).toBe('Custom')
+    expect(plugins.pluginTypeLabel({ plugin_type: 'User', source: 'Upload' })).toBe('Custom')
+    expect(plugins.pluginTypeLabel({ plugin_type: 'User', source: 'Marketplace' })).toBe('Marketplace')
     expect(plugins.pluginTypeLabel({ plugin_type: 'System' })).toBe('System')
     expect(plugins.pluginTypeLabel({})).toBe('System')
   })

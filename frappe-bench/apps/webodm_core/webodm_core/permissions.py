@@ -150,6 +150,19 @@ def has_plugin_run_permission(doc, ptype, user=None):
     return _org_has_permission(doc, user or frappe.session.user)
 
 
+def get_entitlement_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Entitlement", user or frappe.session.user)
+
+
+def has_entitlement_permission(doc, ptype, user=None):
+    # Entitlements are written only by webodm_core.marketplace.install (with
+    # ignore_permissions, after the org-admin gate); members may read their
+    # organization's rows. Role perms grant WebODM User read only.
+    if _is_create(ptype):
+        return True
+    return _org_has_permission(doc, user or frappe.session.user)
+
+
 # Org model doctypes. These are NOT stamped by tenancy_hooks (create_organization
 # and accept_invitation legitimately insert rows for users who have no org yet),
 # so every write path goes through api/organization.py with ignore_permissions

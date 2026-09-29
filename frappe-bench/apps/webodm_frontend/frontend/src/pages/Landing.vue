@@ -179,6 +179,7 @@ const year = new Date().getFullYear()
         <div class="hidden items-center gap-1 rounded-full border border-slate-800/80 bg-slate-900/60 p-1.5 backdrop-blur-md md:flex">
           <a href="#pipeline" class="rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800/60 hover:text-white">How it works</a>
           <a href="#capabilities" class="rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800/60 hover:text-white">Capabilities</a>
+          <router-link to="/marketplace" class="rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800/60 hover:text-white">Marketplace</router-link>
           <a href="#pricing" class="rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800/60 hover:text-white">Pricing</a>
           <router-link to="/about" class="rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800/60 hover:text-white">About</router-link>
         </div>
@@ -216,6 +217,7 @@ const year = new Date().getFullYear()
         <div class="flex flex-col gap-3">
           <a href="#pipeline" class="rounded-xl p-3 text-sm font-medium text-slate-200 hover:bg-slate-900" @click="mobileMenuOpen = false">How it works</a>
           <a href="#capabilities" class="rounded-xl p-3 text-sm font-medium text-slate-200 hover:bg-slate-900" @click="mobileMenuOpen = false">Capabilities</a>
+          <router-link to="/marketplace" class="rounded-xl p-3 text-sm font-medium text-slate-200 hover:bg-slate-900" @click="mobileMenuOpen = false">Marketplace</router-link>
           <a href="#pricing" class="rounded-xl p-3 text-sm font-medium text-slate-200 hover:bg-slate-900" @click="mobileMenuOpen = false">Pricing</a>
           <router-link to="/about" class="rounded-xl p-3 text-sm font-medium text-slate-200 hover:bg-slate-900" @click="mobileMenuOpen = false">About</router-link>
           <router-link
@@ -622,6 +624,7 @@ const year = new Date().getFullYear()
             <h4 class="mb-3 font-mono text-xs uppercase tracking-wider text-slate-200">Product</h4>
             <ul class="space-y-2">
               <li><a href="#capabilities" class="transition-colors hover:text-cyan-400">Features</a></li>
+              <li><router-link to="/marketplace" class="transition-colors hover:text-cyan-400">Marketplace</router-link></li>
               <li><a href="#pricing" class="transition-colors hover:text-cyan-400">Pricing</a></li>
               <li><span class="text-slate-500">API Docs</span></li>
               <li><span class="text-slate-500">Changelog</span></li>

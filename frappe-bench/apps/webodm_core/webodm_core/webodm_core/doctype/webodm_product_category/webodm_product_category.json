@@ -1,0 +1,30 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-29 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "category"
+ ],
+ "fields": [
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "label": "Category",
+   "options": "WebODM Marketplace Category",
+   "reqd": 1,
+   "in_list_view": 1
+  }
+ ],
+ "modified": "2026-09-29 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Product Category",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

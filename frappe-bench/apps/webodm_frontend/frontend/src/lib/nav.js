@@ -3,6 +3,7 @@ import {
   LayoutGrid,
   Puzzle,
   SlidersHorizontal,
+  Store,
 } from 'lucide-vue-next'
 
 /**
@@ -13,6 +14,9 @@ export const PRIMARY_TABS = Object.freeze([
   { to: '/projects', label: 'Projects', icon: Folder },
   { to: '/presets', label: 'Presets', icon: SlidersHorizontal },
   { to: '/plugins', label: 'Plugins', icon: Puzzle },
+  // Public catalog (layout: 'auto'); signed-in users get it as a tab so
+  // install-only plugins are discoverable from inside the app.
+  { to: '/marketplace', label: 'Marketplace', icon: Store },
 ])
 
 // A project detail page is /project/:id — singular, so it is not a path prefix
