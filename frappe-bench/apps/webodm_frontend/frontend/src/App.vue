@@ -8,7 +8,7 @@
       class: 'bg-card text-card-foreground border border-border rounded-lg shadow-lg',
     }"
   />
-  <AppLayout v-if="route.meta.layout !== false" />
+  <AppLayout v-if="layoutFor(route.meta, loggedIn) === 'app'" />
   <router-view v-else v-slot="{ Component }">
     <Transition name="page" mode="out-in">
       <component :is="Component" />
@@ -22,6 +22,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Toaster } from 'vue-sonner'
 import AppLayout from './components/AppLayout.vue'
 import { useTheme } from './composables/useTheme'
+import { layoutFor, loggedIn } from './lib/session.js'
 
 const route = useRoute()
 const router = useRouter()

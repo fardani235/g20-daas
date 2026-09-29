@@ -61,7 +61,9 @@ export function canManagePlugins(me) {
 
 // Short badge text for a catalog entry's origin.
 export function pluginTypeLabel(plugin) {
-  return plugin?.plugin_type === 'User' ? 'Custom' : 'System'
+  if (plugin?.plugin_type !== 'User') return 'System'
+  // A user row installed from the marketplace, as opposed to a manual upload.
+  return plugin?.source === 'Marketplace' ? 'Marketplace' : 'Custom'
 }
 export const runPlugin = payload => post('webodm_core.api.plugins.run_plugin', payload)
 export const listRuns = task => get('webodm_core.api.plugins.list_runs', task ? { task } : undefined)

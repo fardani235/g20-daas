@@ -2,6 +2,12 @@
   <div class="space-y-6">
     <PageHeader title="Analysis plugins" description="Run geospatial analysis on completed task outputs.">
       <template #actions>
+        <router-link to="/marketplace">
+          <Button variant="outline" title="Find and install plugins published by the platform and partners">
+            <Store />
+            Marketplace
+          </Button>
+        </router-link>
         <Button variant="ghost" :loading="loading" @click="refresh">
           <RefreshCw />
           Refresh
@@ -141,7 +147,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { RefreshCw, Settings2, Trash2, Upload } from 'lucide-vue-next'
+import { RefreshCw, Settings2, Store, Trash2, Upload } from 'lucide-vue-next'
 import { Badge, Button, Dialog, Label, Select } from '@/components/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import PluginParamsForm from '@/components/PluginParamsForm.vue'

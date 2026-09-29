@@ -4,6 +4,7 @@ import App from './App.vue'
 import './index.css'
 import 'vue-sonner/style.css'
 import { getMyOrganization } from './lib/organization.js'
+import { refreshSession } from './lib/session.js'
 
 const routes = [
   {
@@ -23,6 +24,19 @@ const routes = [
     name: 'Contact',
     component: () => import('./pages/Contact.vue'),
     meta: { layout: false, title: 'Contact' },
+  },
+  {
+    // Public catalog: browsable signed-out (own chrome) and signed-in (AppLayout).
+    path: '/marketplace',
+    name: 'Marketplace',
+    component: () => import('./pages/Marketplace.vue'),
+    meta: { layout: 'auto', title: 'Marketplace' },
+  },
+  {
+    path: '/marketplace/:product',
+    name: 'MarketplaceProduct',
+    component: () => import('./pages/MarketplaceProduct.vue'),
+    meta: { layout: 'auto', title: 'Marketplace' },
   },
   {
     path: '/login',
@@ -115,20 +129,13 @@ const router = createRouter({
   routes,
 })
 
-async function isLoggedIn() {
-  try {
-    const res = await fetch('/api/method/frappe.auth.get_logged_user')
-    if (!res.ok) return false
-    const data = await res.json()
-    return data.message && data.message !== 'Guest'
-  } catch {
-    return false
-  }
-}
-
 router.beforeEach(async (to, from, next) => {
+  if (to.meta.layout === 'auto') {
+    // The layout switch in App.vue reads this synchronously on entry.
+    await refreshSession()
+  }
   if (to.meta.requiresAuth) {
-    const loggedIn = await isLoggedIn()
+    const loggedIn = await refreshSession()
     if (!loggedIn) {
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return

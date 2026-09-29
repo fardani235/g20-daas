@@ -96,7 +96,7 @@ def _get_or_create_setting(org: str, plugin: str):
 _LIST_FIELDS = [
     "name", "label", "description", "version", "plugin_type", "organization",
     "output_kind", "render_kind", "inputs", "platform_enabled", "available",
-    "params_schema", "models",
+    "params_schema", "models", "source", "product", "release",
 ]
 
 
@@ -109,6 +109,11 @@ def _serialize_plugin(p, setting) -> dict:
         "description": p.description,
         "version": p.version,
         "plugin_type": p.plugin_type or "System",
+        # Where a User row's package came from (Upload | Marketplace) and, for
+        # marketplace installs, the product/release it is an install of.
+        "source": p.get("source") if (p.plugin_type or "System") == "User" else None,
+        "product": p.get("product"),
+        "release": p.get("release"),
         "output_kind": p.output_kind,
         "render_kind": p.render_kind,
         "platform_enabled": bool(p.platform_enabled),
@@ -246,13 +251,26 @@ def _remove_quietly(path: str):
         pass
 
 
-def install_user_plugin(package_path: str, org: str) -> dict:
+def install_user_plugin(package_path: str, org: str, *, source: str = "Upload",
+                        product: str | None = None, release: str | None = None) -> dict:
     """Validate the zip at ``package_path`` and install (or upgrade) it for ``org``.
 
     The catalog row is ``<org-slug>.<manifest id>``; re-uploading the same id
     replaces the package and manifest in place and keeps the organization's
     enablement/settings and run history. ``package_path`` is consumed (moved).
+
+    This is the single install seam: manual uploads call it with the default
+    ``source="Upload"``; marketplace installs (``webodm_core.marketplace``)
+    pass ``source="Marketplace"`` plus the ``product``/``release`` the row is
+    an install of. A manual upload over a marketplace-installed id therefore
+    turns the row back into a plain upload and closes its entitlement.
     """
+    from webodm_core.marketplace import install as marketplace_install
+
+    if source not in ("Upload", "Marketplace"):
+        frappe.throw(f"Unknown plugin source '{source}'")
+    if source == "Marketplace" and not (product and release):
+        frappe.throw("Marketplace installs must name their product and release")
     try:
         manifest = package_mod.inspect_package(package_path)
     except package_mod.PackageError as e:
@@ -275,6 +293,9 @@ def install_user_plugin(package_path: str, org: str) -> dict:
         "needs_validation": 0,
         "models": None,
         "available": 1,
+        "source": source,
+        "product": product if source == "Marketplace" else None,
+        "release": release if source == "Marketplace" else None,
     }
 
     created = False
@@ -285,10 +306,13 @@ def install_user_plugin(package_path: str, org: str) -> dict:
             # another tenant's (or the platform's) row.
             _remove_quietly(package_path)
             frappe.throw(f"Plugin id '{plugin_id}' is not available")
+        replaced_marketplace_install = doc.source == "Marketplace" and source == "Upload"
         for field, value in values.items():
             doc.set(field, value)
         doc.save(ignore_permissions=True)
         _delete_attachments(_PLUGIN, doc.name)
+        if replaced_marketplace_install:
+            marketplace_install.detach_plugin(doc.name)
     else:
         doc = frappe.get_doc({"doctype": _PLUGIN, "plugin_id": plugin_id,
                               "platform_enabled": 1, **values})
@@ -349,10 +373,15 @@ def remove_plugin(plugin: str):
     if doc.plugin_type != "User":
         frappe.throw("System plugins cannot be removed; disable them instead")
 
+    from webodm_core.marketplace import install as marketplace_install
+
     _delete_runs({"plugin": doc.name})
     for name in frappe.get_all(_SETTING, filters={"plugin": doc.name}, pluck="name"):
         frappe.delete_doc(_SETTING, name, force=True, ignore_permissions=True)
     _delete_attachments(_PLUGIN, doc.name)
+    # A marketplace install being removed: the entitlement closes before the
+    # row (and its link) goes away, from whichever page the removal started.
+    marketplace_install.detach_plugin(doc.name)
     frappe.delete_doc(_PLUGIN, doc.name, force=True, ignore_permissions=True)
     return {"plugin": doc.name, "removed": True}
 

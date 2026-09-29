@@ -7,14 +7,16 @@ import {
 } from './nav'
 
 describe('PRIMARY_TABS', () => {
-  it('lists the four app sections in order', () => {
+  it('lists the five app sections in order', () => {
     // Settings and Billing (/invoices) moved into the Account dropdown in
     // Phase 5 (AppLayout.vue); they are deliberately not primary tabs.
+    // Marketplace is last: it is a public catalog that doubles as a tab.
     expect(PRIMARY_TABS.map(t => t.to)).toEqual([
       '/dashboard',
       '/projects',
       '/presets',
       '/plugins',
+      '/marketplace',
     ])
   })
 
@@ -40,6 +42,8 @@ describe('activePrimaryTab', () => {
 
   it('matches nested paths under a tab', () => {
     expect(activePrimaryTab('/projects/anything')).toBe('/projects')
+    // A product page keeps the Marketplace tab active.
+    expect(activePrimaryTab('/marketplace/object-detection')).toBe('/marketplace')
   })
 
   it('keeps Projects active on project-detail routes', () => {

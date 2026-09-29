@@ -54,6 +54,7 @@ submodule).
 | `docs/on-demand-processing/` | User guide, deployment, runbook, troubleshooting, configuration reference, architecture for on-demand compute + object storage |
 | `infra/aws/` | IAM policies per identity, bucket policy, security group notes, NodeODM AMI bake script |
 | `docs/plugins/` | User plugin guide, example plugin, Semantic Segmentation and 3D Reconstruction plugin docs |
+| `docs/marketplace/` | Marketplace concepts (publishers, products, releases, licenses, entitlements) and the publishing runbook |
 | `plugins/semantic-segmentation/` | Semantic Segmentation **user** plugin (orthophoto / DSM / DTM, pluggable ONNX + rule models) |
 | `plugins/3d-reconstruction/` | 3D Reconstruction **user** plugin (DSM/DTM/LAZ/orthophoto/ODM mesh → web-ready georeferenced GLB for the 3D viewer) |
 | `infra/` | Caddy, backup, Frappe entrypoint/config, AWS artefacts |
@@ -160,7 +161,7 @@ SANDBOX_DIR=$PWD/../../frappe-bench/sites/webodm.local/private/plugin_sandbox \
 python -m app.cli ../../docs/plugins/examples/elevation-mask --input raster=dsm.tif --param threshold=120 --output out.tif
 ```
 
-See [`docs/plugins/user-plugin-guide.md`](docs/plugins/user-plugin-guide.md) for writing, testing, packaging and installing plugins.
+See [`docs/plugins/user-plugin-guide.md`](docs/plugins/user-plugin-guide.md) for writing, testing, packaging and installing plugins, and [`docs/marketplace/`](docs/marketplace/README.md) for distributing them through the marketplace.
 
 ### Docker Compose (Full Stack)
 
@@ -271,6 +272,10 @@ docs/plugins/
 ├── semantic-segmentation.md      # Running segmentation on orthophoto / DSM / DTM / all three
 ├── 3d-reconstruction.md          # Building web-ready 3D models from a task's ODM outputs
 └── examples/elevation-mask/      # Starter plugin (manifest, entrypoint, tests)
+
+docs/marketplace/
+├── README.md                     # Catalog concepts, roles, license policy, install flow, API, UI
+└── publishing.md                 # Desk + `bench execute` runbook for publishing releases
 ```
 
 ## Key Commands

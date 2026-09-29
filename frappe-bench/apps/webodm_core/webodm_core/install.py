@@ -14,13 +14,14 @@ are idempotent — presets are upserted by name, the node skips if present — s
 repeated calls are safe and this never duplicates rows.
 """
 
-from webodm_core.patches import seed_processing_node, seed_system_presets
+from webodm_core.patches import seed_marketplace, seed_processing_node, seed_system_presets
 
 
 def seed_defaults():
 	"""Seed the platform-global defaults. Idempotent."""
 	seed_system_presets.execute()
 	seed_processing_node.execute()
+	seed_marketplace.execute()
 
 
 def after_install():

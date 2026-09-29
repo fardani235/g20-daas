@@ -660,3 +660,62 @@ All DocTypes live in `webodm_core`:
   Regression tests: `api/test_deletion.py` (5). Worktree Frappe test recipe reused with `elm-*` names
   (`/tmp/elm-frappe-test.sh`: throwaway postgres/redis on network `elm-test`, image
   `webodm-frappe:16.34.0`, worktree `webodm_core` mounted at `/workspace/webodm_core`).
+
+## Phase 18: Marketplace (2026-09-29)
+
+- Global listing layer, separate from the per-org installed row: DocTypes `WebODM Publisher`
+  (First-party | Partner, Active | Suspended), `WebODM Product` (slug id, kind, status Draft |
+  Published | Retired, categories Table MultiSelect → `WebODM Product Category`, media child
+  `WebODM Product Media`, Markdown description/docs, `allow_anonymous_download`), `WebODM Product
+  Release` (`format:{product}-{version}`, private `artifact` Attach + sha-256/size, normalized
+  `manifest`, `license` Link reqd + `license_notes`, Draft | Published | Yanked, frozen once
+  published — `FROZEN_FIELDS`), `WebODM License` (registry with `permits_redistribution`),
+  `WebODM Marketplace Category`, and the org-scoped `WebODM Entitlement` (organization, product →
+  release, plugin, Active | Removed; in both permission hook maps + stamped). `WebODM Plugin`
+  gained read-only `source` (Upload | Marketplace) / `product` / `release`. Package:
+  `webodm_core/marketplace/` — `kinds.py` (registry: `plugin` installable, `preset`/`basemap`/
+  `model` declared; Product refuses to Publish a kind without an installer), `catalog.py`
+  (guest-safe serialization, Published-only), `install.py` (copy artifact to the spool, verify
+  sha-256, `kinds.install` → `api.plugins.install_user_plugin(path, org, source="Marketplace",
+  product, release)` — the single seam; entitlement upsert; `uninstall_product` → `remove_plugin`;
+  `detach_plugin` closes the entitlement when the row is removed from either page or a manual
+  upload overwrites it), `publishing.py` (`upsert_product`, `publish_release` for `bench execute`).
+  API `api/marketplace.py`: `list_products` / `get_product` / `download_release` are
+  `allow_guest=True` (`viewer` block carries `signed_in`/`organization`/`can_install`/
+  `entitlement.update_available`); `install_product` / `uninstall_product` need an org admin.
+  `download_release` returns a werkzeug `send_file` Response (frappe.handler passes Response
+  through) so 256 MB zips stream; guests need the product switch, which `Product.validate` and
+  `Release.validate` both tie to `License.permits_redistribution`. Seed patch
+  `patches/seed_marketplace.py` (licenses, categories, `g20-tech` publisher) also runs from
+  `install.seed_defaults`.
+- Frappe gotchas: v16 `frappe.get_all` rejects `"count(name) as n"` strings (use dict syntax or
+  count in Python); Desk uploads an Attach for an unsaved doc against `new-<doctype>-…` and
+  `Document.insert` → `relink_mismatched_files` moves the File to the real name (verified via
+  `upload_file` + `savedocs` with `name: new-…`), so `Release.validate` resolves the artifact by
+  `file_url` (+ `is_private`) while `download_release` requires the attachment
+  (`files.file_doc_for_url`). `frappe.throw(..., exc)` with a non-frappe exception class → 500;
+  keep API errors `ValidationError` subclasses.
+- Frontend: routes `/marketplace`, `/marketplace/:product` with `meta.layout: 'auto'` —
+  `lib/session.js` (`loggedIn` ref, `refreshSession`, pure `layoutFor`) is refreshed by the router
+  guard and read by `App.vue`; signed-out pages wrap themselves in `components/PublicShell.vue`
+  via `components/MarketplaceFrame.vue`. `lib/marketplace.js` (API + `filterProducts`,
+  `installState` → guest | no-org | member | unavailable | install | installed | update,
+  `downloadPolicy`), `lib/markdownLite.js` (escaped Markdown subset, safe hrefs only).
+  `nav.js` gained the Marketplace tab (Store icon; `nav.test.js` updated), `Landing.vue` links
+  to `/marketplace` (desktop nav, mobile menu, footer), `Plugins.vue` has a Marketplace button
+  and `pluginTypeLabel` says *Marketplace* for `source === 'Marketplace'`. The pages use
+  `[data-install-panel][data-state]` / `[data-product-card]` hooks for tests.
+- Tests: `api/test_marketplace.py` (24: kinds, publishing/immutability/license rules, catalog
+  visibility + search, install/upgrade/uninstall/isolation/integrity/detach, download policy);
+  full `webodm_core` suite 400 OK on the throwaway site (`/tmp/elm-frappe-test.sh` — postgres/
+  redis on network `elm-test`, image `71510d111036` = 16.34.0, worktree `webodm_core` mounted).
+  Frontend 233 vitest (new: `session`, `marketplace`, `markdownLite`, `pages/MarketplaceProduct`).
+  Browser smoke (playwright-core + system Chrome against a `FRAPPE_ROLE=web` container with the
+  built SPA mounted): landing links, guest browse/search/filter, guest product page with and
+  without Download, owner sign-in → tab → install → uninstall, Plugins button. Seeding for that
+  run used `webodm_core.marketplace.publishing` on the docs `elevation-mask` example.
+- Docs: `docs/marketplace/{README,publishing}.md`, `openspec/specs/marketplace/spec.md` (+ change
+  `openspec/changes/add-marketplace/`), amendments to `user-plugins` and `landing-page` specs,
+  SPEC.md §6 rewritten (was the stale legacy-plugin migration table), TODO.md Phase 6, README.
+- Not done (by design): payments, self-serve publisher onboarding/UI, ratings, installers for
+  non-plugin kinds, download counters, Billing page (still mocked, unrelated).
