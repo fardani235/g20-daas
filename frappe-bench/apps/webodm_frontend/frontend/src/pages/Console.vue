@@ -12,7 +12,11 @@
         {{ Math.round(task?.node_progress ?? task?.progress) }}%
       </span>
       <span class="text-xs text-muted-foreground">
-        Resolution: {{ resolutionText }} · Images: {{ task?.images?.length || 0 }}
+        Resolution: {{ resolutionText }} · Images: {{ task?.images?.length || task?.dataset_summary?.image_count || 0 }}
+        <template v-if="task?.dataset">
+          · Dataset:
+          <router-link :to="`/datasets/${task.dataset}`" class="text-primary hover:underline">{{ task.dataset_summary?.title || task.dataset }}</router-link>
+        </template>
       </span>
       <Button variant="outline" size="sm" class="ml-auto" @click="refreshLogs">
         <RefreshCw />

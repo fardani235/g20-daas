@@ -19,6 +19,7 @@ from frappe.tests.utils import FrappeTestCase
 from webodm_core.api import plugins as plugins_api
 from webodm_core.api import tiles as tiles_api
 from webodm_core.plugins import runner, sync
+from webodm_core.testing import make_dataset
 
 DSM_FIXTURE = "/tmp/opencode/e2e_dsm.tif"
 ORG = "Plugin E2E Org"
@@ -92,7 +93,7 @@ class TestPluginE2E(FrappeTestCase):
         with open(DSM_FIXTURE, "rb") as f:
             dsm_bytes = f.read()
         task = frappe.get_doc({
-            "doctype": "WebODM Task",
+            "doctype": "WebODM Task", "dataset": make_dataset().name,
             "project": cls.project_name,
             "title": "Plugin E2E Task",
             "status": "Completed",
@@ -110,7 +111,7 @@ class TestPluginE2E(FrappeTestCase):
 
         # A completed task with no DSM, to prove missing-input rejection.
         cls.task_no_dsm = frappe.get_doc({
-            "doctype": "WebODM Task",
+            "doctype": "WebODM Task", "dataset": make_dataset().name,
             "project": cls.project_name,
             "title": "Plugin E2E No DSM",
             "status": "Completed",

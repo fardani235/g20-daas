@@ -28,7 +28,6 @@ from webodm_core import storage
 from webodm_core.plugins import geospatial
 from webodm_core.plugins.files import (
     abs_path_for_file_doc,
-    abs_path_for_attached_file,
     save_private_file_from_stream,
 )
 from webodm_core.storage import assets
@@ -343,7 +342,7 @@ def process_task(task_name: str):
     # the periodic sync catches up.
     if storage.configured():
         try:
-            assets.sync_inputs(task)
+            assets.sync_task_inputs(task)
         except storage.StorageError as e:
             frappe.log_error(f"{task.name}: input sync failed: {e}", "WebODM Storage")
 
@@ -422,31 +421,15 @@ def _build_node_options(opts: dict | list) -> list[dict]:
 
 
 def _get_task_images(task: Document) -> list[tuple[str, object]]:
-    """Resolve the task's images to ``(filename, source)`` pairs.
+    """Resolve the task's images — the rows of its dataset — to ``(filename, source)`` pairs.
 
     ``source`` is an absolute path when the image is in the host cache and a
     stream opener (reading straight from object storage) when it is not — so
     re-processing works after the cache has been evicted. Never file
-    contents: the client streams one image at a time.
+    contents: the client streams one image at a time. Without a bucket
+    configured only the host copy is used (``input_sources`` handles both).
     """
-    if storage.configured():
-        return assets.input_sources(task)
-
-    images = []
-    for img in task.images:
-        if not img.image:
-            continue
-        try:
-            path = abs_path_for_attached_file(img.image, attached_to_doctype="WebODM Task",
-                                              attached_to_name=task.name)
-        except frappe.DoesNotExistError:
-            frappe.log_error(f"No File record for {img.image}", "WebODM Processing")
-            continue
-        if not os.path.isfile(path):
-            frappe.log_error(f"Cannot read {path}: file missing on disk", "WebODM Processing")
-            continue
-        images.append((img.filename or os.path.basename(path), path))
-    return images
+    return assets.input_sources(task)
 
 
 def update_running_tasks():

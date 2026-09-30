@@ -12,6 +12,7 @@ from frappe.tests.utils import FrappeTestCase
 from webodm_core.plugins.files import abs_path_for_file_url
 from webodm_core.webodm_core.processing import task_runner
 from webodm_core.webodm_core.processing.node_client import NodeODMError, NodeODMTransportError
+from webodm_core.testing import make_dataset
 
 
 def _user(email):
@@ -65,7 +66,7 @@ class TestDownloadAssets(FrappeTestCase):
     def setUp(self):
         frappe.local.webodm_org_cache = {}
         frappe.set_user(self.user)
-        self.task = frappe.get_doc({"doctype": "WebODM Task", "project": self.project,
+        self.task = frappe.get_doc({"doctype": "WebODM Task", "dataset": make_dataset().name, "project": self.project,
                                     "title": "DL Task", "status": "Running",
                                     "node_task_id": "U-DL"}).insert()
         frappe.set_user("Administrator")
@@ -211,23 +212,30 @@ class TestDownloadAssets(FrappeTestCase):
 
 
 class TestGetTaskImages(FrappeTestCase):
-    """_get_task_images must hand back paths, never file contents."""
+    """_get_task_images must hand back paths, never file contents — read from the task's dataset."""
 
     def test_returns_filename_path_pairs_for_existing_files_only(self):
         import io as _io
         from webodm_core.plugins.files import save_private_file_from_stream
 
-        f = save_private_file_from_stream(
-            _io.BytesIO(b"\xff\xd8img"), "gti.jpg",
-            attached_to_doctype="WebODM Task", attached_to_name="GTI-TASK",
-            ignore_permissions=True,
-        )
+        user = _user("gti_owner@example.com")
+        org = frappe.get_doc({"doctype": "WebODM Organization",
+                              "organization_name": "GTI Org"}).insert(ignore_permissions=True).name
+        frappe.get_doc({"doctype": "WebODM Org Membership", "user": user,
+                        "organization": org, "role": "Owner"}).insert(ignore_permissions=True)
+        frappe.local.webodm_org_cache = {}
+        frappe.set_user(user)
+        ds = make_dataset("GTI inputs", images=[("DJI_0001.JPG", b"\xff\xd8img")])
+        frappe.set_user("Administrator")
+        # a row whose blob is gone, and one with no image at all: both skipped
+        gone = save_private_file_from_stream(_io.BytesIO(b"x"), "gone.jpg", attached_to_doctype="WebODM Dataset",
+                                             attached_to_name=ds.name, ignore_permissions=True)
+        os.remove(abs_path_for_file_url(gone.file_url))
+        for row in ({"image": gone.file_url, "filename": "gone.jpg"}, {"image": "", "filename": "skipped.jpg"}):
+            frappe.get_doc({"doctype": "WebODM Dataset Image", "parent": ds.name, "parenttype": "WebODM Dataset",
+                            "parentfield": "images", "idx": 9, **row}).db_insert()
         try:
-            task = frappe._dict(name="GTI-TASK", images=[
-                frappe._dict(image=f.file_url, filename="DJI_0001.JPG"),
-                frappe._dict(image="", filename="skipped.jpg"),
-                frappe._dict(image="/private/files/does_not_exist_zzz.jpg", filename="gone.jpg"),
-            ])
+            task = frappe._dict(name="GTI-TASK", dataset=ds.name, organization=org)
             with patch("frappe.log_error"):
                 out = task_runner._get_task_images(task)
             self.assertEqual(len(out), 1)
@@ -237,4 +245,5 @@ class TestGetTaskImages(FrappeTestCase):
             with open(path, "rb") as fh:
                 self.assertEqual(fh.read(), b"\xff\xd8img")
         finally:
-            frappe.delete_doc("File", f.name, ignore_permissions=True, force=True)
+            frappe.delete_doc("WebODM Dataset", ds.name, ignore_permissions=True, force=True)
+            frappe.local.webodm_org_cache = {}

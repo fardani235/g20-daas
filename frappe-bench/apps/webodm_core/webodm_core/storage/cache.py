@@ -13,7 +13,8 @@ Invariants:
 * Only blobs whose row carries a ``storage_key`` (i.e. the object is known to
   be in S3) are ever evicted. Losing the cache is never losing data.
 * A blob in use by a Queued/Provisioning/Running task or a Running plugin run
-  is never evicted.
+  is never evicted. Inputs belong to a dataset, so a dataset image counts as
+  busy while *any* task referencing that dataset is in one of those states.
 * Nothing is correct only because the cache is warm: every consumer falls
   back to S3 on a miss.
 
@@ -75,11 +76,12 @@ def storage_key_for_file_url(file_url: str):
         org = frappe.db.get_value("WebODM Task", row.parent, "organization")
         return row.storage_key, org
     row = frappe.db.get_value(
-        "WebODM Task Image", {"image": file_url, "storage_key": ["!=", ""]},
+        "WebODM Dataset Image", {"image": file_url, "storage_key": ["!=", ""]},
         ["storage_key", "parent"], as_dict=True,
     )
     if row and row.storage_key:
-        org = frappe.db.get_value("WebODM Task", row.parent, "organization")
+        # Images belong to a dataset; the org comes from the parent dataset.
+        org = frappe.db.get_value("WebODM Dataset", row.parent, "organization")
         return row.storage_key, org
     row = frappe.db.get_value(
         "WebODM Plugin Run", {"output_file": file_url, "storage_key": ["!=", ""]},
@@ -175,19 +177,22 @@ def limits() -> tuple[int, int]:
 def _candidates() -> list[dict]:
     """Every cache-backed blob currently on disk, with size, last use and busy flag."""
     out = []
-    busy_tasks = set(frappe.get_all(
-        "WebODM Task", filters={"status": ["in", list(_BUSY_TASK_STATUSES)]}, pluck="name",
-    ))
+    busy = frappe.get_all(
+        "WebODM Task", filters={"status": ["in", list(_BUSY_TASK_STATUSES)]}, fields=["name", "dataset"],
+    )
+    busy_tasks = {t.name for t in busy}
+    # A dataset is busy while any running/queued task reads from it.
+    busy_datasets = {t.dataset for t in busy if t.dataset}
     for row in frappe.get_all(
         "WebODM Task Asset", filters={"storage_key": ["!=", ""]},
         fields=["file_url", "storage_key", "parent"],
     ):
         out.append(_entry(row.file_url, row.storage_key, busy=row.parent in busy_tasks))
     for row in frappe.get_all(
-        "WebODM Task Image", filters={"storage_key": ["!=", ""]},
+        "WebODM Dataset Image", filters={"storage_key": ["!=", ""]},
         fields=["image as file_url", "storage_key", "parent"],
     ):
-        out.append(_entry(row.file_url, row.storage_key, busy=row.parent in busy_tasks))
+        out.append(_entry(row.file_url, row.storage_key, busy=row.parent in busy_datasets))
     for row in frappe.get_all(
         "WebODM Plugin Run", filters={"storage_key": ["!=", ""]},
         fields=["output_file as file_url", "storage_key", "status"],

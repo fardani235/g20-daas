@@ -7,3 +7,9 @@
 webodm_core.patches.seed_system_presets
 webodm_core.patches.seed_processing_node
 webodm_core.patches.seed_marketplace
+# Dataset library (2026-09-30). Staged and ordered: the backfill is additive
+# (one dataset per pre-library task, keys and files kept), the drop re-verifies
+# it and refuses to run — failing the migrate loudly, data intact — if any task
+# is left without a matching dataset. See docs/datasets/migration.md.
+webodm_core.patches.backfill_task_datasets
+webodm_core.patches.drop_task_image_table

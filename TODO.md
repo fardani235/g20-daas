@@ -42,10 +42,20 @@
 - [x] Autoname via hash
 - [x] Add status options: Pending, Running, Completed, Failed, Canceled
 
-### WebODM Task Image ✅
+### WebODM Task Image ✅ → retired 2026-09-30
 - [x] Create child table with image, filename, file_size
 - [x] Add nullable latitude/longitude Float fields for GPS
 - [x] Allow null values for GPS fields
+- [x] Replaced by `WebODM Dataset Image` (see *Dataset library* below); table dropped by a verified migration
+
+### Dataset library ✅ (2026-09-30) — see `docs/datasets/`
+- [x] `WebODM Dataset` (org-scoped; title, description, derived image_count / total_size, created_by) + `WebODM Dataset Image`
+- [x] `WebODM Task.dataset` required; task image table removed; processing reads images through the dataset
+- [x] Datasets page (list, upload-to-create, detail, edit, delete with the in-use refusal) + dataset picker in Add Task
+- [x] Deletion contract: task delete keeps inputs; referenced dataset undeletable (names tasks); unreferenced delete by key
+- [x] Server-side disk-cached thumbnails for map / dataset previews
+- [x] Staged migration: additive backfill (idempotent, `report` / `rollback`) → verified drop
+- [ ] Dataset versioning, editing images after creation, cross-org sharing (out of scope by design)
 
 ### Extended DocTypes ✅
 - [x] Create Tag child table for Project

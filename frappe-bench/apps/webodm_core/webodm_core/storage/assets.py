@@ -1,9 +1,11 @@
-"""Task-level bookkeeping between the ``WebODM Task`` record and object storage.
+"""Bookkeeping between the ``WebODM Dataset`` / ``WebODM Task`` records and object storage.
 
-* Inputs: ``sync_inputs`` copies uploaded imagery to S3 and records the key on
-  each ``WebODM Task Image`` row; ``input_sources`` hands dispatch a stream per
-  image that reads the cache when warm and S3 otherwise, so re-processing
-  works after the cache is gone.
+* Inputs belong to a dataset: ``sync_inputs`` copies a dataset's imagery to S3
+  and records the key on each ``WebODM Dataset Image`` row; ``input_sources``
+  resolves a *task's* images through its dataset and hands dispatch a stream
+  per image that reads the cache when warm and S3 otherwise, so re-processing
+  works after the cache is gone. Inputs are shared between every task that
+  references the dataset, so nothing task-scoped ever deletes them.
 * Outputs: ``record_asset`` upserts one ``WebODM Task Asset`` row per output
   (kind, S3 key, cache URL, size, etag, COG flag); ``raster_source`` /
   ``ensure_asset_local`` are what tiles, the viewer and plugins resolve
@@ -40,64 +42,90 @@ ASSET_FILENAMES = {
     "model": "model.glb",
 }
 
-SYNC_JOB = "webodm_core.storage.assets.sync_task_inputs_job"
+SYNC_JOB = "webodm_core.storage.assets.sync_dataset_inputs_job"
+
+DATASET_DOCTYPE = "WebODM Dataset"
+DATASET_IMAGE_DOCTYPE = "WebODM Dataset Image"
 
 
 # -- inputs -----------------------------------------------------------------
 
 
-def sync_inputs(task, *, raise_on_error: bool = False) -> int:
-    """Copy every not-yet-synced image of ``task`` to S3. Returns the count synced.
+def dataset_for_task(task):
+    """The ``WebODM Dataset`` a task reads its images from, or ``None``."""
+    name = getattr(task, "dataset", None)
+    if not name or not frappe.db.exists(DATASET_DOCTYPE, name):
+        return None
+    return frappe.get_doc(DATASET_DOCTYPE, name)
 
-    Idempotent: rows that already carry a ``storage_key`` are skipped, and the
-    upload is skipped too when the object is already present (a previous run
-    that crashed between the PUT and the row update). Errors are logged and
-    swallowed unless ``raise_on_error`` — a storage outage must not block an
-    upload response or a dispatch that can still read the host copy.
+
+def sync_inputs(dataset, *, raise_on_error: bool = False) -> int:
+    """Copy every not-yet-synced image of ``dataset`` to S3. Returns the count synced.
+
+    Idempotent: rows that already carry a ``storage_key`` are skipped (this is
+    what lets a migrated dataset keep its ``tasks/<task>/inputs/`` keys), and
+    the upload is skipped too when the object is already present (a previous
+    run that crashed between the PUT and the row update). Errors are logged
+    and swallowed unless ``raise_on_error`` — a storage outage must not block
+    an upload response or a dispatch that can still read the host copy.
     """
     if not storage.configured():
         return 0
     store = storage.get()
     synced = 0
-    for row in task.images:
+    for row in dataset.images:
         if not row.image or row.storage_key:
             continue
         try:
-            path = abs_path_for_attached_file(row.image, attached_to_doctype="WebODM Task",
-                                              attached_to_name=task.name)
+            path = abs_path_for_attached_file(row.image, attached_to_doctype=DATASET_DOCTYPE,
+                                              attached_to_name=dataset.name)
         except frappe.DoesNotExistError:
+            continue
+        except frappe.PermissionError as e:
+            # A row pointing at a File that is not this dataset's (tampered, or
+            # a half-rolled-back migration): never upload it under this org's
+            # key, and never let one bad row stall the periodic backfill.
+            frappe.log_error(f"{dataset.name}: skipping {row.image}: {e}", "WebODM Storage")
             continue
         if not os.path.isfile(path):
             continue
-        key = storage.task_key(task, "inputs", f"{storage.safe_segment(row.name)}_{storage.safe_segment(row.filename or os.path.basename(path))}")
+        key = storage.dataset_key(
+            dataset, "inputs",
+            f"{storage.safe_segment(row.name)}_{storage.safe_segment(row.filename or os.path.basename(path))}",
+        )
         try:
             if not store.exists(key):
                 store.put_path(path, key, storage.content_type_for(path))
             row.db_set("storage_key", key, update_modified=False)
             synced += 1
         except storage.StorageError as e:
-            frappe.log_error(f"{task.name}: input sync failed for {row.image}: {e}", "WebODM Storage")
+            frappe.log_error(f"{dataset.name}: input sync failed for {row.image}: {e}", "WebODM Storage")
             if raise_on_error:
                 raise
             break  # storage is unhappy; let the periodic sync retry the rest
     return synced
 
 
-def enqueue_input_sync(task_name: str):
+def sync_task_inputs(task, *, raise_on_error: bool = False) -> int:
+    """``sync_inputs`` for the dataset behind ``task`` (0 when it has none)."""
+    dataset = dataset_for_task(task)
+    return sync_inputs(dataset, raise_on_error=raise_on_error) if dataset else 0
+
+
+def enqueue_input_sync(dataset_name: str):
     try:
         frappe.enqueue(
-            SYNC_JOB, queue="long", job_id=f"webodm:syncinputs:{task_name}", deduplicate=True,
-            task_name=task_name,
+            SYNC_JOB, queue="long", job_id=f"webodm:syncinputs:{dataset_name}", deduplicate=True,
+            dataset_name=dataset_name,
         )
     except Exception:
-        frappe.log_error(f"could not enqueue input sync for {task_name}", "WebODM Storage")
+        frappe.log_error(f"could not enqueue input sync for {dataset_name}", "WebODM Storage")
 
 
-def sync_task_inputs_job(task_name: str):
-    if not frappe.db.exists("WebODM Task", task_name):
+def sync_dataset_inputs_job(dataset_name: str):
+    if not frappe.db.exists(DATASET_DOCTYPE, dataset_name):
         return
-    task = frappe.get_doc("WebODM Task", task_name)
-    sync_inputs(task)
+    sync_inputs(frappe.get_doc(DATASET_DOCTYPE, dataset_name))
     frappe.db.commit()
 
 
@@ -114,23 +142,32 @@ def _open_object(store, key: str):
 
 
 def input_sources(task) -> list[tuple[str, object]]:
-    """``(filename, source)`` per image, cache first, S3 second.
+    """``(filename, source)`` per image of the task's dataset, cache first, S3 second.
 
     ``source`` is the absolute path when the image is in the host cache and
     otherwise a context manager yielding a readable stream from object
     storage — both forms are what ``NodeODMClient.create_task`` consumes. An
     image that is neither on disk nor in S3 is skipped (and logged), matching
-    the old behaviour for files missing on disk.
+    the old behaviour for files missing on disk. Without a bucket configured
+    only the host copy is consulted.
+
+    Every key is checked against the *task's* organization: the dataset must
+    belong to the same org (``WebODMTask.validate``), so a row tampered to
+    point at another org's namespace is refused here as before.
     """
     out = []
+    dataset = dataset_for_task(task)
+    if dataset is None:
+        frappe.log_error(f"{task.name}: task has no dataset", "WebODM Processing")
+        return out
     store = storage.get() if storage.configured() else None
-    for row in task.images:
+    for row in dataset.images:
         if not row.image:
             continue
         filename = row.filename or os.path.basename(row.image)
         try:
-            path = abs_path_for_attached_file(row.image, attached_to_doctype="WebODM Task",
-                                              attached_to_name=task.name)
+            path = abs_path_for_attached_file(row.image, attached_to_doctype=DATASET_DOCTYPE,
+                                              attached_to_name=dataset.name)
         except frappe.DoesNotExistError:
             frappe.log_error(f"No File record for {row.image}", "WebODM Processing")
             path = None
@@ -231,10 +268,11 @@ def reset_outputs(task) -> dict:
     Clears: the output fields and extents, the task CRS (re-derived from the
     new orthophoto), asset rows, raster metadata rows, the cached ``File``
     documents of the old outputs, and the ``raw/`` + ``assets/`` objects.
-    Inputs (``images``, ``inputs/``) are untouched. Object deletion is
-    best-effort and logged: a stale object can only matter if the new run
-    writes the same key, which it then overwrites (``put`` is unconditional
-    once the row is gone).
+    Inputs are untouched — they belong to the task's dataset, which other
+    tasks may share, so this is a cross-task safety guarantee and not just a
+    restart optimisation. Object deletion is best-effort and logged: a stale
+    object can only matter if the new run writes the same key, which it then
+    overwrites (``put`` is unconditional once the row is gone).
     """
     from webodm_core.webodm_core.processing import raster_metadata
 
@@ -267,8 +305,8 @@ def reset_outputs(task) -> dict:
     if storage.configured() and task.organization:
         try:
             store = storage.get()
-            for sub in ("raw", "assets"):
-                stats["objects"] += store.delete_prefix(storage.task_prefix(task) + sub + "/")
+            for prefix in storage.task_output_prefixes(task):
+                stats["objects"] += store.delete_prefix(prefix)
         except storage.StorageError as e:
             frappe.log_error(f"{task.name}: could not delete previous output objects: {e}", "WebODM Storage")
     return stats
@@ -310,14 +348,49 @@ def run_output_source(run):
 
 
 def delete_task_objects(task):
-    """Remove every object under the task's prefix. Best-effort (logged)."""
+    """Remove the task's *output* objects (``raw/`` + ``assets/``). Best-effort (logged).
+
+    Never the whole task prefix: a dataset migrated from this task keeps its
+    images under ``tasks/<task>/inputs/`` and may be referenced by other
+    tasks, so inputs are only ever deleted with their dataset
+    (:func:`delete_dataset_objects`).
+    """
     if not storage.configured() or not task.organization:
         return 0
+    deleted = 0
     try:
-        return storage.get().delete_prefix(storage.task_prefix(task))
+        store = storage.get()
+        for prefix in storage.task_output_prefixes(task):
+            deleted += store.delete_prefix(prefix)
     except storage.StorageError as e:
         frappe.log_error(f"{task.name}: could not delete objects: {e}", "WebODM Storage")
+    return deleted
+
+
+def delete_dataset_objects(dataset) -> int:
+    """Remove a dataset's image objects by the key recorded on each row. Best-effort.
+
+    Keys are deleted individually rather than by prefix so the same code
+    works for a library upload (``datasets/<id>/inputs/...``) and a migrated
+    dataset whose rows still point at ``tasks/<task>/inputs/...``. Every key
+    is checked against the dataset's organization namespace first; a
+    tampered key is logged and skipped, never deleted.
+    """
+    if not storage.configured() or not dataset.organization:
         return 0
+    store = storage.get()
+    deleted = 0
+    for row in dataset.images:
+        key = row.storage_key
+        if not key:
+            continue
+        try:
+            storage.assert_org_key(key, dataset.organization)
+            store.delete(key)
+            deleted += 1
+        except storage.StorageError as e:
+            frappe.log_error(f"{dataset.name}: could not delete {key}: {e}", "WebODM Storage")
+    return deleted
 
 
 def delete_run_objects(run):
@@ -346,16 +419,15 @@ def sync_pending(limit: int = 20) -> dict:
     store = storage.get()
 
     try:
-        # Tasks with at least one image missing a key.
+        # Datasets with at least one image missing a key.
         parents = frappe.get_all(
-            "WebODM Task Image", filters={"storage_key": ["is", "not set"]},
+            DATASET_IMAGE_DOCTYPE, filters={"storage_key": ["is", "not set"], "parenttype": DATASET_DOCTYPE},
             pluck="parent", distinct=True, limit=limit,
         )
         for name in parents:
-            if not frappe.db.exists("WebODM Task", name):
+            if not frappe.db.exists(DATASET_DOCTYPE, name):
                 continue
-            task = frappe.get_doc("WebODM Task", name)
-            stats["inputs"] += sync_inputs(task, raise_on_error=True)
+            stats["inputs"] += sync_inputs(frappe.get_doc(DATASET_DOCTYPE, name), raise_on_error=True)
 
         # Legacy outputs: Attach fields set but no (synced) asset row.
         for name in frappe.get_all(

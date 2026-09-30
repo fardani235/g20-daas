@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "hash",
- "creation": "2024-01-01 00:00:00.000000",
+ "creation": "2026-09-30 00:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -21,7 +21,8 @@
    "fieldtype": "Attach",
    "in_list_view": 1,
    "label": "Image",
-   "reqd": 1
+   "reqd": 1,
+   "description": "/private/files/... URL of the host serving-cache copy (may be evicted once synced)."
   },
   {
    "fieldname": "filename",
@@ -40,12 +41,12 @@
    "label": "Object Storage Key",
    "length": 1024,
    "read_only": 1,
-   "description": "Canonical object key of this image in the configured bucket; empty until synced."
+   "description": "Canonical object key of this image in the configured bucket; empty until synced. New uploads live under datasets/<id>/inputs/, migrated rows may keep their tasks/<task>/inputs/ key."
   },
   {
    "fieldname": "gps_section",
    "fieldtype": "Section Break",
-   "label": "GPS Coordinates"
+   "label": "Photo Details"
   },
   {
    "fieldname": "latitude",
@@ -75,10 +76,10 @@
   }
  ],
  "istable": 1,
- "modified": "2026-09-25 00:00:00.000000",
+ "modified": "2026-09-30 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "WebODM Core",
- "name": "WebODM Task Image",
+ "name": "WebODM Dataset Image",
  "owner": "Administrator",
  "permissions": [],
  "sort_field": "creation",

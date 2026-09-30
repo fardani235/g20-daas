@@ -27,7 +27,8 @@ def _task(**kw):
     t.next_attempt_at = None
     t.title = "t"
     t.processing_options = kw.pop("processing_options", None)
-    t.images = kw.pop("images", [])
+    t.dataset = kw.pop("dataset", None)
+    t.image_count = kw.pop("image_count", 0)
     for k, v in kw.items():
         setattr(t, k, v)
     t.get = lambda key, default=None: getattr(t, key, default)
@@ -96,7 +97,7 @@ class TestNodeToken(unittest.TestCase):
                 compute.node_token("CI-1")
 
     def test_request_never_writes_a_token_and_fails_before_creating_without_secret(self):
-        task = _task(images=[])
+        task = _task()
         client = MagicMock()
         client.provider.return_value = {"enabled": True, "provider": "aws", "classes": {"cpu": {}}, "default_class": "cpu"}
         client.create.return_value = {"handle": "aws:i-1", "provider": "aws", "instance_class": "cpu", "hourly_cost": 0.3}

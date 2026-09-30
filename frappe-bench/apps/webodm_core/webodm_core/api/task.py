@@ -1,11 +1,11 @@
-import io
-import os
-
 import frappe
-from PIL import Image
-from PIL.ExifTags import GPSTAGS
 
-from webodm_core.plugins.files import abs_path_for_file_doc, save_private_file_from_stream
+from webodm_core import datasets
+
+# EXIF extraction moved to webodm_core.datasets when images became dataset
+# rows; the old names stay importable from here.
+_gps_to_decimal = datasets.gps_to_decimal
+_extract_photo_meta = datasets.extract_photo_meta
 
 
 def _get_task_checked(task_name: str, ptype: str = "read"):
@@ -100,117 +100,6 @@ def cancel_task():
     return f"Task {task_name} cancelled"
 
 
-def _gps_to_decimal(dms, ref):
-    deg, min_, sec = dms
-    decimal = float(deg) + float(min_) / 60 + float(sec) / 3600
-    if ref in ("S", "W"):
-        decimal = -decimal
-    return round(decimal, 6)
-
-
-def _extract_photo_meta(source):
-    """Extract georeferencing/timing metadata from an image's EXIF.
-
-    ``source`` is raw ``bytes`` or an on-disk path. Pillow reads only the
-    headers it needs for ``getexif()``, so passing a path never loads the
-    full image into memory.
-
-    Returns a dict with keys ``lat``, ``lng``, ``altitude`` (metres, signed),
-    and ``capture_time`` (Frappe ``YYYY-MM-DD HH:MM:SS`` string). Every field is
-    independently optional: a missing or malformed tag yields ``None`` and never
-    raises, so a bad tag can never block an upload.
-    """
-    meta = {"lat": None, "lng": None, "altitude": None, "capture_time": None}
-
-    try:
-        with Image.open(io.BytesIO(source) if isinstance(source, bytes) else source) as img:
-            exif = img.getexif()
-    except Exception:
-        return meta
-    if not exif:
-        return meta
-
-    # --- GPS: latitude / longitude / altitude (GPS IFD 34853) ---
-    try:
-        gps_ifd = exif.get_ifd(34853)
-        if gps_ifd:
-            gps_info = {}
-            for k, v in gps_ifd.items():
-                tag = GPSTAGS.get(k)
-                if tag:
-                    gps_info[tag] = v
-
-            if "GPSLatitude" in gps_info and "GPSLongitude" in gps_info:
-                meta["lat"] = _gps_to_decimal(
-                    gps_info["GPSLatitude"], gps_info.get("GPSLatitudeRef", "N")
-                )
-                meta["lng"] = _gps_to_decimal(
-                    gps_info["GPSLongitude"], gps_info.get("GPSLongitudeRef", "E")
-                )
-
-            if "GPSAltitude" in gps_info:
-                try:
-                    alt = float(gps_info["GPSAltitude"])
-                    ref = gps_info.get("GPSAltitudeRef", 0)
-                    # GPSAltitudeRef == 1 (or b"\x01") means below sea level.
-                    if ref in (1, b"\x01"):
-                        alt = -alt
-                    meta["altitude"] = round(alt, 3)
-                except (TypeError, ValueError):
-                    pass
-    except Exception:
-        pass
-
-    # --- Capture time: DateTimeOriginal (Exif IFD), then DateTime (base IFD) ---
-    try:
-        dto = None
-        exif_ifd = exif.get_ifd(34665)  # ExifIFD
-        if exif_ifd:
-            dto = exif_ifd.get(36867)  # DateTimeOriginal
-        if not dto:
-            dto = exif.get(306)  # DateTime
-        if dto:
-            # EXIF "YYYY:MM:DD HH:MM:SS" -> Frappe "YYYY-MM-DD HH:MM:SS".
-            s = str(dto).strip()
-            date_part, _, time_part = s.partition(" ")
-            date_part = date_part.replace(":", "-")
-            candidate = (date_part + " " + time_part).strip()
-            # Only keep a value Frappe's Datetime field can actually store, so a
-            # malformed-but-truthy tag can never raise at task.save() and block the
-            # whole upload batch. Unparseable -> leave capture_time None.
-            from frappe.utils import get_datetime
-
-            get_datetime(candidate)
-            meta["capture_time"] = candidate
-    except Exception:
-        pass
-
-    return meta
-
-
-def _save_task_image_file(stream, file_name: str, task_name: str):
-    """Save an uploaded image as a private File with its bytes untouched.
-
-    ODM georeferencing depends on per-image EXIF GPS. Frappe's ``File.save_file``
-    strips EXIF from JPEGs when ``strip_exif_metadata_from_uploaded_images`` is
-    on, which removes the geotags and collapses the reconstruction to a tiny
-    local model. Streaming the upload straight to disk and registering the File
-    against the existing blob bypasses ``save_file`` entirely, so the setting
-    cannot affect task images — and the file is never held in memory.
-    """
-    if hasattr(stream, "seek"):
-        try:
-            stream.seek(0)
-        except (OSError, ValueError):
-            pass
-    return save_private_file_from_stream(
-        stream,
-        file_name,
-        attached_to_doctype="WebODM Task",
-        attached_to_name=task_name,
-    )
-
-
 def _maybe_autostart(task_name: str):
     """Enqueue processing right after upload if WebODM Settings enables it.
 
@@ -256,8 +145,66 @@ def _encode_processing_options(options_raw):
     return frappe.as_json(frappe.as_json(opts))
 
 
+def _task_payload(task) -> dict:
+    """``task.as_dict()`` plus the dataset summary and its image rows.
+
+    Tasks no longer carry image rows, but the map view still needs thumbnails
+    and GPS markers per task, so the payload keeps an ``images`` list (now the
+    dataset's rows, each with a ``thumbnail`` URL) next to a ``dataset_summary``
+    block. A task whose dataset is gone (only possible for rows written before
+    the field became required) gets an empty list.
+    """
+    out = task.as_dict()
+    dataset = frappe.get_doc(datasets.DOCTYPE, task.dataset) if task.dataset and frappe.db.exists(
+        datasets.DOCTYPE, task.dataset) else None
+    out["dataset_summary"] = datasets.summary(dataset) if dataset else None
+    out["images"] = datasets.image_dicts(dataset) if dataset else []
+    return out
+
+
+@frappe.whitelist(allow_guest=False)
+def list_tasks(project_id=None):
+    """The tasks of a project with their dataset summary (title, image count, size).
+
+    Replaces the frontend's direct ``/api/resource`` listing: image counts now
+    live on the dataset, and joining them here saves the page one request per
+    task. Goes through ``frappe.get_list`` so the org-scoping applies.
+    """
+    project_id = project_id or frappe.form_dict.get("project_id")
+    if not project_id:
+        frappe.throw("project_id is required")
+    frappe.get_doc("WebODM Project", project_id).check_permission("read")
+    tasks = frappe.get_list("WebODM Task", filters={"project": project_id}, fields=["*"],
+                            order_by="creation desc", limit_page_length=0)
+    names = {t.dataset for t in tasks if t.dataset}
+    summaries = {}
+    if names:
+        for row in frappe.get_all(datasets.DOCTYPE, filters={"name": ["in", list(names)]},
+                                  fields=["name", "title", "description", "image_count", "total_size",
+                                          "created_by", "owner", "creation", "modified"]):
+            summaries[row.name] = datasets.summary(frappe._dict(row))
+    for t in tasks:
+        t["dataset_summary"] = summaries.get(t.dataset)
+    return tasks
+
+
 @frappe.whitelist(allow_guest=False)
 def upload_images():
+    """Create a task, either over an existing dataset or from freshly uploaded images.
+
+    Two modes, decided by the multipart form:
+
+    * ``dataset=<name>`` — the task points at that dataset (must belong to the
+      caller's organization); no files are needed and none are accepted.
+    * ``files`` — a new dataset is created from the uploads first (title from
+      ``dataset_title`` or the task title) and the task points at it. This is
+      the pre-library behaviour with the images moved one level out, so the
+      same photos can feed another task later without re-uploading.
+
+    Either way the response is the task payload including ``dataset_summary``
+    and ``images``. The endpoint keeps its historical name; it is the single
+    task-creation entry point.
+    """
     from webodm_core import tenancy
     tenancy.require_org()  # deny-by-default: a user with no org cannot upload
 
@@ -268,68 +215,57 @@ def upload_images():
     files = frappe.request.files.getlist("files")
     project_id = frappe.form_dict.get("project_id")
     options_raw = frappe.form_dict.get("options")
+    dataset_name = frappe.form_dict.get("dataset")
 
-    if not files:
-        frappe.throw("No files provided")
     if not project_id:
         frappe.throw("project_id is required")
+    if not files and not dataset_name:
+        frappe.throw("Choose a dataset or provide files to upload")
+    if files and dataset_name:
+        frappe.throw("Provide either a dataset or files, not both")
 
     # Gate write access: without this, any user could upload images into another
     # user's project by supplying its id (get_doc alone enforces nothing).
     project = frappe.get_doc("WebODM Project", project_id)
     project.check_permission("write")
     task_count = frappe.db.count("WebODM Task", {"project": project_id})
+    title = (frappe.form_dict.get("title") or "").strip() or f"{project.title} - Task {task_count + 1}"
+
+    if dataset_name:
+        # Read is enough to build on a dataset; the task controller re-checks
+        # that it belongs to the same organization.
+        dataset = frappe.get_doc(datasets.DOCTYPE, dataset_name)
+        dataset.check_permission("read")
+    else:
+        dataset_title = (frappe.form_dict.get("dataset_title") or "").strip() or title
+        dataset = datasets.create_from_uploads(files, title=dataset_title,
+                                               description=frappe.form_dict.get("dataset_description"))
+
     task = frappe.get_doc({
         "doctype": "WebODM Task",
         "project": project_id,
-        "title": f"{project.title} - Task {task_count + 1}",
+        "title": title,
         "status": "Pending",
+        "dataset": dataset.name,
     })
 
     encoded = _encode_processing_options(options_raw)
     if encoded is not None:
         task.processing_options = encoded
 
-    task.save()
-
-    for f in files:
-        file_name = f.filename or f"unnamed_{frappe.generate_hash()[:6]}.jpg"
-
-        # Werkzeug has already spooled large parts to a temp file; stream that
-        # to its final location instead of f.read()-ing it into memory.
-        file_doc = _save_task_image_file(f.stream, file_name, task.name)
-
-        meta = _extract_photo_meta(abs_path_for_file_doc(file_doc))
-
-        img_row = {
-            "image": file_doc.file_url,
-            "filename": file_name,
-            "file_size": file_doc.file_size,
-        }
-        if meta["lat"] is not None and meta["lng"] is not None:
-            img_row["latitude"] = meta["lat"]
-            img_row["longitude"] = meta["lng"]
-        if meta["altitude"] is not None:
-            img_row["altitude"] = meta["altitude"]
-        if meta["capture_time"]:
-            img_row["capture_time"] = meta["capture_time"]
-        task.append("images", img_row)
-
-    task.save()
+    try:
+        task.save()
+    except Exception:
+        if not dataset_name:
+            # The dataset was created for this task only; do not leave it behind.
+            frappe.delete_doc(datasets.DOCTYPE, dataset.name, ignore_permissions=True, force=True,
+                              delete_permanently=True)
+        raise
     frappe.db.commit()
-
-    # Canonical copy: uploads land on the host first (EXIF extraction above is
-    # unchanged) and are then copied to object storage in the background. The
-    # dispatch step syncs anything still missing, so nothing depends on this
-    # job having finished.
-    from webodm_core import storage
-    if storage.configured():
-        from webodm_core.storage import assets as storage_assets
-        storage_assets.enqueue_input_sync(task.name)
 
     _maybe_autostart(task.name)
 
-    return task.as_dict()
+    return _task_payload(task)
 
 
 @frappe.whitelist(allow_guest=False)
@@ -413,7 +349,7 @@ def get_task_progress():
             enqueue_provision_check(task_name)
         except Exception:
             frappe.log_error(f"Could not enqueue provision check for {task_name}", "WebODM Processing")
-    return task.as_dict()
+    return _task_payload(task)
 
 
 @frappe.whitelist(allow_guest=False)

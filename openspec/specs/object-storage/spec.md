@@ -16,8 +16,13 @@ SHALL be a cache.
 
 #### Scenario: Upload
 
-- **WHEN** images are uploaded
-- **THEN** they land on the host first (EXIF extraction unchanged) and are copied to `inputs/` with the key recorded on each image row
+- **WHEN** images are uploaded (as a dataset, or as the upload that creates a task's dataset)
+- **THEN** they land on the host first (EXIF extraction unchanged) and are copied to `orgs/<slug>/datasets/<id>/inputs/` with the key recorded on each `WebODM Dataset Image` row
+
+#### Scenario: Migrated dataset keeps its keys
+
+- **WHEN** a dataset was split out of a pre-library task
+- **THEN** its rows keep their `orgs/<slug>/tasks/<task>/inputs/` keys and every read, sync and delete accepts them, because the organization namespace is what the boundary check enforces
 
 #### Scenario: No bucket configured
 
@@ -80,11 +85,23 @@ A task SHALL be re-processable after its cache copies are gone.
 - **WHEN** a Completed, Failed or Cancelled task is restarted
 - **THEN** its previous output fields, asset rows, metadata rows, cached files and `raw/` + `assets/` objects are removed before the task is queued, inputs are kept, and the next completion records only the new run's outputs
 
+#### Scenario: Inputs are shared
+
+- **WHEN** a task is reset or deleted
+- **THEN** no object under any `inputs/` prefix is touched — the images belong to the task's dataset, which other tasks may reference
+
 ### Requirement: Eviction
 
 A periodic reaper SHALL evict cache blobs idle longer than a configured age
 and then least-recently-used blobs down to a byte budget, only for blobs with
-an object copy, never for tasks that are Queued, Provisioning or Running.
+an object copy, never for tasks that are Queued, Provisioning or Running. A
+dataset image SHALL count as busy while any task referencing its dataset is
+in one of those states.
+
+#### Scenario: Shared dataset in use
+
+- **WHEN** one of two tasks reading the same dataset is Running
+- **THEN** none of that dataset's images is evicted
 
 #### Scenario: Host-only blob
 
@@ -122,3 +139,8 @@ to storage as the system of record.
 
 - **WHEN** a Completed task has outputs on disk but no asset rows with keys
 - **THEN** the backfill uploads them and records the keys
+
+#### Scenario: Unsynced dataset image
+
+- **WHEN** a `WebODM Dataset Image` row has no key
+- **THEN** the backfill uploads it under the dataset's prefix (getting the organization from the parent dataset) and records the key; a row whose file is not attached to that dataset is skipped and logged rather than stalling the job

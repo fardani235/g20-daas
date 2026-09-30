@@ -1,5 +1,6 @@
 import {
   Folder,
+  Images,
   LayoutGrid,
   Puzzle,
   SlidersHorizontal,
@@ -12,6 +13,8 @@ import {
 export const PRIMARY_TABS = Object.freeze([
   { to: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
   { to: '/projects', label: 'Projects', icon: Folder },
+  // The reusable input-image library; a task picks one of these.
+  { to: '/datasets', label: 'Datasets', icon: Images },
   { to: '/presets', label: 'Presets', icon: SlidersHorizontal },
   { to: '/plugins', label: 'Plugins', icon: Puzzle },
   // Public catalog (layout: 'auto'); signed-in users get it as a tab so

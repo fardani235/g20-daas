@@ -7,6 +7,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from webodm_core.plugins import sync
 from webodm_core.plugins.geospatial import GeospatialUnavailable
+from webodm_core.testing import make_dataset
 
 NEW_OP = {
     "op_id": "test-sync-new",
@@ -78,7 +79,7 @@ class TestPluginCatalogSync(FrappeTestCase):
             "title": "Catalog Sync Project",
         }).insert().name
         task = frappe.get_doc({
-            "doctype": "WebODM Task",
+            "doctype": "WebODM Task", "dataset": make_dataset().name,
             "project": cls.project_name,
             "title": "Catalog Sync Task",
             "status": "Completed",

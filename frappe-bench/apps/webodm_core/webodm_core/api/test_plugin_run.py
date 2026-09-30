@@ -9,6 +9,7 @@ from frappe.tests.utils import FrappeTestCase
 from webodm_core.api import plugins as plugins_api
 from webodm_core.plugins import runner
 from webodm_core.plugins.geospatial import GeospatialError
+from webodm_core.testing import make_dataset
 
 PLUGIN_ID = "test-run-op"
 SCHEMA = {
@@ -119,7 +120,7 @@ class TestPluginRun(FrappeTestCase):
         frappe.set_user(user)
         frappe.local.webodm_org_cache = {}
         doc = frappe.get_doc({
-            "doctype": "WebODM Task",
+            "doctype": "WebODM Task", "dataset": make_dataset().name,
             "project": project,
             "title": f"Task {status} {with_dsm}",
             "status": status,

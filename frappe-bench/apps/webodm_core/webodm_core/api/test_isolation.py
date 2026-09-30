@@ -1,5 +1,6 @@
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from webodm_core.testing import make_dataset
 
 
 def _user(email):
@@ -72,7 +73,7 @@ class TestIsolation(FrappeTestCase):
         # A owns a task; B must be denied via the custom endpoint.
         frappe.set_user(self.member_a)
         frappe.local.webodm_org_cache = {}
-        task_a = frappe.get_doc({"doctype": "WebODM Task", "project": self.proj_a,
+        task_a = frappe.get_doc({"doctype": "WebODM Task", "dataset": make_dataset().name, "project": self.proj_a,
                                  "title": "A Task", "status": "Pending"}).insert().name
         frappe.set_user("Administrator")
         from webodm_core.api import task as task_api

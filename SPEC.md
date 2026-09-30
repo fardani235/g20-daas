@@ -120,6 +120,7 @@ Core DocType — represents a photogrammetry processing job.
 
 - task_name: Data
 - project: Link → WebODM Project (required)
+- dataset: Link → WebODM Dataset (required)   (the input images; shared, never deleted with the task)
 - status: Select
   [Pending, Queued, Provisioning, Running, Completed, Failed, Cancelled]
   (Provisioning: waiting for an on-demand node; only with a provider configured)
@@ -158,10 +159,26 @@ Core DocType — represents a photogrammetry processing job.
 - synced_at: Datetime
 ```
 
-#### WebODM Task Image (Child Table of WebODM Task)
+#### WebODM Dataset
+```
+The reusable, organization-scoped input image set (docs/datasets/README.md,
+openspec/specs/datasets/spec.md). A task references exactly one; any number
+of tasks may reference the same one. Images are fixed once the dataset
+exists; title/description are editable; a dataset with no images is refused.
+
+- title: Data (required)
+- description: Text
+- image_count: Int, total_size: Long Int   (derived on save)
+- created_by: Link → User
+- images: Table (WebODM Dataset Image)
+- organization: Link → WebODM Organization (stamped, read-only)
+```
+
+#### WebODM Dataset Image (Child Table of WebODM Dataset — replaces WebODM Task Image)
 ```
 - image: Attach                (/private/files/... cache copy)
-- storage_key: Data            (canonical object key once synced)
+- storage_key: Data            (canonical object key once synced; datasets/<id>/inputs/...,
+                                or the tasks/<task>/inputs/... key a migrated dataset kept)
 - filename, file_size, latitude, longitude, altitude, capture_time
 ```
 
@@ -293,7 +310,10 @@ Same pattern for: `WebODM Task`, `WebODM Processing Node`, `WebODM Preset`, etc.
 #### Task Operations
 | Method | Endpoint | Status | Purpose |
 |---|---|---|---|
-| POST | `webodm_core.api.task.upload_images` | ✅ | Upload images (+ EXIF GPS extraction, byte-preserving save) |
+| POST | `webodm_core.api.task.upload_images` | ✅ | Create a task over an existing `dataset`, or upload `files` that become its dataset (+ EXIF GPS extraction, byte-preserving save) |
+| POST | `webodm_core.api.task.list_tasks` | ✅ | Tasks of a project with their `dataset_summary` |
+| POST | `webodm_core.api.dataset.list_datasets` / `get_dataset` / `create_dataset` / `update_dataset` / `delete_dataset` | ✅ | Dataset library (org-scoped; delete refused while a task references it) |
+| GET | `webodm_core.api.dataset.thumbnail` | ✅ | Disk-cached JPEG preview of a dataset image (128/256/512 px) |
 | POST | `webodm_core.api.task.process_task` | ✅ | Trigger processing (enqueue) |
 | POST | `webodm_core.api.task.cancel_task` | ✅ | Cancel running/pending task |
 | POST | `webodm_core.api.task.get_task_console` | ✅ | Incremental NodeODM console output |
@@ -351,16 +371,16 @@ GDAL `/vsis3/` range reads), not a dataset id. See `services/geospatial/README.m
 ### 5.1 Flow
 
 ```
-[User] → upload_images → Create Task (Pending)
-  → extract EXIF GPS to Task Image rows; save original image bytes intact*
-  → (storage configured) background sync of images to S3 inputs/
+[User] → upload_images (dataset=<id> | files) → Create Task (Pending) → task.dataset
+  → new files: create WebODM Dataset, extract EXIF GPS to Dataset Image rows; save original bytes intact*
+  → (storage configured) background sync of the dataset's images to S3 datasets/<id>/inputs/
 [User] → process_task → Status: Queued
   → Scheduler cron (1 min): process_pending_tasks → process_task
     → Ready compute instance linked?           → dispatch to it
     → else provisioner configured?             → caps → request instance → Status: Provisioning
          (cap reached → wait 60 s; provisioner down / no provider → static node)
     → else static WebODM Processing Node       → dispatch (exactly as before)
-    → dispatch: stream images (cache, else S3) via NodeODM API → Status: Running
+    → dispatch: stream the dataset's images (cache, else S3) via NodeODM API → Status: Running
   → Scheduler cron (1 min): update_provisioning_tasks → check_provisioning
     → node answers → instance Ready → dispatch;  timeout / failure → instance destroyed, task Queued + backoff
   → Scheduler cron (1 min): update_running_tasks → poll_task (on the task's own node)

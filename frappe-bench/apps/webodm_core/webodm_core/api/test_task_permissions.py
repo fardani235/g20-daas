@@ -11,6 +11,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from webodm_core.api import task as task_api
 from webodm_core.api import tiles as tiles_api
+from webodm_core.testing import make_dataset
 
 
 def _make_user(email):
@@ -62,7 +63,7 @@ class TestTaskAccessControl(FrappeTestCase):
         }).insert()
         cls.project_name = project.name
         task = frappe.get_doc({
-            "doctype": "WebODM Task",
+            "doctype": "WebODM Task", "dataset": make_dataset().name,
             "project": project.name,
             "title": "Owner A Task",
             "status": "Pending",

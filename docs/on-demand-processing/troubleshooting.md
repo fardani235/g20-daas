@@ -180,7 +180,7 @@ Only possible through direct database edits or an organization slug renamed
 **and** a key rewritten by hand. The app refuses the read; it does not
 silently serve another org's object.
 
-*Do:* inspect the row (`WebODM Task Asset`, `WebODM Task Image`,
+*Do:* inspect the row (`WebODM Task Asset`, `WebODM Dataset Image`,
 `WebODM Plugin Run.storage_key`) and restore the correct key, or clear it and
 let the backfill re-upload from the host copy if it still exists.
 
