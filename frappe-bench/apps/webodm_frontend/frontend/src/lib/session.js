@@ -10,6 +10,32 @@ import { ref } from 'vue'
  */
 export const loggedIn = ref(null)
 
+/**
+ * Discard cached session credentials and the signed-in indicator. Call after
+ * the server session has ended (sign-out) or before re-reading it.
+ */
+export function clearSession() {
+  window.csrf_token = null
+  loggedIn.value = false
+}
+
+/**
+ * Fetch and cache the session CSRF token if it is not already cached. Guests
+ * have no token, so callers must only invoke this for a signed-in session.
+ */
+export async function ensureCsrfToken() {
+  if (window.csrf_token) return window.csrf_token
+  try {
+    const res = await fetch('/api/method/webodm_core.api.csrf.get_token')
+    if (!res.ok) return null
+    const { message: token } = await res.json()
+    window.csrf_token = token
+    return token
+  } catch {
+    return null
+  }
+}
+
 export async function refreshSession() {
   try {
     const res = await fetch('/api/method/frappe.auth.get_logged_user')

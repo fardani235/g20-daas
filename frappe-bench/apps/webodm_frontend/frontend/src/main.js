@@ -3,8 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
 import './index.css'
 import 'vue-sonner/style.css'
-import { getMyOrganization } from './lib/organization.js'
-import { refreshSession } from './lib/session.js'
+import { resolveNavigation } from './lib/routeGuard.js'
 
 const routes = [
   {
@@ -130,28 +129,12 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
-  if (to.meta.layout === 'auto') {
-    // The layout switch in App.vue reads this synchronously on entry.
-    await refreshSession()
-  }
-  if (to.meta.requiresAuth) {
-    const loggedIn = await refreshSession()
-    if (!loggedIn) {
-      next({ name: 'Login', query: { redirect: to.fullPath } })
-      return
-    }
-    if (to.name !== 'Onboarding') {
-      try {
-        const org = await getMyOrganization()
-        if (!org || !org.organization) {
-          next({ name: 'Onboarding' })
-          return
-        }
-      } catch {
-        next({ name: 'Onboarding' })
-        return
-      }
-    }
+  // Session contract (protected routes, auto layout) lives in lib/routeGuard.js
+  // so it can be tested; this hook only applies its decision.
+  const redirect = await resolveNavigation(to)
+  if (redirect) {
+    next(redirect)
+    return
   }
   next()
 })

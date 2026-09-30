@@ -17,12 +17,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Toaster } from 'vue-sonner'
 import AppLayout from './components/AppLayout.vue'
 import { useTheme } from './composables/useTheme'
-import { layoutFor, loggedIn } from './lib/session.js'
+import { layoutFor, loggedIn, ensureCsrfToken } from './lib/session.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,17 +39,16 @@ router.afterEach(() => {
   navigating.value = false
 })
 
-onMounted(async () => {
+onMounted(() => {
   init()
-  if (!window.csrf_token) {
-    try {
-      const res = await fetch('/api/method/webodm_core.api.csrf.get_token')
-      if (res.ok) {
-        const { message: token } = await res.json()
-        window.csrf_token = token
-      }
-    } catch {}
-  }
+  if (loggedIn.value) ensureCsrfToken()
+})
+
+// The guard resolves the session asynchronously, so the token is fetched once
+// it is known the visitor is signed in. Guests never call the authenticated-only
+// token endpoint, so public pages no longer produce a 403.
+watch(loggedIn, value => {
+  if (value) ensureCsrfToken()
 })
 
 onUnmounted(() => {

@@ -26,6 +26,7 @@ import {
   secondaryTabs,
   activeSecondaryTab,
 } from '@/lib/nav'
+import { signOut } from '@/lib/signout'
 import { useTheme } from '@/composables/useTheme'
 
 const route = useRoute()
@@ -55,10 +56,9 @@ const themeLabel = computed(
 )
 
 async function logout() {
-  try {
-    await fetch('/api/method/logout', { method: 'POST' })
-  } catch {}
-  router.push('/')
+  // A refused sign-out (rejected request / network) is surfaced by signOut and
+  // must not navigate as though the session ended.
+  if (await signOut()) router.push('/')
 }
 </script>
 

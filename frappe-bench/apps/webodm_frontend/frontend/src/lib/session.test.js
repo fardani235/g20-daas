@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { layoutFor, loggedIn, refreshSession } from './session.js'
+import { clearSession, ensureCsrfToken, layoutFor, loggedIn, refreshSession } from './session.js'
 
 describe('layoutFor', () => {
   it('uses AppLayout for routes without a layout flag', () => {
@@ -41,5 +41,51 @@ describe('refreshSession', () => {
     global.fetch = vi.fn(() => Promise.reject(new Error('offline')))
     expect(await refreshSession()).toBe(false)
     expect(loggedIn.value).toBe(false)
+  })
+})
+
+describe('clearSession', () => {
+  beforeEach(() => {
+    loggedIn.value = null
+  })
+
+  it('nulls the CSRF token and resets the signed-in indicator', () => {
+    window.csrf_token = 'tok'
+    loggedIn.value = true
+    clearSession()
+    expect(window.csrf_token).toBeNull()
+    expect(loggedIn.value).toBe(false)
+  })
+
+  it('leaves loggedIn false after a guest session re-read', async () => {
+    window.csrf_token = 'tok'
+    loggedIn.value = true
+    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ message: 'Guest' }) }))
+    clearSession()
+    await refreshSession()
+    expect(loggedIn.value).toBe(false)
+  })
+})
+
+describe('ensureCsrfToken', () => {
+  it('fetches and caches the token when absent', async () => {
+    window.csrf_token = undefined
+    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ message: 'tok' }) }))
+    expect(await ensureCsrfToken()).toBe('tok')
+    expect(window.csrf_token).toBe('tok')
+  })
+
+  it('returns the cached token without a request', async () => {
+    window.csrf_token = 'cached'
+    global.fetch = vi.fn()
+    expect(await ensureCsrfToken()).toBe('cached')
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('returns null when the endpoint refuses (guest)', async () => {
+    window.csrf_token = undefined
+    global.fetch = vi.fn(() => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }))
+    expect(await ensureCsrfToken()).toBeNull()
+    expect(window.csrf_token).toBeUndefined()
   })
 })
