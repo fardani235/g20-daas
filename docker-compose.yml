@@ -8,7 +8,7 @@ name: g20-daas
 # (frappe-bench/apps/frappe); `scripts/frappe-version.sh` prints it and CI
 # tags the image with it. After CI publishes a new image, re-pin here.
 x-frappe-image: &frappe-image
-  image: ghcr.io/fardani235/webodm-frappe:16.34.0@sha256:a57d8c27748634ec98fd2d6ed1ee73bf5340baa42221bb514f5b3c58c162f508
+  image: ghcr.io/fardani235/webodm-frappe:16.34.0@sha256:3ef1b3bbaa94baa93d13478f8c07d02306cfde12bd3fa4424ad251338257e592
   # To build locally instead of pulling from registry, uncomment below:
   # build:
   #   context: ./frappe-bench/apps
@@ -91,7 +91,7 @@ x-frappe-volumes: &frappe-volumes
 
 services:
   caddy:
-    image: ghcr.io/fardani235/webodm-caddy:2@sha256:edfb019627486d1e0fe8676887c516de8bc805a024f7f1752f04b4e763711558
+    image: ghcr.io/fardani235/webodm-caddy:2@sha256:1e0dc207983e2f1758f8f325d809967e51f2d5a9ea238a66775268efdda61052
     # build:
     #   context: ./infra/caddy
     restart: unless-stopped
@@ -353,7 +353,7 @@ services:
           memory: 1G
 
   geospatial:
-    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:772dbab4950f11bbc66c1cf751119c29057d20bbe87cff4d70813c1b3aa0e6df
+    image: ghcr.io/fardani235/webodm-geospatial:1@sha256:46c8640e4b288143e2753e0fbe0cb597c326ce3d7cd69cea7711ca0591a4b06a
     # build:
     #   context: ./services/geospatial
     #   dockerfile: Dockerfile
@@ -401,7 +401,7 @@ services:
     # Sandbox for user-uploaded analysis plugins (services/plugin-runner).
     # No published image yet: built from source until CI pushes one, then pin
     # it like the others with `scripts/pin-images.sh` and drop the build block.
-    image: ghcr.io/fardani235/webodm-plugin-runner:1@sha256:d1618547c48e9c41decbfe36464fee865a9610048e4daf9c0a3154874990e0ce
+    image: ghcr.io/fardani235/webodm-plugin-runner:1@sha256:babb3ca2f5309e9e630bb2e66755cad791063ff218ee34a011e246858373f4cc
     build:
       context: ./services/plugin-runner
       dockerfile: Dockerfile
@@ -446,7 +446,7 @@ services:
     # credential and SDK; the app only ever sees this HTTP API. No published
     # image yet: built from source until CI pushes one, then pin it like the
     # others with `scripts/pin-images.sh` and drop the build block.
-    image: ghcr.io/fardani235/webodm-provisioner:1@sha256:90aa8cd37ff8c258087bc857a1c701776f73a439449a949f5b4e47284f0ffacb
+    image: ghcr.io/fardani235/webodm-provisioner:1@sha256:887a24ba7252f2f137e2227de0361a6c0d426260ecd56e69865abbe2085c457b
     build:
       context: ./services/provisioner
       dockerfile: Dockerfile
@@ -518,7 +518,7 @@ services:
       start_period: 60s
 
   backup:
-    image: ghcr.io/fardani235/webodm-backup:1@sha256:9b6ceb34c23f5b5fc2956e0725aa41eecac15447c2c4029be730c3a9c7790129
+    image: ghcr.io/fardani235/webodm-backup:1@sha256:079c42e6dfc2052bef69f718d529abcf8966b402a4e27332d6d194bfb4afdaf1
     # build:
     #   context: ./infra/backup
     restart: unless-stopped
