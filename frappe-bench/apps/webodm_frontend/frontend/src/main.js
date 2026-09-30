@@ -56,6 +56,18 @@ const routes = [
     meta: { requiresAuth: true, title: 'Projects' },
   },
   {
+    path: '/datasets',
+    name: 'Datasets',
+    component: () => import('./pages/Datasets.vue'),
+    meta: { requiresAuth: true, title: 'Datasets' },
+  },
+  {
+    path: '/datasets/:id',
+    name: 'DatasetDetail',
+    component: () => import('./pages/DatasetDetail.vue'),
+    meta: { requiresAuth: true, title: 'Dataset' },
+  },
+  {
     path: '/presets',
     name: 'Presets',
     component: () => import('./pages/Presets.vue'),

@@ -15,6 +15,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from webodm_core.plugins import geospatial
 from webodm_core.webodm_core.processing import raster_metadata as rm
+from webodm_core.testing import make_dataset
 
 # A realistic /raster/metadata document for an ODM orthophoto (COG).
 ORTHO_META = {
@@ -227,7 +228,7 @@ class TestRecordAndApi(FrappeTestCase):
     def setUp(self):
         frappe.local.webodm_org_cache = {}
         frappe.set_user(self.user)
-        self.task = frappe.get_doc({"doctype": "WebODM Task", "project": self.project,
+        self.task = frappe.get_doc({"doctype": "WebODM Task", "dataset": make_dataset().name, "project": self.project,
                                     "title": "RM Task", "status": "Completed",
                                     "orthophoto": "/private/files/rm_ortho.tif",
                                     "dsm": "/private/files/rm_dsm.tif"}).insert()

@@ -64,6 +64,20 @@ def has_task_permission(doc, ptype, user=None):
     return _org_has_permission(doc, user or frappe.session.user)
 
 
+def get_dataset_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Dataset", user or frappe.session.user)
+
+
+def has_dataset_permission(doc, ptype, user=None):
+    # Datasets are org-scoped exactly like projects and tasks: every member
+    # of the organization may read, create, edit (title/description) and
+    # delete them; the controller enforces the image immutability and the
+    # "still referenced by a task" rule.
+    if _is_create(ptype):
+        return True
+    return _org_has_permission(doc, user or frappe.session.user)
+
+
 def has_preset_permission(doc, ptype, user=None):
     user = user or frappe.session.user
     if is_platform_admin(user):

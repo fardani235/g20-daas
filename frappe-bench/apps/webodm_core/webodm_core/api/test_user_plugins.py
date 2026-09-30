@@ -13,6 +13,7 @@ from frappe.tests.utils import FrappeTestCase
 from webodm_core.api import plugins as plugins_api
 from webodm_core.plugins import package as package_mod
 from webodm_core.plugins import runner, sandbox, sync
+from webodm_core.testing import make_dataset
 
 MANIFEST = {
     "id": "elevation-mask",
@@ -377,7 +378,7 @@ class TestUserPluginExecution(FrappeTestCase):
         frappe.set_user(cls.owner)
         frappe.local.webodm_org_cache = {}
         cls.project = frappe.get_doc({"doctype": "WebODM Project", "title": "User Plugin Exec Project"}).insert().name
-        task = frappe.get_doc({"doctype": "WebODM Task", "project": cls.project,
+        task = frappe.get_doc({"doctype": "WebODM Task", "dataset": make_dataset().name, "project": cls.project,
                                "title": "exec task", "status": "Completed"}).insert()
         f = frappe.get_doc({
             "doctype": "File", "file_name": f"{task.name}_dsm.tif", "is_private": 1,

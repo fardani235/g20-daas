@@ -55,6 +55,7 @@ submodule).
 | `infra/aws/` | IAM policies per identity, bucket policy, security group notes, NodeODM AMI bake script |
 | `docs/plugins/` | User plugin guide, example plugin, Semantic Segmentation and 3D Reconstruction plugin docs |
 | `docs/marketplace/` | Marketplace concepts (publishers, products, releases, licenses, entitlements) and the publishing runbook |
+| `docs/datasets/` | Dataset library (reusable input image sets a task references) and the staged migration runbook |
 | `plugins/semantic-segmentation/` | Semantic Segmentation **user** plugin (orthophoto / DSM / DTM, pluggable ONNX + rule models) |
 | `plugins/3d-reconstruction/` | 3D Reconstruction **user** plugin (DSM/DTM/LAZ/orthophoto/ODM mesh → web-ready georeferenced GLB for the 3D viewer) |
 | `infra/` | Caddy, backup, Frappe entrypoint/config, AWS artefacts |
@@ -276,6 +277,10 @@ docs/plugins/
 docs/marketplace/
 ├── README.md                     # Catalog concepts, roles, license policy, install flow, API, UI
 └── publishing.md                 # Desk + `bench execute` runbook for publishing releases
+
+docs/datasets/
+├── README.md                     # Datasets: concepts, rules, pages, API, thumbnails, object keys
+└── migration.md                  # Staged task-images → dataset migration, verification, rollback
 ```
 
 ## Key Commands

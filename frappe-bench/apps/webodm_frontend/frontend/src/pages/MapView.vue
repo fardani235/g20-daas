@@ -9,7 +9,7 @@
       <div class="p-4 space-y-2">
         <h3 class="text-sm font-medium text-muted-foreground uppercase tracking-wide">Tasks</h3>
         <div v-if="tasks.length === 0" class="text-sm text-muted-foreground py-4 text-center">
-          No tasks yet. Upload images to start processing.
+          No tasks yet. Add a task from a dataset or upload images to start processing.
         </div>
         <div v-for="task in tasks" :key="task.name"
           class="p-3 rounded-lg border border-border cursor-pointer hover:bg-accent text-foreground"
@@ -31,7 +31,7 @@
           </div>
           <div class="text-xs text-muted-foreground mt-1 flex items-center gap-2">
             <Badge :variant="statusVariant(task.status)">{{ task.status }}</Badge>
-            <span v-if="task.images?.length">📷 {{ task.images.length }}</span>
+            <span v-if="imageCount(task)" :title="task.dataset_summary?.title || 'Dataset'">📷 {{ imageCount(task) }}</span>
             <span v-if="task.status === 'Provisioning'" class="text-muted-foreground" title="A processing node is being started on demand for this task. This usually takes a few minutes.">starting node…</span>
             <span v-else-if="task.progress > 0">{{ task.progress }}%</span>
           </div>
@@ -40,10 +40,16 @@
           </div>
           <div v-if="selectedTask === task.name">
             <div v-if="task.images?.length" class="mt-2 pt-2 border-t border-border">
-              <p class="text-xs font-medium text-muted-foreground mb-2">{{ task.images.length }} image(s)</p>
+              <p class="text-xs font-medium text-muted-foreground mb-2">
+                {{ task.images.length }} image(s)
+                <router-link v-if="task.dataset" :to="`/datasets/${task.dataset}`" class="ml-1 text-primary hover:underline" @click.stop>
+                  {{ task.dataset_summary?.title || 'dataset' }}
+                </router-link>
+              </p>
               <div class="flex flex-wrap gap-1">
                 <div v-for="img in task.images.slice(0, 9)" :key="img.name" class="w-[72px] h-[72px] rounded overflow-hidden bg-muted flex-shrink-0">
-                  <img :src="img.image" :alt="img.filename" class="w-full h-full object-cover" @error="e => e.target.style.display = 'none'" />
+                  <!-- Server-side thumbnails: never the multi-megabyte originals. -->
+                  <img :src="thumbnailUrl(img, 128)" :alt="img.filename" loading="lazy" decoding="async" class="w-full h-full object-cover" @error="e => e.target.style.display = 'none'" />
                 </div>
                 <div v-if="task.images.length > 9" class="w-[72px] h-[72px] rounded bg-muted flex items-center justify-center text-xs text-muted-foreground font-medium flex-shrink-0">
                   +{{ task.images.length - 9 }}
@@ -344,15 +350,61 @@
       </div>
     </div>
 
-    <Dialog v-model:open="showUpload" title="Add task" description="Select images to upload for processing.">
+    <Dialog v-model:open="showUpload" title="Add task" description="Pick an existing dataset or upload new images for processing.">
       <div class="space-y-4">
-        <input
-          type="file"
-          multiple
-          accept="image/*"
-          class="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
-          @change="uploadFiles"
-        />
+        <div class="grid grid-cols-2 gap-1 rounded-md bg-muted p-1 text-sm" role="tablist" data-input-mode>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="inputMode === INPUT_MODES.existing"
+            class="rounded px-3 py-1.5 transition-colors"
+            :class="inputMode === INPUT_MODES.existing ? 'bg-card text-card-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+            @click="inputMode = INPUT_MODES.existing"
+          >
+            Existing dataset
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="inputMode === INPUT_MODES.upload"
+            class="rounded px-3 py-1.5 transition-colors"
+            :class="inputMode === INPUT_MODES.upload ? 'bg-card text-card-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+            @click="inputMode = INPUT_MODES.upload"
+          >
+            Upload new images
+          </button>
+        </div>
+
+        <div v-if="inputMode === INPUT_MODES.existing" class="space-y-1.5">
+          <Label for="upload-dataset">Dataset</Label>
+          <Select id="upload-dataset" v-model="selectedDataset">
+            <option :value="null">Choose a dataset…</option>
+            <option v-for="d in datasetChoices" :key="d.name" :value="d.name">
+              {{ d.title }} — {{ imageCountLabel(d.image_count) }}, {{ formatBytes(d.total_size) }}
+            </option>
+          </Select>
+          <p v-if="!datasetChoices.length" class="text-xs text-muted-foreground">
+            No datasets yet — upload new images instead, or create one on the
+            <router-link to="/datasets" class="text-primary hover:underline">Datasets</router-link> page.
+          </p>
+        </div>
+
+        <div v-else class="space-y-3">
+          <input
+            type="file"
+            multiple
+            accept="image/*"
+            class="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
+            @change="onUploadFiles"
+          />
+          <div class="space-y-1.5">
+            <Label for="upload-dataset-title">Dataset title</Label>
+            <Input id="upload-dataset-title" v-model="uploadDatasetTitle" :placeholder="uploadTitlePlaceholder" />
+            <p class="text-xs text-muted-foreground">
+              {{ imageCountLabel(uploadFileList.length) }} selected. The upload becomes a dataset you can reuse for other tasks.
+            </p>
+          </div>
+        </div>
 
         <div class="space-y-1.5">
           <Label for="upload-preset">Preset</Label>
@@ -384,6 +436,7 @@
       </div>
       <template #footer>
         <Button variant="ghost" @click="showUpload = false">Cancel</Button>
+        <Button :disabled="!canCreateTask || uploading" :loading="uploading" @click="createTaskFromDialog">Create task</Button>
       </template>
     </Dialog>
 
@@ -448,7 +501,7 @@ import {
   Trash2,
   X,
 } from 'lucide-vue-next'
-import { Badge, Button, Dialog, Label, Select } from '@/components/ui'
+import { Badge, Button, Dialog, Input, Label, Select } from '@/components/ui'
 import { statusVariant } from '@/lib/status'
 import { toast } from '@/lib/toast'
 import L from 'leaflet'
@@ -462,6 +515,18 @@ import { BASEMAPS, createBasemap } from '@/lib/mapLayers'
 import { sortImagesByCapture } from '@/lib/flightPath'
 import { useMeasure } from '@/composables/useMeasure'
 import { listPresets, getSettings } from '@/lib/presets'
+import {
+  INPUT_MODES,
+  createTask,
+  defaultDatasetTitle,
+  formatBytes,
+  imageCountLabel,
+  listDatasets,
+  listTasks,
+  sortDatasets,
+  taskInputsValid,
+  thumbnailUrl,
+} from '@/lib/datasets'
 import { useOdmOptions } from '@/composables/useOdmOptions'
 import OdmOptionsForm from '@/components/OdmOptionsForm.vue'
 import PluginParamsForm from '@/components/PluginParamsForm.vue'
@@ -505,8 +570,39 @@ const uploadPresets = ref([])
 const selectedPreset = ref(null)
 const uploadValues = ref({}) // { optionName: value }
 const uploadOdm = useOdmOptions()
+// Task inputs: an existing dataset from the library, or a fresh upload that
+// becomes one. Exactly one of the two is sent (see api.task.upload_images).
+const inputMode = ref(INPUT_MODES.existing)
+const datasetChoices = ref([])
+const selectedDataset = ref(null)
+const uploadFileList = ref([])
+const uploadDatasetTitle = ref('')
+const uploadTitlePlaceholder = computed(() =>
+  defaultDatasetTitle(project.value?.title, uploadFileList.value.length))
+const canCreateTask = computed(() => taskInputsValid({
+  mode: inputMode.value, dataset: selectedDataset.value, files: uploadFileList.value,
+}))
+
+function imageCount(task) {
+  return task.images?.length ?? task.dataset_summary?.image_count ?? 0
+}
+
+async function loadDatasetChoices() {
+  try {
+    datasetChoices.value = sortDatasets(await listDatasets())
+  } catch (e) {
+    datasetChoices.value = []
+  }
+  // Nothing to pick from yet: land the user on the upload tab.
+  if (!datasetChoices.value.length) inputMode.value = INPUT_MODES.upload
+}
 
 async function loadUploadForm() {
+  selectedDataset.value = null
+  uploadFileList.value = []
+  uploadDatasetTitle.value = ''
+  inputMode.value = INPUT_MODES.existing
+  loadDatasetChoices()
   try {
     uploadPresets.value = await listPresets()
   } catch (e) {
@@ -763,7 +859,7 @@ function plotImageMarkers(images) {
     const marker = L.marker([lat, lng])
     marker.bindPopup(`
       <div style="max-width:200px">
-        <img src="${img.image}" style="width:100%;height:auto;border-radius:4px" />
+        <img src="${thumbnailUrl(img, 512)}" loading="lazy" style="width:100%;height:auto;border-radius:4px" />
         <p style="margin:4px 0 0;font-size:11px;color:#666">${img.filename}</p>
       </div>
     `)
@@ -1022,11 +1118,17 @@ function toggleFlightPath() {
 async function selectTask(task) {
   selectedTask.value = task.name
   let full = task
-  if (!task.images || !task.images.length || task.orthophoto_extent === undefined) {
+  // The list payload has no image rows; the progress endpoint returns the
+  // task with its dataset's images (thumbnail URLs, GPS) for the map.
+  if (!task.images || task.orthophoto_extent === undefined) {
     try {
-      const res = await fetch(`/api/resource/WebODM%20Task/${encodeURIComponent(task.name)}`)
+      const headers = { 'Content-Type': 'application/json' }
+      if (window.csrf_token) headers['X-Frappe-CSRF-Token'] = window.csrf_token
+      const res = await fetch('/api/method/webodm_core.api.task.get_task_progress', {
+        method: 'POST', headers, body: JSON.stringify({ task_name: task.name }),
+      })
       if (res.ok) {
-        const { data } = await res.json()
+        const { message: data } = await res.json()
         const idx = tasks.value.findIndex(t => t.name === task.name)
         if (idx !== -1) tasks.value[idx] = data
         full = data
@@ -1212,30 +1314,26 @@ async function deleteTask(task) {
   }
 }
 
-async function uploadFiles(e) {
-  const files = e.target.files
-  if (!files.length) return
+function onUploadFiles(e) {
+  uploadFileList.value = Array.from(e.target.files || [])
+}
+
+async function createTaskFromDialog() {
+  if (!canCreateTask.value) return
+  const uploadMode = inputMode.value === INPUT_MODES.upload
   uploading.value = true
-  uploadProgress.value = `Uploading ${files.length} file(s)...`
+  uploadProgress.value = uploadMode
+    ? `Uploading ${imageCountLabel(uploadFileList.value.length)}...`
+    : 'Creating task...'
   try {
-    const formData = new FormData()
-    for (const file of files) {
-      formData.append('files', file)
-    }
-    formData.append('project_id', route.params.id)
-    formData.append('options', JSON.stringify(uploadOptionsArray()))
-    const headers = {}
-    if (window.csrf_token) headers['X-Frappe-CSRF-Token'] = window.csrf_token
-    const res = await fetch('/api/method/webodm_core.api.task.upload_images', {
-      method: 'POST',
-      headers,
-      body: formData,
+    await createTask({
+      projectId: route.params.id,
+      dataset: uploadMode ? undefined : selectedDataset.value,
+      files: uploadMode ? uploadFileList.value : undefined,
+      datasetTitle: uploadMode ? (uploadDatasetTitle.value || uploadTitlePlaceholder.value) : undefined,
+      options: uploadOptionsArray(),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.message || 'Upload failed')
-    }
-    toast.success('Images uploaded')
+    toast.success(uploadMode ? 'Images uploaded' : 'Task created')
     showUpload.value = false
     fetchTasks()
   } catch (err) {
@@ -1258,12 +1356,8 @@ async function fetchProject() {
 
 async function fetchTasks() {
   try {
-    const filters = JSON.stringify([["project", "=", route.params.id]])
-    const res = await fetch(
-      `/api/resource/WebODM%20Task?filters=${encodeURIComponent(filters)}&fields=["*"]`
-    )
-    const data = await res.json()
-    tasks.value = data.data || []
+    // Tasks plus their dataset summary (title, image count) in one request.
+    tasks.value = await listTasks(route.params.id)
   } catch (err) {
     console.error('Failed to fetch tasks', err)
   }

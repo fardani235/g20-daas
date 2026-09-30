@@ -23,7 +23,7 @@ import re
 import shutil
 
 import frappe
-from frappe.core.doctype.file.utils import generate_file_name
+from frappe.core.doctype.file.utils import generate_file_name, get_file_name
 from frappe.utils import get_bench_path, get_files_path
 
 CHUNK_SIZE = 1024 * 1024
@@ -83,8 +83,21 @@ def abs_path_for_attached_file(file_url: str, *, attached_to_doctype: str, attac
 def _safe_private_name(file_name: str) -> str:
     # Same normalisation Frappe applies in save_file_on_filesystem, then make
     # the name conflict-free within private/files (random suffix on collision).
+    # Frappe's generate_file_name only looks at the disk; since private/files
+    # is a cache, a File row may exist whose blob was evicted, and reusing its
+    # URL would either hijack it (permission error for another owner) or let a
+    # later cache fill overwrite the new upload. So the URL must be free in the
+    # File table as well.
     safe = _UNSAFE_FILENAME_CHARS.sub("_", file_name.replace("/", ""))
-    return generate_file_name(safe, is_private=True)
+    candidate = generate_file_name(safe, is_private=True)
+    while _private_name_taken(candidate):
+        candidate = get_file_name(safe, frappe.generate_hash(length=6))
+    return candidate
+
+
+def _private_name_taken(name: str) -> bool:
+    return (os.path.exists(get_files_path(name, is_private=True))
+            or bool(frappe.db.exists("File", {"file_url": f"/private/files/{name}"})))
 
 
 def _register_private_file(

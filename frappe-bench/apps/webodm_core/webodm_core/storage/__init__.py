@@ -25,11 +25,20 @@ Key layout — every key is namespaced by organization so no path can cross an
 org boundary (``assert_org_key`` enforces it on every read and write that
 carries an org context)::
 
-    <prefix>orgs/<org-slug>/tasks/<task>/inputs/<file name>     uploaded imagery
+    <prefix>orgs/<org-slug>/datasets/<dataset>/inputs/<file name>  uploaded imagery (dataset library)
+    <prefix>orgs/<org-slug>/tasks/<task>/inputs/<file name>     imagery of datasets migrated from
+                                                                pre-library tasks (kept in place)
     <prefix>orgs/<org-slug>/tasks/<task>/raw/all.zip            transient node output
     <prefix>orgs/<org-slug>/tasks/<task>/raw/<asset>            transient pre-COG raster
     <prefix>orgs/<org-slug>/tasks/<task>/assets/<asset>         canonical outputs (COGs, LAZ, GLB)
     <prefix>orgs/<org-slug>/plugin-runs/<run>/<file name>       plugin outputs
+
+Inputs belong to a ``WebODM Dataset`` that any number of tasks may reference,
+so a task only ever owns its ``raw/`` and ``assets/`` sub-prefixes
+(:func:`task_output_prefixes`); image objects are deleted by the key recorded
+on each dataset image row, never by a task prefix. The organization namespace
+is the only thing the boundary check enforces, which is why a migrated
+dataset may keep a ``tasks/<task>/inputs/`` key.
 
 The provider (AWS S3, MinIO, ...) is invisible above this module.
 """
@@ -125,6 +134,26 @@ def task_prefix(task) -> str:
 
 def task_key(task, *parts: str) -> str:
     return task_prefix(task) + "/".join(safe_segment(p) for p in parts)
+
+
+# The sub-prefixes a task owns outright. ``inputs/`` is deliberately absent:
+# under the pre-library layout it holds imagery that a migrated dataset (and
+# therefore other tasks) may still reference.
+TASK_OUTPUT_SUBPREFIXES = ("raw", "assets")
+
+
+def task_output_prefixes(task) -> list[str]:
+    """The prefixes deleting or resetting a task may wipe (never its inputs)."""
+    base = task_prefix(task)
+    return [f"{base}{sub}/" for sub in TASK_OUTPUT_SUBPREFIXES]
+
+
+def dataset_prefix(dataset) -> str:
+    return f"{org_prefix(dataset.organization)}datasets/{safe_segment(dataset.name)}/"
+
+
+def dataset_key(dataset, *parts: str) -> str:
+    return dataset_prefix(dataset) + "/".join(safe_segment(p) for p in parts)
 
 
 def plugin_run_prefix(run) -> str:

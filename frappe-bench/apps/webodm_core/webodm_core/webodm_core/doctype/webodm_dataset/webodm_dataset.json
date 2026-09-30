@@ -1,0 +1,134 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-30 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "description",
+  "summary_section",
+  "image_count",
+  "total_size",
+  "created_by",
+  "images_section",
+  "images",
+  "organization"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "default": "0",
+   "fieldname": "image_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Images",
+   "read_only": 1,
+   "description": "Number of image rows; recomputed on every save."
+  },
+  {
+   "default": "0",
+   "fieldname": "total_size",
+   "fieldtype": "Long Int",
+   "in_list_view": 1,
+   "label": "Total Size (bytes)",
+   "read_only": 1,
+   "description": "Sum of the image file sizes; recomputed on every save."
+  },
+  {
+   "fieldname": "created_by",
+   "fieldtype": "Link",
+   "label": "Created By",
+   "options": "User",
+   "read_only": 1,
+   "description": "The user who uploaded the images. Set at insert; a migrated dataset records the owner of the task it was split out of."
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "images_section",
+   "fieldtype": "Section Break",
+   "label": "Images"
+  },
+  {
+   "fieldname": "images",
+   "fieldtype": "Table",
+   "label": "Images",
+   "options": "WebODM Dataset Image",
+   "description": "Fixed once the dataset exists: rows cannot be added or removed. Create a new dataset to change the inputs."
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "WebODM Organization",
+   "reqd": 1,
+   "read_only": 1,
+   "in_standard_filter": 1
+  }
+ ],
+ "modified": "2026-09-30 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Dataset",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WebODM User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "title",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title"
+}

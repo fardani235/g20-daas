@@ -719,3 +719,102 @@ All DocTypes live in `webodm_core`:
   SPEC.md §6 rewritten (was the stale legacy-plugin migration table), TODO.md Phase 6, README.
 - Not done (by design): payments, self-serve publisher onboarding/UI, ratings, installers for
   non-plugin kinds, download counters, Billing page (still mocked, unrelated).
+
+## Phase 19: Dataset library (2026-09-30)
+
+- **Model**: new `WebODM Dataset` (org-scoped; `title`, `description`, derived `image_count` /
+  `total_size`, `created_by`, `images`) + child `WebODM Dataset Image` (the exact former
+  `WebODM Task Image` fields: `image`, `filename`, `file_size`, `storage_key`, lat/lng/alt,
+  `capture_time`). `WebODM Task.images` is gone; `WebODM Task.dataset` (Link, `reqd`) is the
+  task's only input. `webodm_task_image/` was deleted (Frappe's `remove_orphan_doctypes` drops the
+  DocType *row* on migrate but keeps the table — see migration). Dataset is in both permission
+  hook maps + stamped (`tenancy_hooks`); `test_tenant_doctype_coverage` covers it.
+- **Rules** (`doctype/webodm_dataset/webodm_dataset.py`): non-empty on insert (`flags.allow_empty`
+  for the two shell-then-append callers: upload path and legacy backfill), images fixed after
+  creation (`_check_images_fixed` compares `(row name, image)` against `get_doc_before_save`;
+  `flags.images_fixed = False` for the upload path's second save), summary recomputed on save,
+  `on_trash` raises `DatasetInUse` naming the tasks (runs before Frappe's link check and even with
+  `force=True`), then deletes objects by the key on each row (`assets.delete_dataset_objects`,
+  `assert_org_key` per key, tampered keys skipped), removes the on-disk blobs
+  (`datasets.remove_image_blobs` — Frappe's `File._delete_file_on_disk` keeps a blob when another
+  File shares its `content_hash`, and our streamed uploads never dedup, so identical photos in two
+  datasets would leak orphans) and the thumbnail folder. `WebODMTask.validate` requires the dataset
+  to exist and share the org (stamping runs in `before_insert`, before `validate`).
+- **Storage** (`storage/__init__`): `dataset_prefix/dataset_key` → `orgs/<slug>/datasets/<id>/inputs/`,
+  `TASK_OUTPUT_SUBPREFIXES = ("raw", "assets")` / `task_output_prefixes(task)` used by both
+  `delete_task_objects` and `reset_outputs` — a task never deletes `inputs/` (migrated datasets keep
+  `tasks/<task>/inputs/` keys, valid because only the org namespace is enforced). `assets.sync_inputs`
+  takes a *dataset* (`sync_task_inputs(task)` resolves it; rows with a key are skipped, which is
+  what preserves migrated keys; a row whose File is not attached to the dataset is logged + skipped
+  so one bad row cannot stall `sync_pending`), `input_sources(task)` reads the dataset's rows with
+  `assert_org_key(key, task.organization)`, `sync_pending` scans `WebODM Dataset Image`.
+  `cache.storage_key_for_file_url` and `_candidates` resolve the org via the parent dataset; a
+  dataset image is busy when any Queued/Provisioning/Running task's `dataset` is its parent.
+  `SYNC_JOB` is now `sync_dataset_inputs_job(dataset_name)`.
+- **`plugins.files._safe_private_name`** now also checks the File table: Frappe's `generate_file_name`
+  only looks at the disk, so an evicted blob's URL could be reused by a new upload (permission error
+  for a different owner, or a later cache fill overwriting the new file). Surfaced by the shared test
+  DB, where a seeded `DJI_0001.JPG` row had lost its blob.
+- **Domain module `webodm_core/datasets.py`**: EXIF extraction moved here (`api.task._extract_photo_meta`
+  / `_gps_to_decimal` stay as aliases for the tests), `create_from_uploads` (insert shell → stream
+  Files attached to the real name → EXIF from disk → save rows; deletes the shell on failure),
+  `summary`, `image_dicts` (+ `thumbnail` URL per row), `referencing_tasks`, `task_image_count`
+  (used by `compute.request_for_task`; `test_compute._task` builds mocks with `dataset=None`),
+  thumbnails: `ensure_thumbnail` → `cache.ensure_local` (cache first, S3 second) → Pillow JPEG
+  `draft` (decoder-side 1/2–1/8 downscale, a 20 MP frame costs tens of ms) → `exif_transpose` →
+  `private/thumbnails/<dataset>/<row>_<size>.jpg`, sizes snap to `{128, 256, 512}`.
+- **API** `api/dataset.py`: `list_datasets` (get_list + task usage counts), `get_dataset` (images +
+  tasks), `create_dataset` (multipart), `update_dataset`, `delete_dataset`, `thumbnail` (werkzeug
+  `send_file` Response, `conditional=True`, `Cache-Control: private, max-age=7d`; guests 403; a
+  missing blob without storage → 404 "Image is not available"). `api/task.py`: `upload_images` takes
+  exactly one of `dataset` | `files` (+ `dataset_title`, `title`), creates the dataset first in
+  upload mode and deletes it if the task insert fails; `_task_payload` = `as_dict()` +
+  `dataset_summary` + `images` (used by `get_task_progress` and the upload response);
+  `list_tasks(project_id)` joins dataset summaries (the map page no longer hits `/api/resource`).
+  `task_runner._get_task_images` just delegates to `assets.input_sources`.
+- **Migration** (`patches.txt`, post_model_sync, each patch its own transaction):
+  `backfill_task_datasets` reads `tabWebODM Task Image` with raw SQL (meta-independent, no-op when
+  the table is gone), one dataset per dataset-less task (title from task, description
+  `Migrated from task <name>`, owner/created_by/creation copied, rows + keys verbatim,
+  `flags.organization_from_source` honoured by `stamp_organization` only under
+  `frappe.flags.in_patch/in_migrate`), moves image Files by URL (outputs stay), sets
+  `task.dataset`; `report()` / `rollback(names=None)` for ops. `drop_task_image_table` verifies
+  (every task has an existing dataset; dataset rows ≥ legacy rows per task; no image File left on a
+  task) and raises `MigrationIncomplete` otherwise — migrate aborts with the backfill committed and
+  the table intact — then `DROP TABLE`. Verified for real on the elm test site with seeded legacy
+  tasks (3 / 2 / 0 images, one pre-existing task-scoped key). Frappe gotchas: in `in_patch` mode
+  `set_user_and_timestamp` keeps `owner`/`creation` but only if `creation` is set (else `db_insert`
+  stamps the session user); `frappe.db.table_exists("WebODM Task Image")` takes the DocType name.
+- **Frontend**: `lib/datasets.js` (client + pure helpers: `formatBytes`, `imageCountLabel`,
+  `thumbnailUrl`, `isInUseError`, `taskInputsValid`, `defaultDatasetTitle`, `sortDatasets`),
+  `pages/Datasets.vue` (table with count/size/usage, upload dialog, in-use `Alert` with
+  `[data-in-use-alert]`), `pages/DatasetDetail.vue` (summary cards, tasks using it, image tiles with
+  lazy thumbnails, edit dialog, delete), routes `/datasets`, `/datasets/:id`, nav tab *Datasets*
+  (`Images` icon, after Projects; `nav.test.js` updated). `MapView.vue`: `listTasks`, Add Task
+  dialog with an *Existing dataset* | *Upload new images* switch (`[data-input-mode]`, lands on
+  upload when the library is empty, submit button instead of upload-on-change), `selectTask` uses
+  `get_task_progress`, card + popup images via `thumbnailUrl(img, 128|512)`, dataset link on the
+  card; `Console.vue` shows the dataset. Use `<router-link>` (global) in SFCs, not an import.
+- **Tests**: `api/test_dataset.py` (24: rules, deletion order incl. mixed legacy keys and the
+  orphan-blob case, cache/eviction/backfill via datasets, thumbnails, API + org scoping, both task
+  creation modes, progress/list payloads), `patches/test_backfill_task_datasets.py` (4: recreates
+  the legacy table with SQL; backfill, idempotency, scoped rollback, verified drop). Every test that
+  inserts a task now passes `dataset=make_dataset().name` (`webodm_core/testing.py`); `test_asset_relay`
+  inputs/deletion/backfill/reprocessing tests rewritten around `_dataset()`. Full `webodm_core` on the
+  throwaway site: 431 tests, all green except two pre-existing environment failures
+  (`test_plugin_model_output.setUpClass` fixed-name project on re-run; `test_marketplace
+  .test_search_and_filters` sees the `elevation-mask*` products seeded in this DB by the Phase 18
+  smoke). Frontend 273 vitest (new `lib/datasets.test.js`, `pages/Datasets.test.js`), `vite build`
+  OK. HTTP smoke (curl) and browser smoke (playwright-core in `/tmp/elm-pw` + system Chrome against
+  `elm-web` = the 16.34.0 image with worktree `webodm_core` and the built SPA bind-mounted over
+  `/workspace/webodm_frontend/webodm_frontend/public/frontend`): tab, list, upload → detail with
+  endpoint thumbnails + GPS, rename, task from existing dataset (card count, 128 px thumbnails,
+  marker), in-use refusal naming the task, task delete leaves the dataset, dataset delete.
+  Test-env recipe: `/tmp/elm-frappe-test.sh` (containers `elm-test-postgres` / `elm-test-redis-*`,
+  volume `elm-test-sites`, network `elm-test`, image `a6fef45f752c`).
+- **Docs**: `docs/datasets/{README,migration}.md`, `openspec/specs/datasets/spec.md`, object-storage
+  spec amendments, change `openspec/changes/add-dataset-library/`, SPEC.md (Task/Dataset model, API
+  table, pipeline), README, TODO, on-demand architecture/troubleshooting.
+- Not done (by design): reusing outputs as inputs, editing images after creation, versioning,
+  cross-org sharing. Known pre-existing: Frappe returns `0.0` for null Float lat/lng — the frontend
+  keeps skipping `(0, 0)`.

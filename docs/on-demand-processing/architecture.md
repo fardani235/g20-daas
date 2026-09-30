@@ -133,10 +133,13 @@ With a bucket:
 
 ### 3.2 Input flow
 
-Upload → `private/files` (EXIF read from the path, unchanged) → task saved →
-`assets.enqueue_input_sync` → each image PUT to `inputs/<file name>`,
-`storage_key` set on the `WebODM Task Image` row. Dispatch calls
-`sync_inputs` again (idempotent) and streams each image to NodeODM from the
+Upload → `private/files` (EXIF read from the path, unchanged) → dataset saved
+(images belong to a `WebODM Dataset`, which the task references) →
+`assets.enqueue_input_sync(dataset)` → each image PUT to
+`orgs/<slug>/datasets/<id>/inputs/<file name>`, `storage_key` set on the
+`WebODM Dataset Image` row (a dataset migrated from a pre-library task keeps
+its `tasks/<task>/inputs/` keys). Dispatch calls `sync_task_inputs` again
+(idempotent) and streams each image to NodeODM from the
 cache when present, else directly from S3 (`input_sources` returns a path or
 a stream opener; `NodeODMClient.create_task` accepts both). NodeODM only
 takes multipart uploads, so the host relays either way — the host copy is
@@ -205,7 +208,7 @@ their inputs from the cache.
 |---|---|---|
 | `WebODM Task` | `status` + **Provisioning**; `compute_instance` (Link); `assets` (Table) | lifecycle link to the ephemeral node; per-output storage bookkeeping |
 | `WebODM Task Asset` (child) | new | `kind`, `filename`, `file_url` (cache), `storage_key`, `file_size`, `etag`, `content_type`, `is_cog`, `synced_at` |
-| `WebODM Task Image` (child) | `storage_key` | canonical input key |
+| `WebODM Dataset` / `WebODM Dataset Image` (child) | replaces `WebODM Task Image` | the reusable input set a task references; `storage_key` on each image row is the canonical input key |
 | `WebODM Plugin Run` | `storage_key` | canonical output key |
 | `WebODM Compute Instance` | new, org-scoped | `task`, `organization`, `status` (Requested / Provisioning / Ready / Terminating / Terminated / Failed), `provider`, `handle`, `instance_class`, `hostname`, `port`, `token` (Password), `requested_at`, `ready_at`, `terminated_at`, `max_lifetime_seconds`, `expires_at`, `destroy_attempts`, `last_error`, `estimated_hourly_cost`, `estimated_cost` |
 | `WebODM Processing Node` | unchanged | static registry of known endpoints (the fallback) |

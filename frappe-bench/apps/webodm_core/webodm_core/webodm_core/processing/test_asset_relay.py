@@ -25,6 +25,7 @@ from webodm_core.storage.testing import use_fake_storage
 from webodm_core.webodm_core.processing import compute, task_runner
 from webodm_core.webodm_core.processing.node_client import NodeODMError, NodeODMTransportError
 from webodm_core.webodm_core.processing.testing import patch_local
+from webodm_core.testing import make_dataset
 
 
 def _user(email):
@@ -105,7 +106,10 @@ class _Base(FrappeTestCase):
     def setUp(self):
         frappe.local.webodm_org_cache = {}
         frappe.set_user(self.user)
-        self.task = frappe.get_doc({"doctype": "WebODM Task", "project": self.project,
+        # Inputs live on the dataset; tests that need specific images build
+        # their own dataset with _dataset() and point the task at it.
+        self.dataset = make_dataset("Relay inputs")
+        self.task = frappe.get_doc({"doctype": "WebODM Task", "dataset": self.dataset.name, "project": self.project,
                                     "title": "Relay Task", "status": "Running",
                                     "node_task_id": "U-RELAY"}).insert()
         frappe.set_user("Administrator")
@@ -118,9 +122,24 @@ class _Base(FrappeTestCase):
                                                  "attached_to_name": self.task.name}, pluck="name"):
             frappe.delete_doc("File", f, ignore_permissions=True, force=True)
         frappe.delete_doc("WebODM Task", self.task.name, ignore_permissions=True, force=True)
+        for ds in frappe.get_all("WebODM Dataset", filters={"organization": self.org}, pluck="name"):
+            if not frappe.db.exists("WebODM Task", {"dataset": ds}):
+                frappe.delete_doc("WebODM Dataset", ds, ignore_permissions=True, force=True)
 
     def _prefix(self):
         return f"orgs/relay-org/tasks/{self.task.name}/"
+
+    def _dataset(self, images):
+        """A dataset with the given ``(filename, bytes)`` images, linked to self.task."""
+        frappe.set_user(self.user)
+        ds = make_dataset("Relay inputs", images=images)
+        frappe.set_user("Administrator")
+        self.task.db_set("dataset", ds.name)
+        self.task.reload()
+        return ds
+
+    def _dataset_prefix(self, ds):
+        return f"orgs/relay-org/datasets/{ds.name}/"
 
 
 class TestRelayOutputs(_Base):
@@ -245,57 +264,83 @@ class TestRelayOutputs(_Base):
 
 
 class TestInputs(_Base):
-    def _add_image(self, name, data):
-        f = save_private_file_from_stream(io.BytesIO(data), name, attached_to_doctype="WebODM Task",
-                                          attached_to_name=self.task.name, ignore_permissions=True)
-        self.task.append("images", {"image": f.file_url, "filename": name, "file_size": len(data)})
-        self.task.save(ignore_permissions=True)
-        return f
-
     def test_sync_then_stream_from_s3_after_eviction(self):
-        f = self._add_image("DJI_0001.JPG", b"\xff\xd8img1")
-        self._add_image("DJI_0002.JPG", b"\xff\xd8img2")
+        ds = self._dataset([("DJI_0001.JPG", b"\xff\xd8img1"), ("DJI_0002.JPG", b"\xff\xd8img2")])
         with use_fake_storage() as store:
-            self.assertEqual(assets.sync_inputs(self.task), 2)
-            self.assertEqual(assets.sync_inputs(self.task), 0)  # idempotent
-            t = frappe.get_doc("WebODM Task", self.task.name)
-            keys = {r.filename: r.storage_key for r in t.images}
-            self.assertTrue(all(k.startswith(self._prefix() + "inputs/") for k in keys.values()), keys)
+            self.assertEqual(assets.sync_inputs(ds), 2)
+            self.assertEqual(assets.sync_inputs(ds), 0)  # idempotent
+            self.assertEqual(assets.sync_task_inputs(self.task), 0)  # the task path resolves the same dataset
+            d = frappe.get_doc("WebODM Dataset", ds.name)
+            keys = {r.filename: r.storage_key for r in d.images}
+            # New uploads are namespaced by org and scoped to the dataset, not a task.
+            self.assertTrue(all(k.startswith(self._dataset_prefix(ds) + "inputs/") for k in keys.values()), keys)
             self.assertEqual(store.objects[keys["DJI_0001.JPG"]], b"\xff\xd8img1")
 
             # warm: paths
+            t = frappe.get_doc("WebODM Task", self.task.name)
             sources = dict(task_runner._get_task_images(t))
             self.assertTrue(os.path.isabs(sources["DJI_0001.JPG"]))
 
             # evict one blob: it streams from S3 instead
-            os.remove(abs_path_for_file_url(f.file_url))
+            os.remove(abs_path_for_file_url(d.images[0].image))
             sources = dict(task_runner._get_task_images(t))
             self.assertTrue(os.path.isabs(sources["DJI_0002.JPG"]))
             with sources["DJI_0001.JPG"] as fh:
                 self.assertEqual(fh.read(), b"\xff\xd8img1")
 
+    def test_a_second_task_reads_the_same_dataset_without_reupload(self):
+        ds = self._dataset([("DJI_0001.JPG", b"\xff\xd8img1")])
+        frappe.set_user(self.user)
+        other = frappe.get_doc({"doctype": "WebODM Task", "dataset": ds.name, "project": self.project,
+                                "title": "Second Task", "status": "Pending"}).insert()
+        frappe.set_user("Administrator")
+        try:
+            with use_fake_storage():
+                assets.sync_task_inputs(self.task)
+                a = dict(task_runner._get_task_images(frappe.get_doc("WebODM Task", self.task.name)))
+                b = dict(task_runner._get_task_images(frappe.get_doc("WebODM Task", other.name)))
+            self.assertEqual(a, b)
+            self.assertEqual(frappe.db.count("WebODM Dataset Image", {"parent": ds.name}), 1)
+        finally:
+            frappe.delete_doc("WebODM Task", other.name, ignore_permissions=True, force=True)
+
     def test_org_boundary_is_enforced_on_input_keys(self):
-        self._add_image("DJI_0001.JPG", b"\xff\xd8img1")
+        ds = self._dataset([("DJI_0001.JPG", b"\xff\xd8img1")])
         with use_fake_storage() as store:
-            assets.sync_inputs(self.task)
-            t = frappe.get_doc("WebODM Task", self.task.name)
+            assets.sync_inputs(ds)
+            d = frappe.get_doc("WebODM Dataset", ds.name)
             # tamper with the row: a key from another org's namespace
-            frappe.db.set_value("WebODM Task Image", t.images[0].name, "storage_key",
+            frappe.db.set_value("WebODM Dataset Image", d.images[0].name, "storage_key",
                                 "orgs/someone-else/tasks/x/inputs/DJI_0001.JPG")
             store.objects["orgs/someone-else/tasks/x/inputs/DJI_0001.JPG"] = b"theirs"
-            os.remove(abs_path_for_file_url(t.images[0].image))
+            os.remove(abs_path_for_file_url(d.images[0].image))
             t = frappe.get_doc("WebODM Task", self.task.name)
             with self.assertRaises(storage.OrgBoundaryError):
                 task_runner._get_task_images(t)
 
+    def test_migrated_key_under_the_task_prefix_is_accepted(self):
+        # A dataset split out of a pre-library task keeps tasks/<task>/inputs/ keys;
+        # the org namespace is what matters, so dispatch reads them unchanged.
+        ds = self._dataset([("DJI_0001.JPG", b"\xff\xd8img1")])
+        with use_fake_storage() as store:
+            legacy_key = self._prefix() + "inputs/DJI_0001.JPG"
+            store.objects[legacy_key] = b"\xff\xd8legacy"
+            d = frappe.get_doc("WebODM Dataset", ds.name)
+            frappe.db.set_value("WebODM Dataset Image", d.images[0].name, "storage_key", legacy_key)
+            os.remove(abs_path_for_file_url(d.images[0].image))
+            self.assertEqual(assets.sync_inputs(frappe.get_doc("WebODM Dataset", ds.name)), 0)  # key kept
+            sources = dict(task_runner._get_task_images(frappe.get_doc("WebODM Task", self.task.name)))
+            with sources["DJI_0001.JPG"] as fh:
+                self.assertEqual(fh.read(), b"\xff\xd8legacy")
+
     def test_storage_outage_does_not_block_sync_caller(self):
-        self._add_image("DJI_0001.JPG", b"\xff\xd8img1")
+        ds = self._dataset([("DJI_0001.JPG", b"\xff\xd8img1")])
         with use_fake_storage() as store:
             store.fail_next = storage.StorageUnavailable("upload failed: storage unreachable")
-            self.assertEqual(assets.sync_inputs(self.task), 0)
+            self.assertEqual(assets.sync_inputs(ds), 0)
             with self.assertRaises(storage.StorageUnavailable):
                 store.fail_next = storage.StorageUnavailable("again")
-                assets.sync_inputs(self.task, raise_on_error=True)
+                assets.sync_inputs(ds, raise_on_error=True)
 
 
 class TestServingCache(_Base):
@@ -343,7 +388,7 @@ class TestServingCache(_Base):
         # not own by URL.
         frappe.set_user(self.user)
         frappe.local.webodm_org_cache = {}
-        other = frappe.get_doc({"doctype": "WebODM Task", "project": self.project,
+        other = frappe.get_doc({"doctype": "WebODM Task", "dataset": make_dataset().name, "project": self.project,
                                 "title": "Other Task", "status": "Pending"}).insert()
         frappe.set_user("Administrator")
         frappe.local.webodm_org_cache = {}
@@ -433,18 +478,33 @@ class TestServingCache(_Base):
 
 
 class TestTaskDeletion(_Base):
-    def test_deleting_a_task_removes_its_objects_and_releases_compute(self):
+    def test_deleting_a_task_removes_only_its_outputs_and_releases_compute(self):
+        ds = self._dataset([("a.jpg", b"\xff\xd8a")])
         with use_fake_storage() as store, patch.object(compute, "release_for_task") as release:
             p = self._prefix()
             store.objects[p + "assets/orthophoto.tif"] = b"x"
-            store.objects[p + "inputs/a.jpg"] = b"y"
+            store.objects[p + "raw/all.zip"] = b"z"
+            # A migrated dataset keeps its images under the *task* prefix — they
+            # are the dataset's, not the task's, and must survive the delete.
+            legacy_input = p + "inputs/a.jpg"
+            store.objects[legacy_input] = b"y"
+            frappe.db.set_value("WebODM Dataset Image", frappe.get_doc("WebODM Dataset", ds.name).images[0].name,
+                                "storage_key", legacy_input)
             store.objects["orgs/relay-org/tasks/other/assets/x.tif"] = b"keep"
+            image_path = abs_path_for_file_url(ds.images[0].image)
+
             frappe.delete_doc("WebODM Task", self.task.name, ignore_permissions=True, force=True)
-            self.assertEqual(list(store.objects), ["orgs/relay-org/tasks/other/assets/x.tif"])
+
+            self.assertEqual(sorted(store.objects), sorted([legacy_input, "orgs/relay-org/tasks/other/assets/x.tif"]))
             release.assert_called_once()
+        # the dataset outlives the task, with its rows and files
+        self.assertTrue(frappe.db.exists("WebODM Dataset", ds.name))
+        self.assertEqual(frappe.db.count("WebODM Dataset Image", {"parent": ds.name}), 1)
+        self.assertTrue(os.path.exists(image_path))
+        self.assertTrue(frappe.db.exists("File", {"attached_to_doctype": "WebODM Dataset", "attached_to_name": ds.name}))
         # recreate so tearDown has something to delete
         frappe.set_user(self.user)
-        self.task = frappe.get_doc({"doctype": "WebODM Task", "project": self.project,
+        self.task = frappe.get_doc({"doctype": "WebODM Task", "dataset": ds.name, "project": self.project,
                                     "title": "Relay Task 2", "status": "Pending"}).insert()
         frappe.set_user("Administrator")
 
@@ -457,10 +517,7 @@ class TestBackfill(_Base):
         ortho = save_private_file_from_stream(io.BytesIO(b"II*\x00legacy"), f"{self.task.name}_orthophoto.tif",
                                               attached_to_doctype="WebODM Task", attached_to_name=self.task.name,
                                               ignore_permissions=True)
-        img = save_private_file_from_stream(io.BytesIO(b"\xff\xd8legacy"), "DJI_0009.JPG",
-                                            attached_to_doctype="WebODM Task", attached_to_name=self.task.name,
-                                            ignore_permissions=True)
-        self.task.append("images", {"image": img.file_url, "filename": "DJI_0009.JPG", "file_size": 10})
+        ds = self._dataset([("DJI_0009.JPG", b"\xff\xd8legacy")])  # host-only dataset image, no key
         self.task.status = "Completed"
         self.task.orthophoto = ortho.file_url
         self.task.save(ignore_permissions=True)
@@ -471,11 +528,12 @@ class TestBackfill(_Base):
             self.assertGreaterEqual(stats["inputs"], 1)
             self.assertGreaterEqual(stats["assets"], 1)
             t = frappe.get_doc("WebODM Task", self.task.name)
+            d = frappe.get_doc("WebODM Dataset", ds.name)
             p = self._prefix()
             # The key follows the unique on-disk name (Frappe suffixes a colliding
             # upload name), so match on prefix and original filename.
-            key = t.images[0].storage_key
-            self.assertTrue(key.startswith(p + "inputs/") and key.endswith("DJI_0009.JPG"), key)
+            key = d.images[0].storage_key
+            self.assertTrue(key.startswith(self._dataset_prefix(ds) + "inputs/") and key.endswith("DJI_0009.JPG"), key)
             self.assertEqual(store.objects[key], b"\xff\xd8legacy")
             row = {r.kind: r for r in t.assets}["orthophoto"]
             self.assertEqual(row.storage_key, p + "assets/orthophoto.tif")
@@ -534,8 +592,8 @@ class TestReprocessing(_Base):
             self.assertFalse([k for k in store.objects if "/assets/" in k or "/raw/" in k], list(store.objects))
             self.assertFalse(frappe.db.exists("File", {"file_url": old_ortho_url}))
             self.assertFalse(frappe.db.exists("File", {"file_url": old_laz_url}))
-            # inputs are untouched by a restart
-            self.assertEqual(len(t.images), 0)  # (this task has none; the prefix check above covers inputs/)
+            # inputs are untouched by a restart (they belong to the dataset)
+            self.assertEqual(frappe.db.count("WebODM Dataset Image", {"parent": t.dataset}), 1)
 
             # Second run with different outputs: everything reflects run two.
             t.db_set({"status": "Running", "node_task_id": "U-RELAY-2"})
@@ -559,21 +617,18 @@ class TestReprocessing(_Base):
             self.assertEqual(store.objects[self._prefix() + "assets/orthophoto.tif"], b"COG:II*\x00run-one")
 
     def test_reset_keeps_inputs_and_tolerates_storage_outage(self):
-        img = save_private_file_from_stream(io.BytesIO(b"\xff\xd8img"), "DJI_0001.JPG",
-                                            attached_to_doctype="WebODM Task", attached_to_name=self.task.name,
-                                            ignore_permissions=True)
-        self.task.append("images", {"image": img.file_url, "filename": "DJI_0001.JPG", "file_size": 6})
-        self.task.save(ignore_permissions=True)
+        ds = self._dataset([("DJI_0001.JPG", b"\xff\xd8img")])
         with use_fake_storage() as store:
-            assets.sync_inputs(self.task)
+            assets.sync_task_inputs(self.task)
             t = self._complete(store, b"II*\x00one", b"LASF")
-            input_key = t.images[0].storage_key
+            input_key = frappe.get_doc("WebODM Dataset", ds.name).images[0].storage_key
             store.fail_next = storage.StorageUnavailable("storage unreachable")
             stats = assets.reset_outputs(t)
             self.assertEqual(stats["objects"], 0)  # outage: object deletion skipped, logged
             t = frappe.get_doc("WebODM Task", self.task.name)
             self.assertEqual(t.assets, [])
             self.assertFalse(t.orthophoto)
-            self.assertEqual(t.images[0].storage_key, input_key)
+            d = frappe.get_doc("WebODM Dataset", ds.name)
+            self.assertEqual(d.images[0].storage_key, input_key)
             self.assertIn(input_key, store.objects)
-            self.assertTrue(os.path.exists(abs_path_for_file_url(img.file_url)))
+            self.assertTrue(os.path.exists(abs_path_for_file_url(d.images[0].image)))

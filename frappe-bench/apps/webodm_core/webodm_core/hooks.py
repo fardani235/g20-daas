@@ -152,7 +152,8 @@ after_migrate = "webodm_core.install.after_migrate"
 # Every tenant-owned DocType (anything with an `organization` field, plus
 # WebODM Organization itself) MUST appear in BOTH maps below; enforce
 # organization-scoped access (deny-by-default). System presets and System
-# plugins are shared; user plugins and marketplace entitlements are org-scoped.
+# plugins are shared; user plugins, datasets (the reusable input image
+# library) and marketplace entitlements are org-scoped.
 # Marketplace listings (Publisher / Product / Release / License / Category)
 # carry no organization: they are global, read by everyone (guests through
 # api/marketplace.py) and written by platform admins only via role perms.
@@ -161,6 +162,7 @@ after_migrate = "webodm_core.install.after_migrate"
 permission_query_conditions = {
     "WebODM Project": "webodm_core.permissions.get_project_permission_query_conditions",
     "WebODM Task": "webodm_core.permissions.get_task_permission_query_conditions",
+    "WebODM Dataset": "webodm_core.permissions.get_dataset_permission_query_conditions",
     "WebODM Preset": "webodm_core.permissions.get_preset_permission_query_conditions",
     "WebODM Settings": "webodm_core.permissions.get_settings_permission_query_conditions",
     "WebODM Plugin": "webodm_core.permissions.get_plugin_permission_query_conditions",
@@ -176,6 +178,7 @@ permission_query_conditions = {
 has_permission = {
     "WebODM Project": "webodm_core.permissions.has_project_permission",
     "WebODM Task": "webodm_core.permissions.has_task_permission",
+    "WebODM Dataset": "webodm_core.permissions.has_dataset_permission",
     "WebODM Preset": "webodm_core.permissions.has_preset_permission",
     "WebODM Settings": "webodm_core.permissions.has_settings_permission",
     "WebODM Plugin": "webodm_core.permissions.has_plugin_permission",
@@ -191,6 +194,7 @@ has_permission = {
 doc_events = {
     "WebODM Project": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Task": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
+    "WebODM Dataset": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Preset": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Settings": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Plugin Setting": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},

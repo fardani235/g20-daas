@@ -16,6 +16,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from webodm_core.api import plugins as plugins_api
 from webodm_core.plugins import runner, sync
+from webodm_core.testing import make_dataset
 
 ORTHO_FIXTURE = "/tmp/opencode/bus_ortho.tif"
 ORG = "Semantic Segmentation E2E Org"
@@ -66,7 +67,7 @@ class TestSemanticSegmentationE2E(FrappeTestCase):
         project = frappe.db.get_value("WebODM Project", {"title": "Semantic Segmentation E2E"}, "name") \
             or frappe.get_doc({"doctype": "WebODM Project", "title": "Semantic Segmentation E2E"}).insert().name
         task = frappe.get_doc({
-            "doctype": "WebODM Task", "project": project,
+            "doctype": "WebODM Task", "dataset": make_dataset().name, "project": project,
             "title": "Semantic Segmentation E2E Task", "status": "Completed",
         }).insert()
         with open(ORTHO_FIXTURE, "rb") as f:

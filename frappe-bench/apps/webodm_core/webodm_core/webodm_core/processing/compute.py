@@ -313,8 +313,10 @@ def request_for_task(task) -> str:
         raise ProvisionerError("no compute provider configured")
     classes = info.get("classes") or {}
     default_class = info.get("default_class") or (next(iter(classes)) if classes else "cpu")
+    from webodm_core.datasets import task_image_count
+
     instance_class = instance_class_for(
-        task.processing_options, len(task.images or []), available=classes or None, default=default_class,
+        task.processing_options, task_image_count(task), available=classes or None, default=default_class,
     )
     lifetime = min(max_lifetime(), cint(info.get("max_lifetime_seconds") or 0) or max_lifetime())
     # Fail before creating anything if the token secret is missing: the node

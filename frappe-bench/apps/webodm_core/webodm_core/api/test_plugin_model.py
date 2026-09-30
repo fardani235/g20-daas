@@ -7,6 +7,7 @@ control for both new org-scoped DocTypes.
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from webodm_core.testing import make_dataset
 
 PLUGIN_ID = "test-contours-model"
 
@@ -80,7 +81,7 @@ class TestPluginModel(FrappeTestCase):
             "title": "Plugin Model Project",
         }).insert().name
         task = frappe.get_doc({
-            "doctype": "WebODM Task",
+            "doctype": "WebODM Task", "dataset": make_dataset().name,
             "project": cls.project_name,
             "title": "Plugin Model Task",
             "status": "Completed",

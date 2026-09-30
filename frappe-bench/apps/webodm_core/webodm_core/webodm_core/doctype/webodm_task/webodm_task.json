@@ -13,8 +13,8 @@
   "processing_options",
   "node_task_id",
   "compute_instance",
-  "images_section",
-  "images",
+  "inputs_section",
+  "dataset",
   "outputs_section",
   "orthophoto",
   "dsm",
@@ -94,16 +94,20 @@
    "description": "The ephemeral node this task was provisioned on, if any. Empty when running on a static processing node."
   },
   {
-   "collapsible": 1,
-   "fieldname": "images_section",
+   "collapsible": 0,
+   "fieldname": "inputs_section",
    "fieldtype": "Section Break",
-   "label": "Images"
+   "label": "Inputs"
   },
   {
-   "fieldname": "images",
-   "fieldtype": "Table",
-   "label": "Images",
-   "options": "WebODM Task Image"
+   "fieldname": "dataset",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Dataset",
+   "options": "WebODM Dataset",
+   "reqd": 1,
+   "description": "The dataset whose images this task processes. Datasets are shared: several tasks may reference the same one, and deleting a task never deletes its dataset."
   },
   {
    "collapsible": 1,
@@ -236,7 +240,7 @@
    "in_standard_filter": 1
   }
  ],
- "modified": "2026-09-25 00:00:00.000000",
+ "modified": "2026-09-30 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "WebODM Core",
  "name": "WebODM Task",

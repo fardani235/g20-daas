@@ -3,6 +3,27 @@ from frappe.model.document import Document
 
 
 class WebODMTask(Document):
+    def validate(self):
+        self._check_dataset()
+
+    def _check_dataset(self):
+        """The dataset is the task's only input and must belong to the same organization.
+
+        ``dataset`` is a user-writable Link: without this check a member could
+        point a task at another organization's dataset by name and have the
+        pipeline stream those images to a node (``input_sources`` resolves the
+        rows with permissions bypassed). ``organization`` is stamped from the
+        session before validate runs, so the comparison is against the actor's
+        org, not the payload.
+        """
+        if not self.dataset:
+            return  # `reqd` reports the missing value with Frappe's standard message
+        org = frappe.db.get_value("WebODM Dataset", self.dataset, "organization")
+        if org is None:
+            frappe.throw(f"Dataset {self.dataset} does not exist", frappe.DoesNotExistError)
+        if self.organization and org != self.organization:
+            frappe.throw("The dataset must belong to the task's organization", frappe.PermissionError)
+
     def on_trash(self):
         # Plugin runs link to their task and Frappe refuses to delete a linked
         # document, so the runs go first (each one removes its own stored
@@ -14,6 +35,10 @@ class WebODMTask(Document):
         # Deleting a task must not leave a billed instance behind or orphan its
         # objects. Both are best-effort: a failed destroy is retried by the
         # compute sweep, a failed object delete is logged.
+        #
+        # Only the task's *outputs* (raw/ + assets/) are removed. Its inputs
+        # belong to the dataset, which is shared and outlives the task: the
+        # dataset stays in the library until the user deletes it themselves.
         from webodm_core.storage import assets
         from webodm_core.webodm_core.processing import compute
 

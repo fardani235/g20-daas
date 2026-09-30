@@ -1,4 +1,4 @@
-"""_save_task_image_file streams the werkzeug upload straight to disk and keeps
+"""datasets.save_image_file streams the werkzeug upload straight to disk and keeps
 the bytes exactly as uploaded (EXIF intact) regardless of site settings."""
 import io
 
@@ -6,7 +6,8 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from PIL import Image
 
-from webodm_core.api.task import _extract_photo_meta, _save_task_image_file
+from webodm_core.api.task import _extract_photo_meta
+from webodm_core.datasets import save_image_file
 from webodm_core.plugins.files import abs_path_for_file_doc
 
 
@@ -22,9 +23,9 @@ def _geotagged_jpeg() -> bytes:
     return buf.getvalue()
 
 
-class TestSaveTaskImageFile(FrappeTestCase):
+class TestSaveDatasetImageFile(FrappeTestCase):
     def tearDown(self):
-        for f in frappe.get_all("File", filters={"attached_to_doctype": "WebODM Task",
+        for f in frappe.get_all("File", filters={"attached_to_doctype": "WebODM Dataset",
                                                  "attached_to_name": "UPLOAD-STREAM-TEST"}, pluck="name"):
             frappe.delete_doc("File", f, ignore_permissions=True, force=True)
 
@@ -36,7 +37,7 @@ class TestSaveTaskImageFile(FrappeTestCase):
         original = frappe.db.get_single_value("System Settings", "strip_exif_metadata_from_uploaded_images")
         frappe.db.set_single_value("System Settings", "strip_exif_metadata_from_uploaded_images", 1)
         try:
-            doc = _save_task_image_file(stream, "DJI_0001.JPG", "UPLOAD-STREAM-TEST")
+            doc = save_image_file(stream, "DJI_0001.JPG", "UPLOAD-STREAM-TEST")
         finally:
             frappe.db.set_single_value("System Settings", "strip_exif_metadata_from_uploaded_images", original or 0)
 

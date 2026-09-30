@@ -13,6 +13,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from webodm_core.testing import make_dataset
 from webodm_core.webodm_core.doctype.webodm_plugin_run import webodm_plugin_run as run_module
 
 PLUGIN_ID = "test-deletion-op"
@@ -74,6 +75,9 @@ class TestDeletionCascade(FrappeTestCase):
             for task in frappe.get_all("WebODM Task", filters={"project": name}, pluck="name"):
                 frappe.delete_doc("WebODM Task", task, force=True, ignore_permissions=True)
             frappe.delete_doc("WebODM Project", name, force=True, ignore_permissions=True)
+        for ds in frappe.get_all("WebODM Dataset", filters={"organization": cls.org}, pluck="name"):
+            if not frappe.db.exists("WebODM Task", {"dataset": ds}):
+                frappe.delete_doc("WebODM Dataset", ds, force=True, ignore_permissions=True)
         frappe.delete_doc("WebODM Plugin", PLUGIN_ID, force=True, ignore_permissions=True)
         super().tearDownClass()
 
@@ -90,9 +94,10 @@ class TestDeletionCascade(FrappeTestCase):
     def _project(self, title):
         return frappe.get_doc({"doctype": "WebODM Project", "title": title}).insert().name
 
-    def _task(self, project, title="Analysed task"):
+    def _task(self, project, title="Analysed task", dataset=None):
+        dataset = dataset or make_dataset(f"{title} inputs").name
         return frappe.get_doc({"doctype": "WebODM Task", "project": project, "title": title,
-                               "status": "Completed"}).insert().name
+                               "status": "Completed", "dataset": dataset}).insert().name
 
     def _run(self, task, status="Completed"):
         run = frappe.get_doc({
@@ -161,6 +166,20 @@ class TestDeletionCascade(FrappeTestCase):
         task = self._task(project)
         frappe.delete_doc("WebODM Task", task)
         self.assertFalse(frappe.db.exists("WebODM Task", task))
+
+    def test_project_cascade_keeps_the_shared_dataset(self):
+        # Deleting a project deletes its tasks; the datasets they used are
+        # library entries and stay until the user deletes them.
+        project = self._project("Deletion Cascade Project F")
+        ds = make_dataset("Shared inputs").name
+        self._task(project, "one", dataset=ds)
+        self._task(project, "two", dataset=ds)
+
+        frappe.delete_doc("WebODM Project", project)
+
+        self.assertFalse(frappe.db.exists("WebODM Project", project))
+        self.assertTrue(frappe.db.exists("WebODM Dataset", ds))
+        self.assertEqual(frappe.db.count("WebODM Dataset Image", {"parent": ds}), 1)
 
     def test_deleting_a_task_leaves_sibling_tasks_and_their_runs(self):
         project = self._project("Deletion Cascade Project E")

@@ -13,10 +13,13 @@ Vue frontend ──▶ webodm_core API ──▶ NodeODM (photogrammetry)
               Geospatial service (COG + tiles)
 ```
 
-- **DocTypes**: `WebODM Project`, `WebODM Task` (+ `WebODM Task Image` child),
+- **DocTypes**: `WebODM Project`, `WebODM Task`, `WebODM Dataset` (+ `WebODM Dataset
+  Image` child — the reusable input images a task references),
   `WebODM Processing Node`, `WebODM Preset`, `WebODM Settings`, and others.
 - **API** (`webodm_core/api/`):
-  - `task.py` — `upload_images`, `process_task`, `cancel_task`, `get_task_console`.
+  - `task.py` — `upload_images` (task over an existing dataset or from new files),
+    `list_tasks`, `process_task`, `cancel_task`, `get_task_console`, `get_task_progress`.
+  - `dataset.py` — the dataset library (list / get / create / update / delete / thumbnail).
   - `tiles.py` — session-authed, same-origin proxy (`info`, `serve`) that
     forwards to the geospatial service. Keeping the proxy in Frappe means Leaflet
     `<img>` tile requests carry the session cookie and the geospatial service
@@ -27,8 +30,9 @@ Vue frontend ──▶ webodm_core API ──▶ NodeODM (photogrammetry)
 
 ### Processing pipeline
 
-1. `upload_images` stores each image as a private File, extracts EXIF GPS into
-   the `WebODM Task Image` row, and creates a Pending task.
+1. `upload_images` either points a new Pending task at an existing `WebODM Dataset`
+   or stores each uploaded image as a private File attached to a new dataset
+   (EXIF GPS into the `WebODM Dataset Image` row) and points the task at that.
 2. Scheduler (`hooks.py` → `scheduler_events`, every 1 min) runs
    `process_pending_tasks` (dispatch Pending → NodeODM, status → Running) and
    `update_running_tasks` (poll Running tasks).

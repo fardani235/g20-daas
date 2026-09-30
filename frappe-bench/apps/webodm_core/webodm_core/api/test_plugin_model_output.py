@@ -14,6 +14,7 @@ from webodm_core.api import plugins as plugins_api
 from webodm_core.api.test_user_plugins import _join, _org, _user
 from webodm_core.plugins import package as package_mod
 from webodm_core.plugins import runner, sandbox
+from webodm_core.testing import make_dataset
 
 MODEL_MANIFEST = {
     "id": "recon-test",
@@ -126,7 +127,7 @@ class TestModelRunExecution(FrappeTestCase):
         frappe.set_user(cls.owner)
         frappe.local.webodm_org_cache = {}
         cls.project = frappe.get_doc({"doctype": "WebODM Project", "title": "Model Plugin Project"}).insert().name
-        task = frappe.get_doc({"doctype": "WebODM Task", "project": cls.project, "title": "model task",
+        task = frappe.get_doc({"doctype": "WebODM Task", "dataset": make_dataset().name, "project": cls.project, "title": "model task",
                                "status": "Completed", "epsg": 32632}).insert()
         for field, name in (("dsm", "dsm.tif"), ("point_cloud", "georeferenced_model.laz")):
             f = frappe.get_doc({

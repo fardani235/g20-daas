@@ -8,6 +8,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from webodm_core.api import plugins as plugins_api
 from webodm_core.api import tiles as tiles_api
+from webodm_core.testing import make_dataset
 
 PLUGIN_ID = "test-out-op"
 FEATURECOLLECTION = {
@@ -99,7 +100,7 @@ class TestPluginOutputs(FrappeTestCase):
             "title": "Plugin Output Project",
         }).insert().name
         task = frappe.get_doc({
-            "doctype": "WebODM Task",
+            "doctype": "WebODM Task", "dataset": make_dataset().name,
             "project": cls.project_name,
             "title": "Plugin Output Task",
             "status": "Completed",
