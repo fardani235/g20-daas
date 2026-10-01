@@ -818,3 +818,45 @@ All DocTypes live in `webodm_core`:
 - Not done (by design): reusing outputs as inputs, editing images after creation, versioning,
   cross-org sharing. Known pre-existing: Frappe returns `0.0` for null Float lat/lng — the frontend
   keeps skipping `(0, 0)`.
+
+## Phase 20: Kubernetes deployment (2026-10-01)
+
+Compose is unchanged and stays the local-dev path; this adds a cluster path next to it.
+
+- **Chart**: `infra/helm/webodm` (one chart; `values.dev.yaml` = minikube, `values.prod.yaml` = real
+  cluster). Resource names are fixed and equal to the compose service names (Caddy upstreams and the
+  seeded `nodeodm:3000` node depend on them) → one release per namespace.
+- **Workloads**: Deployments `frappe-{web,worker,scheduler,socketio}` (same image, `FRAPPE_ROLE`),
+  `caddy`, `geospatial`, `plugin-runner`, `provisioner`, `nodeodm`, dev-only `minio`; StatefulSets
+  `postgres`, `redis-queue` (claims) and `redis-cache` (emptyDir); Job `frappe-init-<hash>`; CronJob
+  `backup` (runs the Frappe image with `FRAPPE_ROLE=exec` + `files/backup.sh`, because the compose
+  backup image drives `docker compose exec`).
+- **Startup**: the bootstrap is a plain Job, not a hook. Frappe pods wait in an init container
+  (`kubectl wait --for=condition=complete`, ServiceAccount `webodm-frappe` with read-only access to
+  Jobs). The Job name hashes the Frappe image + site env (`webodm.bootstrap.jobName`), so a changed
+  image yields a new Job (Job templates are immutable) and pods wait for exactly that one; no TTL on
+  the Job, later pod restarts still need it. `bootstrap.runId` forces a re-run.
+- **Secrets**: one Secret (`secrets.name`), compose key names, consumed only via `secretKeyRef`
+  (the entrypoint already accepts plain env vars; `*_FILE` is the compose form). Default is an
+  existing Secret (`scripts/k8s-init-secrets.sh`); `secrets.create` renders one from values.
+  `scripts/check-helm.sh` fails if rendered output contains a Secret or a literal credential.
+- **Edge**: `files/Caddyfile` is the chart's copy of `infra/caddy/Caddyfile` (site blocks identical,
+  **change both together**) plus TLS mode (`auto|internal|off`), PROXY protocol, trusted proxies and
+  a probe listener on 8081. Service uses `externalTrafficPolicy: Local`; SocketIO Service has
+  ClientIP affinity.
+- **Storage**: shared claims `frappe-sites`, `frappe-data`, `plugin-sandbox` are RWO; pods mounting
+  them get a pod affinity (`persistence.colocate`) so they land on one node. Data claims carry
+  `helm.sh/resource-policy: keep`. Dev MinIO: bucket Job also creates separate MinIO users for the
+  app and geospatial key pairs (not the root user).
+- **Probes**: HTTP endpoints where they exist; worker/scheduler use `files/probe.py` (Redis queue
+  ping + RQ worker registered for this hostname / scheduler process present).
+- **CI**: job `helm-chart` runs `scripts/check-helm.sh` (lint + template for defaults/dev/prod and
+  edge variants, kubeconform, guard checks).
+- **Verified on minikube (k8s 1.35)** with the dev overlay: fresh install → all pods Ready, login
+  through the NodePort, admin whitelist 403/301 by real client IP, PROXY-protocol and
+  trusted-proxy modes, TLS-off mode, S3 round trip as the non-root MinIO user, manual backup,
+  no-op upgrade (no pod churn), forced migrate, DB dump/restore per the guide, pod rescheduling,
+  uninstall + reinstall onto kept volumes. Not exercised: a multi-node cluster, a cloud
+  LoadBalancer / real ACME issuance, an Ingress controller, NetworkPolicy enforcement (minikube's
+  default CNI ignores policies), a full ODM processing run, the backup's S3 upload branch.
+- **Docs**: `docs/deployment/kubernetes.md`, `infra/helm/webodm/README.md`.

@@ -1,0 +1,69 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- if .Values.pluginRunner.enabled }}
+# The compose `sandbox` network: frappe-worker <-> plugin-runner only, and no
+# route out (not the internet, the database, Redis, NodeODM or geospatial).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: plugin-runner
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "plugin-runner") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" . "component" "plugin-runner") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "webodm.selectorLabels" (dict "ctx" . "component" "frappe-worker") | nindent 14 }}
+      ports:
+        - port: 5001
+  egress: []
+---
+{{- end }}
+# Unauthenticated: reachable from the Frappe pods only, never from Caddy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: geospatial
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "geospatial") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" . "component" "geospatial") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              webodm/frappe: "true"
+      ports:
+        - port: 5000
+{{- if .Values.provisioner.enabled }}
+---
+# Holds the cloud credentials: reachable from the Frappe pods only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: provisioner
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "provisioner") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" . "component" "provisioner") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              webodm/frappe: "true"
+      ports:
+        - port: 5002
+{{- end }}
+{{- end }}

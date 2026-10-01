@@ -1,0 +1,59 @@
+{{- if .Values.bootstrap.enabled }}
+# One-time site bootstrap: `new-site` on an empty sites volume, `migrate`
+# afterwards (infra/frappe/init.sh). A plain Job, not a Helm hook: the Frappe
+# pods wait for it themselves (see webodm.waitForBootstrap), so ordering holds
+# on install, upgrade and whenever a pod restarts later. No TTL: the Job must
+# stay around for those later restarts to find it complete.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "webodm.bootstrap.jobName" . }}
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "frappe-init") | nindent 4 }}
+spec:
+  backoffLimit: {{ .Values.bootstrap.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.bootstrap.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" . "component" "frappe-init") | nindent 8 }}
+        webodm/frappe: "true"
+        {{- include "webodm.sharedStorageLabel" . | nindent 8 }}
+    spec:
+      {{- include "webodm.podCommon" . | nindent 6 }}
+      {{- include "webodm.sharedStorageAffinity" . | nindent 6 }}
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      initContainers:
+        # The compose file's depends_on: service_healthy for postgres and redis.
+        - name: wait-for-datastores
+          image: {{ include "webodm.image" .Values.images.frappe }}
+          imagePullPolicy: {{ .Values.images.frappe.pullPolicy }}
+          command:
+            - bash
+            - -c
+            - |
+              until pg_isready -q -h postgres -p 5432; do echo "waiting for postgres"; sleep 3; done
+              for target in redis-cache:13000 redis-queue:11000; do
+                until (exec 3<>"/dev/tcp/${target%:*}/${target#*:}") 2>/dev/null; do echo "waiting for ${target}"; sleep 3; done
+              done
+      containers:
+        - name: frappe-init
+          image: {{ include "webodm.image" .Values.images.frappe }}
+          imagePullPolicy: {{ .Values.images.frappe.pullPolicy }}
+          env:
+            - name: FRAPPE_ROLE
+              value: init
+            {{- include "webodm.frappe.env" . | nindent 12 }}
+          {{- with .Values.bootstrap.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: sites
+              mountPath: /workspace/frappe-bench/sites
+      volumes:
+        - name: sites
+          persistentVolumeClaim:
+            claimName: frappe-sites
+{{- end }}

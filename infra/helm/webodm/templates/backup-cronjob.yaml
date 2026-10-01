@@ -1,0 +1,87 @@
+{{- if .Values.backup.enabled }}
+# Scheduled site backup. Runs the Frappe image itself (FRAPPE_ROLE=exec) so
+# the dump comes from the same code and pg_dump version as the app.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "backup") | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 14400
+      template:
+        metadata:
+          labels:
+            {{- include "webodm.selectorLabels" (dict "ctx" . "component" "backup") | nindent 12 }}
+            webodm/frappe: "true"
+            {{- include "webodm.sharedStorageLabel" . | nindent 12 }}
+        spec:
+          {{- include "webodm.podCommon" . | nindent 10 }}
+          {{- include "webodm.sharedStorageAffinity" . | nindent 10 }}
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: {{ include "webodm.image" .Values.images.frappe }}
+              imagePullPolicy: {{ .Values.images.frappe.pullPolicy }}
+              args: [bash, /scripts/backup.sh]
+              env:
+                - name: FRAPPE_ROLE
+                  value: exec
+                - name: BACKUP_RETENTION_DAYS
+                  value: {{ .Values.backup.retentionDays | quote }}
+                {{- if .Values.backup.s3.bucket }}
+                - name: BACKUP_S3_BUCKET
+                  value: {{ .Values.backup.s3.bucket | quote }}
+                - name: BACKUP_S3_ENDPOINT
+                  value: {{ .Values.backup.s3.endpoint | quote }}
+                {{- include "webodm.secretEnv" (dict "ctx" . "name" "BACKUP_S3_ACCESS_KEY" "key" "backup_s3_access_key" "optional" true) | nindent 16 }}
+                {{- include "webodm.secretEnv" (dict "ctx" . "name" "BACKUP_S3_SECRET_KEY" "key" "backup_s3_secret_key" "optional" true) | nindent 16 }}
+                {{- end }}
+                {{- include "webodm.frappe.env" . | nindent 16 }}
+              {{- with .Values.backup.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              volumeMounts:
+                - name: sites
+                  mountPath: /workspace/frappe-bench/sites
+                - name: backups
+                  mountPath: /backups
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: sites
+              persistentVolumeClaim:
+                claimName: frappe-sites
+            - name: backups
+              persistentVolumeClaim:
+                claimName: backup-storage
+            - name: scripts
+              configMap:
+                name: webodm-scripts
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-storage
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "backup") | nindent 4 }}
+  annotations:
+    # Survives `helm uninstall`: delete the claim (or the namespace) to wipe it.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- include "webodm.storageClass" . | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.persistence.size }}
+{{- end }}

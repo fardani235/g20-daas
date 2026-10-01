@@ -1,6 +1,7 @@
 name: CI
 
-# Every push/PR: run all four test suites and build every image.
+# Every push/PR: run all four test suites, render the Helm chart and build
+# every image.
 # On the default branch, images are pushed only after their tests pass.
 #
 # Frappe version comes from the frappe submodule (scripts/frappe-version.sh);
@@ -41,6 +42,25 @@ jobs:
           [ "$count" -gt 0 ] || { echo "no tracked Python files found"; exit 1; }
           echo "Byte-compiling $count tracked Python files"
           git ls-files -z '*.py' | xargs -0 python -m py_compile
+
+  helm-chart:
+    name: helm chart (lint, template)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.21.4
+      - name: Install kubeconform
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin kubeconform
+      # helm lint + helm template for the defaults, values.dev.yaml and
+      # values.prod.yaml; fails on a render error, a schema error, or any
+      # credential in the rendered output.
+      - name: Lint and render the chart for both environments
+        run: scripts/check-helm.sh
 
   test-frontend:
     name: webodm_frontend (vitest)

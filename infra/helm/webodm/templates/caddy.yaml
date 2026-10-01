@@ -1,0 +1,196 @@
+{{- $caddyfile := tpl (.Files.Get "files/Caddyfile") . }}
+{{- $persist := and .Values.caddy.persistence.enabled (ne .Values.caddy.tls.mode "off") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caddy
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "caddy") | nindent 4 }}
+data:
+  Caddyfile: |
+    {{- $caddyfile | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caddy
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "caddy") | nindent 4 }}
+spec:
+  replicas: 1
+  {{- if $persist }}
+  # The certificate volume is ReadWriteOnce: release it before the new pod starts.
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" . "component" "caddy") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" . "component" "caddy") | nindent 8 }}
+      annotations:
+        checksum/caddyfile: {{ $caddyfile | sha256sum }}
+    spec:
+      {{- include "webodm.podCommon" . | nindent 6 }}
+      automountServiceAccountToken: false
+      containers:
+        - name: caddy
+          image: {{ include "webodm.image" .Values.images.caddy }}
+          imagePullPolicy: {{ .Values.images.caddy.pullPolicy }}
+          env:
+            - name: SITE_DOMAIN
+              value: {{ .Values.site.domain | quote }}
+            - name: ADMIN_WHITELIST
+              value: {{ .Values.site.adminWhitelist | quote }}
+            {{- if eq .Values.caddy.tls.dnsProvider "cloudflare" }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "CLOUDFLARE_API_TOKEN" "key" "cloudflare_api_token") | nindent 12 }}
+            {{- else if eq .Values.caddy.tls.dnsProvider "route53" }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "AWS_ACCESS_KEY_ID" "key" "route53_access_key_id") | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "AWS_SECRET_ACCESS_KEY" "key" "route53_secret_access_key") | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+            - name: health
+              containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- with .Values.caddy.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: caddy
+        - name: config
+          emptyDir: {}
+        - name: data
+          {{- if $persist }}
+          persistentVolumeClaim:
+            claimName: caddy-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: caddy
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "caddy") | nindent 4 }}
+  {{- with .Values.caddy.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.caddy.service.type }}
+  {{- if ne .Values.caddy.service.type "ClusterIP" }}
+  # Local = no SNAT hop, so Caddy sees the real client address and the
+  # admin-subdomain whitelist works.
+  externalTrafficPolicy: {{ .Values.caddy.service.externalTrafficPolicy }}
+  {{- end }}
+  {{- if and (eq .Values.caddy.service.type "LoadBalancer") .Values.caddy.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml .Values.caddy.service.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  selector:
+    {{- include "webodm.selectorLabels" (dict "ctx" . "component" "caddy") | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      {{- if eq .Values.caddy.service.type "NodePort" }}
+      nodePort: {{ .Values.caddy.service.nodePorts.http }}
+      {{- end }}
+    {{- if ne .Values.caddy.tls.mode "off" }}
+    - name: https
+      port: 443
+      targetPort: https
+      {{- if eq .Values.caddy.service.type "NodePort" }}
+      nodePort: {{ .Values.caddy.service.nodePorts.https }}
+      {{- end }}
+    {{- end }}
+{{- if $persist }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: caddy-data
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "caddy") | nindent 4 }}
+  annotations:
+    # Survives `helm uninstall`: delete the claim (or the namespace) to wipe it.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- include "webodm.storageClass" . | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ .Values.caddy.persistence.size }}
+{{- end }}
+{{- if .Values.caddy.ingress.enabled }}
+---
+# TLS terminates at the ingress controller; everything is still routed through
+# Caddy, which keeps the whitelist, headers and SocketIO handling.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: caddy
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "caddy") | nindent 4 }}
+  {{- with .Values.caddy.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.caddy.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.caddy.ingress.tlsSecretName }}
+  tls:
+    - secretName: {{ . }}
+      hosts:
+        - {{ $.Values.site.domain | quote }}
+        - {{ printf "admin.%s" $.Values.site.domain | quote }}
+  {{- end }}
+  rules:
+    {{- range $host := list .Values.site.domain (printf "admin.%s" .Values.site.domain) }}
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: caddy
+                port:
+                  name: http
+    {{- end }}
+{{- end }}

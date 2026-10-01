@@ -53,6 +53,7 @@ submodule).
 | `services/provisioner/` | On-demand compute service: one `Provider` interface (AWS EC2, dev `fixed`), stateless HTTP API |
 | `docs/on-demand-processing/` | User guide, deployment, runbook, troubleshooting, configuration reference, architecture for on-demand compute + object storage |
 | `infra/aws/` | IAM policies per identity, bucket policy, security group notes, NodeODM AMI bake script |
+| `infra/helm/webodm/` | Helm chart for Kubernetes (one chart; `values.dev.yaml` for minikube, `values.prod.yaml` for a real cluster). Guide: `docs/deployment/kubernetes.md` |
 | `docs/plugins/` | User plugin guide, example plugin, Semantic Segmentation and 3D Reconstruction plugin docs |
 | `docs/marketplace/` | Marketplace concepts (publishers, products, releases, licenses, entitlements) and the publishing runbook |
 | `docs/datasets/` | Dataset library (reusable input image sets a task references) and the staged migration runbook |
@@ -178,6 +179,20 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
 See [`docs/on-demand-processing/deployment.md`](docs/on-demand-processing/deployment.md).
+
+### Kubernetes
+
+Docker Compose stays the local development path. To run the stack on a cluster
+(minikube or production) use the Helm chart:
+
+```bash
+scripts/k8s-init-secrets.sh webodm
+helm upgrade --install webodm infra/helm/webodm -n webodm -f infra/helm/webodm/values.dev.yaml
+```
+
+See [`docs/deployment/kubernetes.md`](docs/deployment/kubernetes.md) and the
+[chart README](infra/helm/webodm/README.md). `scripts/check-helm.sh` lints and
+renders the chart for both environments (CI runs it).
 
 ### Provisioner service
 

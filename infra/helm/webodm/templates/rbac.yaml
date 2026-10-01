@@ -1,0 +1,36 @@
+{{- if or .Values.bootstrap.enabled .Values.minio.enabled }}
+# The Frappe pods wait for the bootstrap Job with `kubectl wait`, which needs
+# read access to Jobs in this namespace. Every other pod runs without a token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webodm-frappe
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "frappe") | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: webodm-wait-for-jobs
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "frappe") | nindent 4 }}
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: webodm-wait-for-jobs
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "frappe") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: webodm-wait-for-jobs
+subjects:
+  - kind: ServiceAccount
+    name: webodm-frappe
+    namespace: {{ .Release.Namespace }}
+{{- end }}

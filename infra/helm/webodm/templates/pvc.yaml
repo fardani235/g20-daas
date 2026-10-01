@@ -1,0 +1,23 @@
+{{- range $name, $claim := dict "frappe-sites" .Values.persistence.sites "frappe-data" .Values.persistence.data "plugin-sandbox" .Values.persistence.sandbox }}
+{{- if or (ne $name "plugin-sandbox") $.Values.pluginRunner.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "webodm.labels" (dict "ctx" $ "component" $name) | nindent 4 }}
+  {{- if ne $name "plugin-sandbox" }}
+  annotations:
+    # Survives `helm uninstall`: delete the claim (or the namespace) to wipe it.
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml $claim.accessModes | nindent 4 }}
+  {{- include "webodm.storageClass" $ | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ $claim.size }}
+{{- end }}
+{{- end }}
