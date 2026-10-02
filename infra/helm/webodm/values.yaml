@@ -1,0 +1,308 @@
+# Defaults for the WebODM chart. Two overlays build on this file:
+#   values.dev.yaml   single-node cluster (minikube), fully self-contained
+#   values.prod.yaml  real cluster: TLS, external S3, pinned digests
+#
+# Resource names are fixed (postgres, redis-cache, frappe-web, nodeodm, ...)
+# and match the docker-compose service names, because the stack addresses its
+# peers by those names (Caddy upstreams, the seeded "Local NodeODM" node).
+# Install one release per namespace.
+
+# Pull secrets for private registries (kubernetes.io/dockerconfigjson).
+imagePullSecrets: []
+#  - name: ghcr-pull
+
+# StorageClass for every PersistentVolumeClaim; "" uses the cluster default.
+storageClass: ""
+
+# Applied to every pod.
+nodeSelector: {}
+tolerations: []
+
+site:
+  # Public hostname. The Frappe Desk is served on admin.<domain>.
+  domain: webodm.local
+  # Frappe site name; defaults to the domain.
+  name: ""
+  # Space-separated client IPs/CIDRs allowed to reach admin.<domain>.
+  # "private_ranges" fails closed for internet clients.
+  adminWhitelist: private_ranges
+
+# Every image is <repository>:<tag>, or <repository>:<tag>@<digest> when a
+# digest is set (production pins digests; see values.prod.yaml).
+images:
+  frappe:
+    repository: ghcr.io/fardani235/webodm-frappe
+    tag: "16.34.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+  caddy:
+    repository: ghcr.io/fardani235/webodm-caddy
+    tag: "2"
+    digest: ""
+    pullPolicy: IfNotPresent
+  geospatial:
+    repository: ghcr.io/fardani235/webodm-geospatial
+    tag: "1"
+    digest: ""
+    pullPolicy: IfNotPresent
+  pluginRunner:
+    repository: ghcr.io/fardani235/webodm-plugin-runner
+    tag: "1"
+    digest: ""
+    pullPolicy: IfNotPresent
+  provisioner:
+    repository: ghcr.io/fardani235/webodm-provisioner
+    tag: "1"
+    digest: ""
+    pullPolicy: IfNotPresent
+  nodeodm:
+    repository: opendronemap/nodeodm
+    tag: latest
+    digest: ""
+    pullPolicy: IfNotPresent
+  postgres:
+    repository: postgis/postgis
+    tag: 16-3.4
+    digest: ""
+    pullPolicy: IfNotPresent
+  redis:
+    repository: redis
+    tag: 7-alpine
+    digest: ""
+    pullPolicy: IfNotPresent
+  # Same community MinIO builds as docker-compose.dev.yml (upstream images
+  # were removed from Docker Hub).
+  minio:
+    repository: pgsty/minio
+    tag: RELEASE.2026-08-04T00-00-00Z
+    digest: ""
+    pullPolicy: IfNotPresent
+  mc:
+    repository: pgsty/mc
+    tag: RELEASE.2026-09-16T00-00-00Z
+    digest: ""
+    pullPolicy: IfNotPresent
+  # Used by the init container that waits for the bootstrap Job.
+  kubectl:
+    repository: registry.k8s.io/kubectl
+    tag: v1.34.1
+    digest: ""
+    pullPolicy: IfNotPresent
+
+# Credentials live in ONE Kubernetes Secret, read key by key (each pod only
+# receives the keys it needs). Key names match the docker-compose secret files.
+#
+#   required: db_password admin_password frappe_admin_password
+#             redis_cache_password redis_queue_password
+#             provisioner_api_token node_token_secret
+#   optional: s3_app_access_key_id s3_app_secret_access_key
+#             s3_geospatial_access_key_id s3_geospatial_secret_access_key
+#             aws_provisioner_access_key_id aws_provisioner_secret_access_key
+#             minio_root_user minio_root_password        (required with minio.enabled)
+#             cloudflare_api_token                       (caddy.tls.dnsProvider=cloudflare)
+#             route53_access_key_id route53_secret_access_key  (dnsProvider=route53)
+#             backup_s3_access_key backup_s3_secret_key  (backup.s3.bucket set)
+#
+# Default: reference a Secret you created (scripts/k8s-init-secrets.sh makes
+# one with random values). Nothing secret is then ever rendered by Helm.
+secrets:
+  name: webodm-secrets
+  # true = the chart creates the Secret from `values` below. Supply them at
+  # install time from a file kept out of git (-f secrets.local.yaml); never
+  # commit them. The values then appear in `helm template` / release storage.
+  create: false
+  values: {}
+  #  db_password: ""
+  #  admin_password: ""
+
+database:
+  name: webodm
+  user: webodm
+
+# Object storage (webodm_core.storage + the geospatial service). An empty
+# bucket means the shared volumes are the only store. With minio.enabled the
+# endpoint and path-style addressing default to the in-cluster MinIO.
+objectStorage:
+  bucket: ""
+  prefix: ""
+  region: ""
+  # Empty for AWS S3; set for any other S3-compatible store.
+  endpointUrl: ""
+  forcePathStyle: false
+  # Serving-cache budget (bytes) and idle eviction age (seconds), as strings.
+  cacheMaxBytes: "53687091200"
+  cacheIdleSeconds: "604800"
+
+# Shared claims, mounted by several pods at once.
+#   sites    Frappe site directory: site config and the file serving cache
+#   data     service data directory (/data) shared by Frappe and geospatial
+#   sandbox  plugin staging area shared by frappe-worker and plugin-runner
+persistence:
+  # ReadWriteOnce volumes attach to one node, so every pod that mounts a
+  # shared claim is kept on the same node (pod affinity). Set false once the
+  # claims are ReadWriteMany.
+  colocate: true
+  sites:
+    size: 20Gi
+    accessModes: [ReadWriteOnce]
+  data:
+    size: 20Gi
+    accessModes: [ReadWriteOnce]
+  sandbox:
+    size: 10Gi
+    accessModes: [ReadWriteOnce]
+
+# One-time site bootstrap (new-site on first install, migrate afterwards), run
+# as a plain Job. The Frappe pods wait for it in an init container. The Job
+# name carries a hash of the Frappe image and site settings, so it re-runs
+# exactly when one of those changes.
+bootstrap:
+  enabled: true
+  # Change to force a re-run without changing anything else.
+  runId: ""
+  backoffLimit: 6
+  activeDeadlineSeconds: 3600
+  # How long an app pod waits for the Job before its init container restarts.
+  waitTimeout: 30m
+  resources: {}
+
+frappe:
+  # Extra non-secret environment for every Frappe role, e.g.
+  #   WEBODM_COMPUTE_MAX_INSTANCES: "5"
+  env: {}
+  web:
+    replicas: 1
+    gunicornWorkers: 3
+    gunicornTimeout: 120
+    resources: {}
+  worker:
+    replicas: 1
+    queues: default,long,short
+    # Time a worker gets to finish its current job on shutdown.
+    terminationGracePeriodSeconds: 120
+    resources: {}
+  scheduler:
+    resources: {}
+  socketio:
+    # SocketIO keeps per-client state across HTTP polling requests. More than
+    # one replica relies on the Service's client-IP affinity.
+    replicas: 1
+    resources: {}
+
+# The edge. Caddy stays in the cluster: it owns the admin-subdomain IP
+# whitelist, the SocketIO host fix-ups, the security headers and the CSP.
+caddy:
+  resources: {}
+  tls:
+    # auto      Caddy obtains public certificates (ACME); needs 80/443 reachable
+    #           from the internet, or a DNS provider below.
+    # internal  Caddy's own CA (self-signed); for dev.
+    # off       plain HTTP only; TLS terminates in front (Ingress / cloud LB).
+    mode: auto
+    # ACME account email; defaults to admin@<domain>.
+    email: ""
+    # "" (HTTP-01 / TLS-ALPN-01), cloudflare or route53 (DNS-01).
+    dnsProvider: ""
+  service:
+    # NodePort (dev), LoadBalancer (prod) or ClusterIP (behind the Ingress).
+    type: ClusterIP
+    # Local keeps the real client IP, which the admin whitelist needs.
+    externalTrafficPolicy: Local
+    nodePorts:
+      http: 32080
+      https: 32443
+    annotations: {}
+    loadBalancerSourceRanges: []
+  # PROXY protocol, for load balancers that cannot preserve the client IP
+  # (enable it on the load balancer too, via service annotations).
+  proxyProtocol:
+    enabled: false
+    # CIDRs allowed to send the PROXY header (the load balancer's addresses).
+    allow: []
+  # Proxies whose X-Forwarded-For is trusted (an ingress controller's pod
+  # CIDR). Needed for the admin whitelist when an Ingress is in front.
+  trustedProxies: []
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    # Existing kubernetes.io/tls secret covering <domain> and admin.<domain>.
+    tlsSecretName: ""
+  # Certificates and ACME account (/data). Not needed with tls.mode=off.
+  persistence:
+    enabled: true
+    size: 1Gi
+
+postgres:
+  persistence:
+    size: 20Gi
+  resources: {}
+
+redisCache:
+  maxmemory: 512mb
+  resources: {}
+
+redisQueue:
+  persistence:
+    size: 2Gi
+  resources: {}
+
+geospatial:
+  replicas: 1
+  # Scratch for S3 -> S3 COG conversion (emptyDir).
+  scratchSizeLimit: 20Gi
+  resources: {}
+
+pluginRunner:
+  enabled: true
+  maxConcurrentRuns: 1
+  memoryMb: 2048
+  defaultTimeout: 300
+  maxTimeout: 3600
+  resources: {}
+
+# On-demand compute API. With provider "none" it runs idle and tasks use the
+# static nodeodm; any other provider also points the app at it.
+provisioner:
+  enabled: true
+  # none | aws | fixed (dev: hands back the in-cluster nodeodm)
+  provider: none
+  # Extra non-secret environment (PROVISIONER_AWS_REGION, ..._AMI_ID, ...).
+  # See docs/on-demand-processing/configuration.md.
+  env: {}
+  resources: {}
+
+# Static processing node (seeded in the app as "Local NodeODM").
+nodeodm:
+  enabled: true
+  persistence:
+    size: 50Gi
+  resources: {}
+
+# In-cluster object store for dev. Deploys MinIO, creates the bucket and one
+# MinIO user per s3_app_* / s3_geospatial_* key pair, and points the app and
+# the geospatial service at it. Leave off in production (external S3).
+minio:
+  enabled: false
+  persistence:
+    size: 20Gi
+  resources: {}
+
+# Scheduled site backup (database dump + site files) to its own claim, with
+# an optional copy to an S3 bucket.
+backup:
+  enabled: true
+  schedule: "0 3 * * *"
+  retentionDays: 14
+  persistence:
+    size: 20Gi
+  s3:
+    bucket: ""
+    endpoint: ""
+  resources: {}
+
+# NetworkPolicies mirroring the compose network split: the plugin sandbox has
+# no egress and accepts only frappe-worker; geospatial and the provisioner
+# accept only the Frappe pods. Needs a CNI that enforces NetworkPolicy.
+networkPolicy:
+  enabled: true

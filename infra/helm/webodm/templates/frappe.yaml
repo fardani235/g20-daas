@@ -1,0 +1,216 @@
+{{- /* The four Frappe roles: one image, one Deployment each, told apart by
+       FRAPPE_ROLE (infra/frappe/entrypoint.sh). */ -}}
+{{- $roles := list
+  (dict "role" "web" "port" 8000 "values" .Values.frappe.web)
+  (dict "role" "worker" "values" .Values.frappe.worker)
+  (dict "role" "scheduler" "values" .Values.frappe.scheduler)
+  (dict "role" "socketio" "port" 9000 "values" .Values.frappe.socketio) }}
+{{- range $r := $roles }}
+{{- $name := printf "frappe-%s" $r.role }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "webodm.labels" (dict "ctx" $ "component" $name) | nindent 4 }}
+spec:
+  {{- if eq $r.role "scheduler" }}
+  # Exactly one scheduler, also during a rollout.
+  replicas: 1
+  strategy:
+    type: Recreate
+  {{- else }}
+  replicas: {{ $r.values.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" $ "component" $name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" $ "component" $name) | nindent 8 }}
+        webodm/frappe: "true"
+        {{- include "webodm.sharedStorageLabel" $ | nindent 8 }}
+    spec:
+      {{- include "webodm.podCommon" $ | nindent 6 }}
+      {{- include "webodm.sharedStorageAffinity" $ | nindent 6 }}
+      {{- if or $.Values.bootstrap.enabled $.Values.minio.enabled }}
+      serviceAccountName: webodm-frappe
+      initContainers:
+        {{- include "webodm.waitForBootstrap" $ | nindent 8 }}
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- if eq $r.role "worker" }}
+      terminationGracePeriodSeconds: {{ $r.values.terminationGracePeriodSeconds }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "webodm.image" $.Values.images.frappe }}
+          imagePullPolicy: {{ $.Values.images.frappe.pullPolicy }}
+          env:
+            - name: FRAPPE_ROLE
+              value: {{ $r.role }}
+            {{- if eq $r.role "web" }}
+            - name: GUNICORN_WORKERS
+              value: {{ $r.values.gunicornWorkers | quote }}
+            - name: GUNICORN_TIMEOUT
+              value: {{ $r.values.gunicornTimeout | quote }}
+            {{- end }}
+            {{- if eq $r.role "worker" }}
+            - name: FRAPPE_WORKER_QUEUES
+              value: {{ $r.values.queues | quote }}
+            {{- end }}
+            {{- include "webodm.frappe.env" $ | nindent 12 }}
+          {{- with $r.port }}
+          ports:
+            - name: http
+              containerPort: {{ . }}
+          {{- end }}
+          {{- if eq $r.role "web" }}
+          startupProbe:
+            httpGet:
+              path: /api/method/ping
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/method/ping
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/method/ping
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          {{- else if eq $r.role "socketio" }}
+          startupProbe:
+            httpGet:
+              path: /socket.io/?EIO=4&transport=polling
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /socket.io/?EIO=4&transport=polling
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /socket.io/?EIO=4&transport=polling
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- else }}
+          # No HTTP endpoint: files/probe.py checks the Redis queue and that
+          # this pod's {{ $r.role }} is really running. Liveness is deliberately
+          # slow to fail so a short Redis outage never kills a running job.
+          startupProbe:
+            exec:
+              command: [/workspace/frappe-bench/env/bin/python, /scripts/probe.py, {{ $r.role }}]
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: [/workspace/frappe-bench/env/bin/python, /scripts/probe.py, {{ $r.role }}]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: [/workspace/frappe-bench/env/bin/python, /scripts/probe.py, {{ $r.role }}]
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 15
+          {{- end }}
+          {{- with $r.values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: sites
+              mountPath: /workspace/frappe-bench/sites
+            - name: logs
+              mountPath: /workspace/frappe-bench/logs
+            {{- if eq $r.role "web" }}
+            # Per-pod, refreshed from the image on every start
+            # (prepare_assets.py), so served assets always match the image.
+            - name: assets
+              mountPath: /workspace/frappe-bench/sites/assets
+            {{- end }}
+            {{- if has $r.role (list "web" "worker") }}
+            - name: data
+              mountPath: /data
+            {{- end }}
+            {{- if and (eq $r.role "worker") $.Values.pluginRunner.enabled }}
+            # Staging area for user plugin runs, shared with plugin-runner only.
+            - name: sandbox
+              mountPath: /sandbox
+            {{- end }}
+            {{- if has $r.role (list "worker" "scheduler") }}
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: sites
+          persistentVolumeClaim:
+            claimName: frappe-sites
+        - name: logs
+          emptyDir: {}
+        {{- if eq $r.role "web" }}
+        - name: assets
+          emptyDir: {}
+        {{- end }}
+        {{- if has $r.role (list "web" "worker") }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: frappe-data
+        {{- end }}
+        {{- if and (eq $r.role "worker") $.Values.pluginRunner.enabled }}
+        - name: sandbox
+          persistentVolumeClaim:
+            claimName: plugin-sandbox
+        {{- end }}
+        {{- if has $r.role (list "worker" "scheduler") }}
+        - name: scripts
+          configMap:
+            name: webodm-scripts
+        {{- end }}
+{{- with $r.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "webodm.labels" (dict "ctx" $ "component" $name) | nindent 4 }}
+spec:
+  selector:
+    {{- include "webodm.selectorLabels" (dict "ctx" $ "component" $name) | nindent 4 }}
+  {{- if eq $r.role "socketio" }}
+  # SocketIO sessions span several HTTP polling requests: keep a client on
+  # the pod that holds its session.
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  {{- end }}
+  ports:
+    - name: http
+      port: {{ . }}
+      targetPort: http
+{{- end }}
+{{- end }}

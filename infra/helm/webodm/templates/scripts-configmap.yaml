@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webodm-scripts
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "scripts") | nindent 4 }}
+data:
+  postgres-init.sh: |
+    {{- .Files.Get "files/postgres-init.sh" | nindent 4 }}
+  probe.py: |
+    {{- .Files.Get "files/probe.py" | nindent 4 }}
+  backup.sh: |
+    {{- .Files.Get "files/backup.sh" | nindent 4 }}
+  minio-init.sh: |
+    {{- .Files.Get "files/minio-init.sh" | nindent 4 }}

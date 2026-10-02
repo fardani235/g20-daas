@@ -1,0 +1,7 @@
+.git/
+*.swp
+*.bak
+*.tmp
+.DS_Store
+# Environment overlays are passed with -f, not packaged defaults.
+values.local.yaml

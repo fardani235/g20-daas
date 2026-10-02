@@ -1,0 +1,106 @@
+{{- /* Two Redis instances with the same shape: the cache is ephemeral, the
+       queue persists (AOF) on a claim so queued jobs survive a reschedule. */ -}}
+{{- $instances := list
+  (dict "name" "redis-cache" "port" 13000 "key" "redis_cache_password" "persistent" false "values" .Values.redisCache)
+  (dict "name" "redis-queue" "port" 11000 "key" "redis_queue_password" "persistent" true "values" .Values.redisQueue) }}
+{{- range $r := $instances }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $r.name }}
+  labels:
+    {{- include "webodm.labels" (dict "ctx" $ "component" $r.name) | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "webodm.selectorLabels" (dict "ctx" $ "component" $r.name) | nindent 4 }}
+  ports:
+    - name: redis
+      port: {{ $r.port }}
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $r.name }}
+  labels:
+    {{- include "webodm.labels" (dict "ctx" $ "component" $r.name) | nindent 4 }}
+spec:
+  serviceName: {{ $r.name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" $ "component" $r.name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" $ "component" $r.name) | nindent 8 }}
+    spec:
+      {{- include "webodm.podCommon" $ | nindent 6 }}
+      automountServiceAccountToken: false
+      containers:
+        - name: redis
+          image: {{ include "webodm.image" $.Values.images.redis }}
+          imagePullPolicy: {{ $.Values.images.redis.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              exec redis-server \
+                --port {{ $r.port }} \
+                --dir /data \
+                --save "" \
+              {{- if $r.persistent }}
+                --appendonly "yes" \
+                --appendfsync everysec \
+              {{- else }}
+                --appendonly "no" \
+                --maxmemory {{ $r.values.maxmemory }} \
+                --maxmemory-policy allkeys-lru \
+              {{- end }}
+                --requirepass "$REDIS_PASSWORD"
+          env:
+            {{- include "webodm.secretEnv" (dict "ctx" $ "name" "REDIS_PASSWORD" "key" $r.key) | nindent 12 }}
+            # redis-cli (the probes) authenticates with this.
+            {{- include "webodm.secretEnv" (dict "ctx" $ "name" "REDISCLI_AUTH" "key" $r.key) | nindent 12 }}
+          ports:
+            - name: redis
+              containerPort: {{ $r.port }}
+          readinessProbe:
+            exec:
+              command: [sh, -c, "redis-cli -p {{ $r.port }} ping | grep -q PONG"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: [sh, -c, "redis-cli -p {{ $r.port }} ping | grep -q PONG"]
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
+          {{- with $r.values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      {{- if not $r.persistent }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if $r.persistent }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- include "webodm.storageClass" $ | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ $r.values.persistence.size }}
+  {{- end }}
+{{- end }}

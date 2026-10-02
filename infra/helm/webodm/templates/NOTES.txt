@@ -1,0 +1,26 @@
+WebODM is installing in namespace {{ .Release.Namespace }}.
+
+The Frappe pods stay in Init until the bootstrap Job has completed
+(first install creates the site and takes a few minutes):
+
+  kubectl -n {{ .Release.Namespace }} get jobs,pods
+{{- if .Values.bootstrap.enabled }}
+  kubectl -n {{ .Release.Namespace }} logs -f job/{{ include "webodm.bootstrap.jobName" . }}
+{{- end }}
+
+Site:   {{ .Values.site.domain }}  (Frappe Desk: admin.{{ .Values.site.domain }})
+{{- if eq .Values.caddy.service.type "NodePort" }}
+Edge:   NodePort {{ .Values.caddy.service.nodePorts.http }} (http){{ if ne .Values.caddy.tls.mode "off" }}, {{ .Values.caddy.service.nodePorts.https }} (https){{ end }}.
+        Point {{ .Values.site.domain }} and admin.{{ .Values.site.domain }} at a node IP
+        (e.g. `minikube ip`) in /etc/hosts, then open
+        {{ if ne .Values.caddy.tls.mode "off" }}https://{{ .Values.site.domain }}:{{ .Values.caddy.service.nodePorts.https }}/{{ else }}http://{{ .Values.site.domain }}:{{ .Values.caddy.service.nodePorts.http }}/{{ end }}
+{{- else if eq .Values.caddy.service.type "LoadBalancer" }}
+Edge:   LoadBalancer. Point DNS for both hostnames at:
+        kubectl -n {{ .Release.Namespace }} get svc caddy
+{{- else if .Values.caddy.ingress.enabled }}
+Edge:   Ingress "caddy" (TLS terminates at the ingress controller).
+{{- else }}
+Edge:   ClusterIP only: kubectl -n {{ .Release.Namespace }} port-forward svc/caddy 8443:443
+{{- end }}
+
+Log in as Administrator with the admin_password key of secret "{{ .Values.secrets.name }}".

@@ -1,0 +1,103 @@
+{{- if .Values.pluginRunner.enabled }}
+# Sandbox for user-uploaded analysis plugins. Untrusted code runs here: no
+# capabilities, no privilege escalation, read-only root filesystem, no API
+# token, and (networkpolicy.yaml) no egress at all.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plugin-runner
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "plugin-runner") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" . "component" "plugin-runner") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" . "component" "plugin-runner") | nindent 8 }}
+        {{- include "webodm.sharedStorageLabel" . | nindent 8 }}
+    spec:
+      {{- include "webodm.podCommon" . | nindent 6 }}
+      {{- include "webodm.sharedStorageAffinity" . | nindent 6 }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: plugin-runner
+          image: {{ include "webodm.image" .Values.images.pluginRunner }}
+          imagePullPolicy: {{ .Values.images.pluginRunner.pullPolicy }}
+          env:
+            - name: SANDBOX_DIR
+              value: /sandbox
+            - name: PLUGIN_MAX_CONCURRENT_RUNS
+              value: {{ .Values.pluginRunner.maxConcurrentRuns | quote }}
+            - name: PLUGIN_MEMORY_MB
+              value: {{ .Values.pluginRunner.memoryMb | quote }}
+            - name: PLUGIN_DEFAULT_TIMEOUT
+              value: {{ .Values.pluginRunner.defaultTimeout | quote }}
+            - name: PLUGIN_MAX_TIMEOUT
+              value: {{ .Values.pluginRunner.maxTimeout | quote }}
+          ports:
+            - name: http
+              containerPort: 5001
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- with .Values.pluginRunner.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            # The ONLY data mount: the runner never sees the sites or data
+            # volumes, so a plugin cannot read another organization's files.
+            - name: sandbox
+              mountPath: /sandbox
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: sandbox
+          persistentVolumeClaim:
+            claimName: plugin-sandbox
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plugin-runner
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "plugin-runner") | nindent 4 }}
+spec:
+  selector:
+    {{- include "webodm.selectorLabels" (dict "ctx" . "component" "plugin-runner") | nindent 4 }}
+  ports:
+    - name: http
+      port: 5001
+      targetPort: http
+{{- end }}

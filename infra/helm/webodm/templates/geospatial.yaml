@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: geospatial
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "geospatial") | nindent 4 }}
+spec:
+  replicas: {{ .Values.geospatial.replicas }}
+  selector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" . "component" "geospatial") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" . "component" "geospatial") | nindent 8 }}
+        {{- include "webodm.sharedStorageLabel" . | nindent 8 }}
+    spec:
+      {{- include "webodm.podCommon" . | nindent 6 }}
+      {{- include "webodm.sharedStorageAffinity" . | nindent 6 }}
+      automountServiceAccountToken: false
+      containers:
+        - name: geospatial
+          image: {{ include "webodm.image" .Values.images.geospatial }}
+          imagePullPolicy: {{ .Values.images.geospatial.pullPolicy }}
+          env:
+            - name: DATA_DIR
+              value: /data
+            - name: COG_SCRATCH_DIR
+              value: /scratch
+            # Same bucket as the app, with its own read + convert identity.
+            - name: S3_BUCKETS
+              value: {{ include "webodm.s3.bucket" . | quote }}
+            - name: S3_ENDPOINT_URL
+              value: {{ include "webodm.s3.endpoint" . | quote }}
+            {{- with include "webodm.s3.region" . }}
+            - name: AWS_REGION
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if include "webodm.s3.pathStyle" . }}
+            - name: S3_FORCE_PATH_STYLE
+              value: "true"
+            {{- end }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "AWS_ACCESS_KEY_ID" "key" "s3_geospatial_access_key_id" "optional" true) | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "AWS_SECRET_ACCESS_KEY" "key" "s3_geospatial_secret_access_key" "optional" true) | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 5000
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- with .Values.geospatial.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: sites
+              mountPath: /workspace/frappe-bench/sites
+            # Pod-local scratch for S3 -> S3 COG conversion; never the sites volume.
+            - name: scratch
+              mountPath: /scratch
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: frappe-data
+        - name: sites
+          persistentVolumeClaim:
+            claimName: frappe-sites
+        - name: scratch
+          emptyDir:
+            sizeLimit: {{ .Values.geospatial.scratchSizeLimit }}
+---
+# ClusterIP only: the service is unauthenticated and is reached exclusively
+# through the Frappe tile proxy (webodm_core.api.tiles), never from Caddy.
+apiVersion: v1
+kind: Service
+metadata:
+  name: geospatial
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "geospatial") | nindent 4 }}
+spec:
+  selector:
+    {{- include "webodm.selectorLabels" (dict "ctx" . "component" "geospatial") | nindent 4 }}
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http

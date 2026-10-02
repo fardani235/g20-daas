@@ -1,21 +1,60 @@
-# Auto-TLS via Let's Encrypt DNS-01 challenge.
-# Set CLOUDFLARE_API_TOKEN or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY in the environment.
-#
-# The Kubernetes chart carries its own copy of the site blocks below
-# (infra/helm/webodm/files/Caddyfile): change both together.
+{{- /*
+  Kubernetes edition of infra/caddy/Caddyfile, rendered into a ConfigMap.
+  The site blocks are kept line-for-line with the compose file (whitelist,
+  SocketIO host fix-ups, security headers, CSP, rate limits); when one changes,
+  change the other. Only the Kubernetes-specific parts are templated: TLS
+  mode, PROXY protocol / trusted proxies, and the probe listener.
+*/ -}}
+{{- $tls := .Values.caddy.tls -}}
+{{- $scheme := ternary "http://" "" (eq $tls.mode "off") -}}
+{{- $trusted := gt (len .Values.caddy.trustedProxies) 0 -}}
+{{- /* With trusted proxies the client is taken from X-Forwarded-For. */ -}}
+{{- $ipMatcher := ternary "client_ip" "remote_ip" $trusted -}}
+{{- $clientIP := ternary "{client_ip}" "{remote}" $trusted -}}
+{{- $rateKey := ternary "{client_ip}" "{remote_host}" $trusted -}}
+{{- /* Behind an Ingress the browser speaks HTTPS even though Caddy sees HTTP. */ -}}
+{{- $proto := ternary "https" "{scheme}" .Values.caddy.ingress.enabled -}}
 {
-    email admin@{$SITE_DOMAIN}
+    email {{ $tls.email | default (printf "admin@%s" .Values.site.domain) }}
     admin off
+{{- if eq $tls.mode "off" }}
+    auto_https off
+{{- end }}
+{{- if or .Values.caddy.proxyProtocol.enabled $trusted }}
+{{- range $listener := ternary (list ":80") (list ":80" ":443") (eq $tls.mode "off") }}
+    servers {{ $listener }} {
+{{- if $.Values.caddy.proxyProtocol.enabled }}
+        listener_wrappers {
+            proxy_protocol {
+                timeout 5s
+                allow {{ join " " $.Values.caddy.proxyProtocol.allow }}
+            }
+{{- if eq $listener ":443" }}
+            tls
+{{- end }}
+        }
+{{- end }}
+{{- if $trusted }}
+        trusted_proxies static {{ join " " $.Values.caddy.trustedProxies }}
+{{- end }}
+    }
+{{- end }}
+{{- end }}
+}
+
+# Probe target for the kubelet; not published by the Service.
+http://:8081 {
+    respond /healthz "ok" 200
 }
 
 # Admin subdomain — Frappe Desk UI. Root redirects to /desk.
-admin.{$SITE_DOMAIN} {
+{{ $scheme }}admin.{$SITE_DOMAIN} {
+{{- template "webodm.caddy.tls" $tls }}
     encode zstd gzip
 
     # The Desk/admin surface is not public: only client IPs in ADMIN_WHITELIST
-    # may reach it. Defaults to private ranges so an unset value fails closed
-    # (the deployment guide's IP-whitelist control, enforced here at last).
-    @not_admin_ip not remote_ip {$ADMIN_WHITELIST:private_ranges}
+    # may reach it. Defaults to private ranges so an unset value fails closed.
+    @not_admin_ip not {{ $ipMatcher }} {$ADMIN_WHITELIST:private_ranges}
 
     handle @not_admin_ip {
         respond "Forbidden" 403
@@ -30,7 +69,7 @@ admin.{$SITE_DOMAIN} {
                 match {
                     path /api/method/login
                 }
-                key {remote_host}
+                key {{ $rateKey }}
                 window 1s
                 events 50
             }
@@ -65,18 +104,19 @@ admin.{$SITE_DOMAIN} {
         # Everything else → Frappe web.
         reverse_proxy frappe-web:8000 {
             header_up Host {$SITE_DOMAIN}
-            header_up X-Real-IP {remote}
-            header_up X-Forwarded-For {remote}
-            header_up X-Forwarded-Proto {scheme}
+            header_up X-Real-IP {{ $clientIP }}
+            header_up X-Forwarded-For {{ $clientIP }}
+            header_up X-Forwarded-Proto {{ $proto }}
         }
     }
 }
 
-{$SITE_DOMAIN} {
+{{ $scheme }}{$SITE_DOMAIN} {
+{{- template "webodm.caddy.tls" $tls }}
     encode zstd gzip
 
-    # WebODM SPA is the home page. Redirect the root to the SPA base so
-    # https://webodm.local/ opens the Vue app directly (Frappe desk stays at /desk).
+    # WebODM SPA is the home page. Redirect the root to the SPA base so the
+    # site root opens the Vue app directly (Frappe desk stays at /desk).
     @root path /
     redir @root /assets/webodm_frontend/frontend/ permanent
 
@@ -97,7 +137,7 @@ admin.{$SITE_DOMAIN} {
             match {
                 path /api/method/login
             }
-            key {remote_host}
+            key {{ $rateKey }}
             window 1s
             events 50
         }
@@ -116,10 +156,8 @@ admin.{$SITE_DOMAIN} {
     }
 
     # NOTE: the geospatial service is intentionally NOT exposed here. It has no
-    # authentication of its own and reads rasters by absolute path, so it must
-    # only ever be reached via the session-authed Frappe proxy
-    # (webodm_core.api.tiles), which resolves task -> path after a permission
-    # check. The service stays on the backend network only.
+    # authentication of its own and must only be reached via the session-authed
+    # Frappe proxy (webodm_core.api.tiles).
 
     # Frappe static files (assets, files, public, private).
     # Use ** to match nested paths (e.g. /assets/frappe/dist/css/login.bundle.css).
@@ -129,8 +167,8 @@ admin.{$SITE_DOMAIN} {
     # Everything else → Frappe web (Vue SPA fallback included).
     reverse_proxy frappe-web:8000 {
         header_up Host {host}
-        header_up X-Real-IP {remote}
-        header_up X-Forwarded-For {remote}
-        header_up X-Forwarded-Proto {scheme}
+        header_up X-Real-IP {{ $clientIP }}
+        header_up X-Forwarded-For {{ $clientIP }}
+        header_up X-Forwarded-Proto {{ $proto }}
     }
 }

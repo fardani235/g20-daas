@@ -1,0 +1,147 @@
+{{- if .Values.minio.enabled }}
+# In-cluster object store for development. Production uses external S3
+# through the same objectStorage settings and leaves this off.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "minio") | nindent 4 }}
+spec:
+  replicas: 1
+  # The data volume is ReadWriteOnce: release it before the new pod starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" . "component" "minio") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" . "component" "minio") | nindent 8 }}
+    spec:
+      {{- include "webodm.podCommon" . | nindent 6 }}
+      automountServiceAccountToken: false
+      containers:
+        - name: minio
+          image: {{ include "webodm.image" .Values.images.minio }}
+          imagePullPolicy: {{ .Values.images.minio.pullPolicy }}
+          args: [server, /data, --console-address, ":9001"]
+          env:
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "MINIO_ROOT_USER" "key" "minio_root_user") | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "MINIO_ROOT_PASSWORD" "key" "minio_root_password") | nindent 12 }}
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: s3
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- with .Values.minio.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minio-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "minio") | nindent 4 }}
+spec:
+  selector:
+    {{- include "webodm.selectorLabels" (dict "ctx" . "component" "minio") | nindent 4 }}
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+    - name: console
+      port: 9001
+      targetPort: console
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "minio") | nindent 4 }}
+  annotations:
+    # Survives `helm uninstall`: delete the claim (or the namespace) to wipe it.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- include "webodm.storageClass" . | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ .Values.minio.persistence.size }}
+---
+# Creates the bucket (and the app / geospatial MinIO users) before the app
+# uses it; the Frappe pods wait for this Job alongside the site bootstrap.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "webodm.minio.jobName" . }}
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "minio-init") | nindent 4 }}
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" . "component" "minio-init") | nindent 8 }}
+    spec:
+      {{- include "webodm.podCommon" . | nindent 6 }}
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      containers:
+        - name: minio-init
+          image: {{ include "webodm.image" .Values.images.mc }}
+          imagePullPolicy: {{ .Values.images.mc.pullPolicy }}
+          command: [/bin/sh, /scripts/minio-init.sh]
+          env:
+            - name: MINIO_ENDPOINT
+              value: http://minio:9000
+            - name: BUCKET
+              value: {{ include "webodm.s3.bucket" . | quote }}
+            # mc keeps its alias config here; the default home is not writable.
+            - name: MC_CONFIG_DIR
+              value: /tmp/mc
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "MINIO_ROOT_USER" "key" "minio_root_user") | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "MINIO_ROOT_PASSWORD" "key" "minio_root_password") | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "APP_ACCESS_KEY_ID" "key" "s3_app_access_key_id") | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "APP_SECRET_ACCESS_KEY" "key" "s3_app_secret_access_key") | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "GEO_ACCESS_KEY_ID" "key" "s3_geospatial_access_key_id" "optional" true) | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "GEO_SECRET_ACCESS_KEY" "key" "s3_geospatial_secret_access_key" "optional" true) | nindent 12 }}
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: scripts
+          configMap:
+            name: webodm-scripts
+        - name: tmp
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,133 @@
+# Development overlay: the whole stack, self-contained, on one node (minikube).
+#
+#   scripts/k8s-init-secrets.sh webodm            # random credentials -> Secret
+#   helm upgrade --install webodm infra/helm/webodm -n webodm \
+#     -f infra/helm/webodm/values.dev.yaml
+#
+# Then map the hostnames to the node (`minikube ip`) in /etc/hosts and open
+# https://webodm.local:32443/ (self-signed: Caddy's internal CA).
+
+site:
+  domain: webodm.local
+
+# In-cluster object store instead of S3: MinIO + bucket Job, path-style
+# addressing, credentials from the secret (s3_app_* / s3_geospatial_*).
+minio:
+  enabled: true
+  persistence:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+objectStorage:
+  bucket: webodm-dev
+
+caddy:
+  tls:
+    mode: internal
+  service:
+    type: NodePort
+    nodePorts:
+      http: 32080
+      https: 32443
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+
+# Small volumes; the default StorageClass (minikube: hostpath) serves them
+# all. One node, so ReadWriteOnce claims can be shared freely.
+persistence:
+  sites:
+    size: 5Gi
+  data:
+    size: 5Gi
+  sandbox:
+    size: 2Gi
+
+postgres:
+  persistence:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+redisCache:
+  maxmemory: 128mb
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+
+redisQueue:
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+
+frappe:
+  web:
+    gunicornWorkers: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+  worker:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 384Mi
+  scheduler:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 192Mi
+  socketio:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 96Mi
+
+geospatial:
+  scratchSizeLimit: 5Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+
+pluginRunner:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 128Mi
+
+provisioner:
+  # "fixed" exercises the on-demand lifecycle against the in-cluster nodeodm
+  # (as docker-compose.dev.yml does); it needs nodeodm.enabled.
+  provider: none
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+
+# --- Switches for a tight node ----------------------------------------------
+# NodeODM is the heavy one (multi-GB image, and real processing wants far more
+# memory than it requests here). Turn it off to work on everything but
+# processing; turn backups off to save a claim.
+nodeodm:
+  enabled: true
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+
+backup:
+  enabled: true
+  persistence:
+    size: 2Gi

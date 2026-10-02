@@ -1,0 +1,98 @@
+{{- if .Values.provisioner.enabled }}
+# On-demand NodeODM compute API. Owns every cloud credential; the app only
+# ever sees this HTTP API. The nodes it provisions stay outside the cluster.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provisioner
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "provisioner") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" . "component" "provisioner") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" . "component" "provisioner") | nindent 8 }}
+    spec:
+      {{- include "webodm.podCommon" . | nindent 6 }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: provisioner
+          image: {{ include "webodm.image" .Values.images.provisioner }}
+          imagePullPolicy: {{ .Values.images.provisioner.pullPolicy }}
+          env:
+            - name: PROVISIONER_PROVIDER
+              value: {{ .Values.provisioner.provider | quote }}
+            - name: PROVISIONER_DEPLOYMENT
+              value: {{ include "webodm.siteName" . | quote }}
+            {{- if and (eq .Values.provisioner.provider "fixed") (not (hasKey .Values.provisioner.env "PROVISIONER_FIXED_ENDPOINT")) }}
+            - name: PROVISIONER_FIXED_ENDPOINT
+              value: nodeodm:3000
+            {{- end }}
+            {{- range $name, $value := .Values.provisioner.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "PROVISIONER_API_TOKEN" "key" "provisioner_api_token") | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "AWS_ACCESS_KEY_ID" "key" "aws_provisioner_access_key_id" "optional" true) | nindent 12 }}
+            {{- include "webodm.secretEnv" (dict "ctx" . "name" "AWS_SECRET_ACCESS_KEY" "key" "aws_provisioner_secret_access_key" "optional" true) | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 5002
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- with .Values.provisioner.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: provisioner
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "provisioner") | nindent 4 }}
+spec:
+  selector:
+    {{- include "webodm.selectorLabels" (dict "ctx" . "component" "provisioner") | nindent 4 }}
+  ports:
+    - name: http
+      port: 5002
+      targetPort: http
+{{- end }}

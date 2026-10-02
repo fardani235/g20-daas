@@ -1,0 +1,92 @@
+{{- if .Values.nodeodm.enabled }}
+# Static processing node. The app's seeded "Local NodeODM" record points at
+# nodeodm:3000, hence the fixed Service name.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodeodm
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "nodeodm") | nindent 4 }}
+spec:
+  replicas: 1
+  # The task volume is ReadWriteOnce: release it before the new pod starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "webodm.selectorLabels" (dict "ctx" . "component" "nodeodm") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "webodm.selectorLabels" (dict "ctx" . "component" "nodeodm") | nindent 8 }}
+    spec:
+      {{- include "webodm.podCommon" . | nindent 6 }}
+      automountServiceAccountToken: false
+      containers:
+        - name: nodeodm
+          image: {{ include "webodm.image" .Values.images.nodeodm }}
+          imagePullPolicy: {{ .Values.images.nodeodm.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+          startupProbe:
+            httpGet:
+              path: /info
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /info
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+          # Slow to fail: the node is busy, not dead, while a task is processing.
+          livenessProbe:
+            httpGet:
+              path: /info
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
+          {{- with .Values.nodeodm.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/www/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: nodeodm-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeodm
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "nodeodm") | nindent 4 }}
+spec:
+  selector:
+    {{- include "webodm.selectorLabels" (dict "ctx" . "component" "nodeodm") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nodeodm-data
+  labels:
+    {{- include "webodm.labels" (dict "ctx" . "component" "nodeodm") | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- include "webodm.storageClass" . | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ .Values.nodeodm.persistence.size }}
+{{- end }}
