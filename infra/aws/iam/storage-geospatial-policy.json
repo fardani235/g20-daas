@@ -12,10 +12,13 @@
       ]
     },
     {
-      "Sid": "WriteConvertedCogs",
+      "Sid": "WriteConvertedCogsAndOctrees",
       "Effect": "Allow",
       "Action": ["s3:PutObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
-      "Resource": "arn:aws:s3:::BUCKET/PREFIXorgs/*/tasks/*/assets/*.tif"
+      "Resource": [
+        "arn:aws:s3:::BUCKET/PREFIXorgs/*/tasks/*/assets/*.tif",
+        "arn:aws:s3:::BUCKET/PREFIXorgs/*/tasks/*/assets/potree/*"
+      ]
     },
     {
       "Sid": "HeadObjectsNeedsList",

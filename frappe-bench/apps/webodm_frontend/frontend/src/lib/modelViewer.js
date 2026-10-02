@@ -116,15 +116,26 @@ const PRESET_DIRECTIONS = {
   east: normalize({ x: -0.94, y: 0.35, z: 0 }),
 }
 
+// The same presets for a Z-up scene (the point cloud mode keeps ODM's native
+// axes: X east, Y north, Z up, because Potree's shaders colour and clip by
+// world Z). "north" sits south (-Y) looking north; "east" sits west.
+const PRESET_DIRECTIONS_Z_UP = {
+  iso: normalize({ x: 0.58, y: -0.64, z: 0.5 }),
+  top: normalize({ x: 0, y: -1e-3, z: 1 }),
+  north: normalize({ x: 0, y: -0.94, z: 0.35 }),
+  east: normalize({ x: -0.94, y: 0, z: 0.35 }),
+}
+
 function normalize(v) {
   const n = Math.hypot(v.x, v.y, v.z) || 1
   return { x: v.x / n, y: v.y / n, z: v.z / n }
 }
 
-/** Camera position for a named preset, orbiting `center` at `distance`. */
-export function presetPosition(preset, center, distance) {
+/** Camera position for a named preset, orbiting `center` at `distance`; `up` is 'y' (models) or 'z' (point clouds). */
+export function presetPosition(preset, center, distance, up = 'y') {
   const c = { x: center?.x || 0, y: center?.y || 0, z: center?.z || 0 }
-  const d = PRESET_DIRECTIONS[preset] || PRESET_DIRECTIONS.iso
+  const table = up === 'z' ? PRESET_DIRECTIONS_Z_UP : PRESET_DIRECTIONS
+  const d = table[preset] || table.iso
   return { x: c.x + d.x * distance, y: c.y + d.y * distance, z: c.z + d.z * distance }
 }
 
@@ -226,6 +237,7 @@ export function keyAction(event) {
     case 'g': case 'G': return 'toggleGrid'
     case 'f': case 'F': return 'toggleFullscreen'
     case '?': case 'h': case 'H': return 'toggleHelp'
+    case 'Enter': return 'finishMeasure'
     case 'Escape': return 'escape'
     default: return null
   }
@@ -241,10 +253,16 @@ export const PROCESSING_STATUSES = ['Pending', 'Queued', 'Provisioning', 'Runnin
  * What to show when a task has no model to display. Returns null when the
  * task does have a model (the viewer should load it).
  */
-// Which GLB the viewer shows. A `?run=<name>` query selects a plugin run's
-// model output (e.g. the 3D Reconstruction plugin) instead of the task's own
-// ODM model; both are private file URLs the viewer fetches the same way.
-export function modelSourceFor(task, runs, runName) {
+// What the viewer shows. A `?run=<name>` query selects a plugin run's model
+// output (e.g. the 3D Reconstruction plugin) instead of the task's own ODM
+// model (both private GLB URLs fetched the same way); `?source=pointcloud`
+// selects the task's point cloud, streamed as a Potree octree instead.
+export function modelSourceFor(task, runs, runName, sourceKind = '') {
+  if (sourceKind === 'pointcloud') {
+    return task?.point_cloud
+      ? { kind: 'pointcloud', url: task.point_cloud, run: null }
+      : { kind: 'pointcloud-missing', url: null, run: null }
+  }
   if (runName) {
     const run = (runs || []).find(r => r.name === runName)
     if (run && run.output_kind === 'model' && run.status === 'Completed' && run.output_file) {
@@ -255,13 +273,21 @@ export function modelSourceFor(task, runs, runName) {
   return task?.model ? { kind: 'task', url: task.model, run: null } : { kind: 'none', url: null, run: null }
 }
 
-// Entries for the model switcher: the project's tasks with an ODM model plus
-// this task's completed reconstruction runs. Values are `task:<name>` /
-// `run:<name>` so one Select can route to either.
+// Entries for the model switcher: the project's tasks with an ODM model
+// and/or point cloud plus this task's completed reconstruction runs. Values
+// are `task:<name>` / `pointcloud:<name>` / `run:<name>` so one Select can
+// route to any of them.
 export function modelChoices(datasets, runs, taskName, labelFor = id => id) {
-  const out = (datasets || []).map(d => ({
-    value: `task:${d.name}`, label: d.title || d.name, kind: 'task',
-  }))
+  const out = []
+  for (const d of datasets || []) {
+    // Rows from a `model is set` query may omit the field; rows that carry
+    // both fields are entries for whichever outputs exist.
+    const hasModel = d.model || (d.model === undefined && d.point_cloud === undefined)
+    if (hasModel) out.push({ value: `task:${d.name}`, label: d.title || d.name, kind: 'task' })
+    if (d.point_cloud) {
+      out.push({ value: `pointcloud:${d.name}`, label: `${d.title || d.name} · Point cloud`, kind: 'pointcloud' })
+    }
+  }
   for (const run of runs || []) {
     if (run.output_kind !== 'model' || run.status !== 'Completed' || !run.output_file) continue
     if (taskName && run.task && run.task !== taskName) continue
@@ -274,6 +300,19 @@ export function modelChoices(datasets, runs, taskName, labelFor = id => id) {
 export function emptyStateFor(task, source = null) {
   if (!task) {
     return { kind: 'missing', title: 'Task not found', detail: 'This task does not exist or you do not have access to it.' }
+  }
+  if (source?.kind === 'pointcloud-missing') {
+    if (PROCESSING_STATUSES.includes(task.status)) {
+      return { kind: 'processing', title: 'Processing in progress',
+               detail: 'The point cloud appears here automatically when processing completes.' }
+    }
+    return {
+      kind: 'none',
+      title: 'No point cloud for this task',
+      detail: task.status === 'Failed' || task.status === 'Cancelled'
+        ? 'No point cloud was produced. Check the console for details, then restart processing.'
+        : 'Processing finished without a georeferenced point cloud.',
+    }
   }
   if (source?.kind === 'run-missing') {
     const status = source.run?.status

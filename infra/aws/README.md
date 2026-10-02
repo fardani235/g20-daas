@@ -11,7 +11,7 @@ empty). The full walkthrough is in
 |---|---|
 | `iam/provisioner-policy.json` | **Provisioning** identity used by `services/provisioner`: launch, describe and terminate EC2 instances — only ones tagged `webodm:managed=true` + this deployment. No S3 access. |
 | `iam/storage-app-policy.json` | **App writer** identity (`frappe-web`/`worker`/`scheduler`): read/write/delete under `PREFIXorgs/*`. Uploads inputs, relays outputs, fills the cache, deletes a task's prefix. |
-| `iam/storage-geospatial-policy.json` | **Raster converter** identity (`geospatial`): read raw rasters and assets, write only `assets/*.tif` (the COGs). No delete, no access to `inputs/`. |
+| `iam/storage-geospatial-policy.json` | **Converter** identity (`geospatial`): read raw rasters and assets, write only `assets/*.tif` (the COGs) and `assets/potree/*` (point cloud viewer octrees). No delete, no access to `inputs/`. |
 | `iam/storage-signer-policy.json` | **Signer** identity for presigned GET URLs of outputs, should you enable them. Read only, outputs only. Not used by the shipped code paths (the app serves through its own session-authenticated routes); kept so the privilege split is complete. |
 | `iam/bucket-policy.json` | Bucket policy: deny non-TLS access. The bucket must also have *Block Public Access* fully on and default encryption (SSE-S3 or KMS). |
 | `bake-nodeodm-ami.sh` | Builds the prebaked NodeODM AMI (Docker + image) so nodes boot in ~1 min instead of ~5. Optional: the bootstrap handles a stock AMI. |

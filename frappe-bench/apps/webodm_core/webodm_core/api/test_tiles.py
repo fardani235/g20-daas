@@ -70,3 +70,23 @@ class TestVolumeProxy(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestVolumePolygonCrs(unittest.TestCase):
+    def _post_body(self, **kwargs):
+        resp = MagicMock()
+        resp.json.return_value = {"volume": 1.0, "fill": 1.0, "cut": 0.0, "area": 2.0, "base_plane": "triangulate"}
+        resp.raise_for_status.return_value = None
+        with patch.object(tiles, "_resolve_raster_path", return_value="/abs/dsm.tif"), \
+             patch.object(tiles, "_geospatial_url", return_value="http://geo:5000"), \
+             patch.object(tiles.requests, "post", return_value=resp) as post:
+            tiles.volume("TASK-1", '{"type":"Polygon","coordinates":[[[0,0],[0,1],[1,1],[0,0]]]}', **kwargs)
+        return post.call_args[1]["json"]
+
+    def test_default_sends_no_polygon_crs(self):
+        self.assertNotIn("polygon_crs", self._post_body())
+
+    def test_forwards_native_and_wkt_polygon_crs(self):
+        self.assertEqual(self._post_body(polygon_crs="native")["polygon_crs"], "native")
+        wkt = 'PROJCS["WGS 84 / UTM zone 32N"]'
+        self.assertEqual(self._post_body(polygon_crs=wkt)["polygon_crs"], wkt)

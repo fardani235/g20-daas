@@ -3,21 +3,33 @@
 // viewer state passed in and emits intents; pages/ModelView.vue wires them to
 // the useModelViewer composable. Icon-only with tooltips so it stays compact
 // on phones; the Help dialog lists every control in full.
-import { ChevronDown, Compass, Grid3x3, CircleHelp, Hand, Home, Maximize2, Minimize2, Rotate3d, ZoomIn, ZoomOut } from 'lucide-vue-next'
+import { Box, ChevronDown, Compass, Grid3x3, CircleHelp, Hand, Home, Maximize2, Minimize2, Pentagon, Rotate3d, Ruler, Trash2, ZoomIn, ZoomOut } from 'lucide-vue-next'
 import { Button, DropdownMenu, DropdownMenuItem, DropdownMenuLabel } from '@/components/ui'
 import { MODES, MODE_LABELS, VIEW_PRESETS, VIEW_LABELS } from '@/lib/modelViewer'
+import { MEASURE_KINDS, MEASURE_LABELS } from '@/lib/potree'
 
 defineProps({
   mode: { type: String, default: 'rotate' },
   gridVisible: { type: Boolean, default: true },
   fullscreen: { type: Boolean, default: false },
+  // Measurement tools (point cloud mode). `measureKind` is the active tool.
+  measureEnabled: { type: Boolean, default: false },
+  measureKind: { type: String, default: null },
+  volumeEnabled: { type: Boolean, default: false },
+  hasMeasurements: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:mode', 'zoom-in', 'zoom-out', 'reset', 'view', 'toggle-grid', 'toggle-fullscreen', 'help'])
+const emit = defineEmits(['update:mode', 'zoom-in', 'zoom-out', 'reset', 'view', 'toggle-grid', 'toggle-fullscreen', 'help', 'measure', 'clear-measurements'])
 
 const MODE_ICONS = { rotate: Rotate3d, pan: Hand, zoom: ZoomIn }
 const MODE_KEYS = { rotate: 'left-drag', pan: 'left-drag (or right-drag in Rotate)', zoom: 'left-drag up/down (or scroll)' }
 const VIEW_KEYS = { iso: '1', top: '2', north: '3', east: '4' }
+const MEASURE_ICONS = { distance: Ruler, area: Pentagon, volume: Box }
+const MEASURE_HINTS = {
+  distance: 'Measure distance — click points, Enter or double-click to finish',
+  area: 'Measure area — click 3+ points, click the first point or press Enter to close',
+  volume: 'Measure volume over the DSM — click 3+ points, click the first point or press Enter to close',
+}
 </script>
 
 <template>
@@ -94,6 +106,41 @@ const VIEW_KEYS = { iso: '1', top: '2', north: '3', east: '4' }
       </Button>
       <Button size="icon" variant="ghost" class="h-8 w-8" title="Controls help (?)" aria-label="Controls help" @click="emit('help')">
         <CircleHelp />
+      </Button>
+    </div>
+
+    <div
+      v-if="measureEnabled"
+      class="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-border bg-card/90 p-1 shadow-sm backdrop-blur"
+      role="radiogroup"
+      aria-label="Measure"
+      data-measure-tools
+    >
+      <Button
+        v-for="k in MEASURE_KINDS"
+        :key="k"
+        size="icon"
+        class="h-8 w-8"
+        :variant="measureKind === k ? 'default' : 'ghost'"
+        :disabled="k === 'volume' && !volumeEnabled"
+        :title="k === 'volume' && !volumeEnabled ? 'Volume needs a DSM; this task has none' : MEASURE_HINTS[k]"
+        :aria-label="`Measure ${MEASURE_LABELS[k].toLowerCase()}`"
+        :aria-checked="measureKind === k"
+        role="radio"
+        @click="emit('measure', measureKind === k ? null : k)"
+      >
+        <component :is="MEASURE_ICONS[k]" />
+      </Button>
+      <Button
+        v-if="hasMeasurements"
+        size="icon"
+        variant="ghost"
+        class="h-8 w-8"
+        title="Clear measurements"
+        aria-label="Clear measurements"
+        @click="emit('clear-measurements')"
+      >
+        <Trash2 />
       </Button>
     </div>
   </div>

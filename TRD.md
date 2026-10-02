@@ -60,12 +60,12 @@ installed versions shown, on Python 3.12:
 
 GDAL ships bundled inside the rasterio / rio-tiler / rio-cogeo manylinux wheels,
 so **no system GDAL install is required** for tile serving and COG conversion.
-PDAL is only needed for the (still-stubbed) point cloud endpoints.
+Point clouds need no PDAL either: `/pointcloud/to-potree` shells out to PotreeConverter 2.x, which the geospatial image builds from source (see `services/geospatial/Dockerfile`).
 
 | Package | Purpose | Required now? |
 |---|---|---|
 | gdal-bin / libgdal-dev | System GDAL | No — bundled in wheels |
-| pdal / libpdal-dev | Point cloud (LAS/LAZ) processing | Only for Phase 4 point cloud |
+| PotreeConverter 2.1.1 (+ libtbb12) | LAS/LAZ → Potree 2.0 octree for the viewer | Yes — built in the image |
 
 ### 2.4 JavaScript Dependencies (Frontend)
 
@@ -88,7 +88,7 @@ Defined in `webodm_frontend/frontend/package.json`:
 | Package | Purpose |
 |---|---|
 | three.js | 3D textured-model viewer (GLB + Draco; see `docs/superpowers/specs/2026-09-22-3d-viewer-ux-design.md`) |
-| potree-core | Point cloud viewer |
+| potree-core 2.0.15 | Potree 2.0 point cloud loader for the 3D viewer (runtime shader patches, see `docs/point-cloud/README.md`) |
 | proj4 | Coordinate reprojection |
 | shpjs | Shapefile parsing |
 | exifr | EXIF data extraction |
@@ -108,7 +108,7 @@ Defined in `webodm_frontend/frontend/package.json`:
 
 ### 3.2 Geospatial Image (Custom)
 - Base: Ubuntu 24.04
-- Python 3.12, GDAL, PDAL
+- Python 3.12, GDAL, PotreeConverter 2.1.1
 - FastAPI application
 - Port: 5000
 

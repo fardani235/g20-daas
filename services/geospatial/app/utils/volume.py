@@ -15,6 +15,7 @@ single absolute number.
 
 import numpy as np
 import rasterio
+from rasterio.crs import CRS
 from rasterio.mask import mask as rio_mask
 from rasterio.warp import transform_geom
 from scipy.interpolate import griddata
@@ -156,7 +157,26 @@ def _base_surface(base_method, vx, vy, vz, xs_c, ys_c):
     raise ValueError(f"Invalid base method {base_method}")
 
 
-def compute_volume(path, polygon_4326, base_method=DEFAULT_BASE_METHOD):
+def _polygon_crs(polygon_crs, ds_crs):
+    """CRS the polygon is expressed in: default EPSG:4326, ``"native"`` = the DSM's own."""
+    if not polygon_crs:
+        return "EPSG:4326"
+    if str(polygon_crs).strip().lower() == "native":
+        return ds_crs
+    try:
+        return CRS.from_user_input(polygon_crs)
+    except Exception as e:  # rasterio raises CRSError (a ValueError subclass) or ValueError
+        raise ValueError(f"Invalid polygon_crs: {e}") from None
+
+
+def compute_volume(path, polygon, base_method=DEFAULT_BASE_METHOD, polygon_crs=None):
+    """Fill/cut/net volume under ``polygon`` over the DSM at ``path``.
+
+    ``polygon`` is a GeoJSON Polygon in ``polygon_crs``: EPSG:4326 by default
+    (the map), ``"native"`` for the DSM's own CRS, or any CRS string (WKT,
+    ``EPSG:n``) — the 3D viewer sends vertices picked on the point cloud in
+    the cloud's CRS, which is the DSM's for ODM outputs.
+    """
     if base_method not in BASE_METHODS:
         raise ValueError(
             f"Invalid base method {base_method}; expected one of {', '.join(BASE_METHODS)}"
@@ -166,7 +186,8 @@ def compute_volume(path, polygon_4326, base_method=DEFAULT_BASE_METHOD):
         if ds.crs is None or not ds.crs.is_projected:
             raise ValueError("DSM is not in a projected CRS")
 
-        geom = transform_geom("EPSG:4326", ds.crs, polygon_4326)
+        src_crs = _polygon_crs(polygon_crs, ds.crs)
+        geom = polygon if src_crs == ds.crs else transform_geom(src_crs, ds.crs, polygon)
 
         try:
             data, transform = rio_mask(ds, [geom], crop=True, filled=False)

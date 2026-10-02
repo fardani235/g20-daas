@@ -7,6 +7,7 @@
       <h2 class="truncate text-base font-medium text-foreground">
         {{ task?.title || task?.name || (taskLoading ? 'Loading…' : '3D viewer') }}
         <span v-if="source.kind === 'run'" class="text-muted-foreground">· {{ sourceLabel }}</span>
+        <span v-else-if="isPointCloud" class="text-muted-foreground">· Point cloud</span>
       </h2>
       <Badge v-if="task" :variant="statusVariant(task.status)">{{ task.status }}</Badge>
 
@@ -15,7 +16,7 @@
           v-if="choices.length > 1"
           :model-value="currentChoice"
           class="h-8 w-auto max-w-[16rem] py-0 text-xs"
-          title="Switch between the task's model, its 3D reconstructions and other tasks"
+          title="Switch between the task's model, its 3D reconstructions, its point cloud and other tasks"
           aria-label="Model"
           @update:model-value="switchDataset"
         >
@@ -30,6 +31,7 @@
           :href="source.url"
           download
           class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+          :title="isPointCloud ? 'Download the point cloud (LAZ)' : 'Download the model'"
         >
           <Download class="size-3.5" />
           <span class="hidden sm:inline">Download</span>
@@ -41,8 +43,9 @@
     <div
       ref="stageRef"
       class="relative min-h-0 flex-1 bg-[#1c2030] outline-none"
+      :class="viewer.measure.kind && 'cursor-crosshair'"
       tabindex="0"
-      aria-label="3D model viewer"
+      :aria-label="isPointCloud ? '3D point cloud viewer' : '3D model viewer'"
       @keydown="onKeydown"
       @pointerdown="stageRef?.focus({ preventScroll: true })"
     >
@@ -53,6 +56,10 @@
           :mode="viewer.state.mode"
           :grid-visible="viewer.state.gridVisible"
           :fullscreen="viewer.state.fullscreen"
+          :measure-enabled="isPointCloud"
+          :measure-kind="viewer.measure.kind"
+          :volume-enabled="hasDsm"
+          :has-measurements="viewer.measure.measurements.length > 0"
           @update:mode="setMode"
           @zoom-in="act('zoomIn')"
           @zoom-out="act('zoomOut')"
@@ -61,7 +68,45 @@
           @toggle-grid="act('toggleGrid')"
           @toggle-fullscreen="toggleFullscreen"
           @help="helpOpen = true"
+          @measure="setMeasure"
+          @clear-measurements="viewer.clearMeasurements()"
         />
+
+        <!-- Point cloud controls (right side) -->
+        <div v-if="isPointCloud && viewer.pointCloud.metadata" class="pointer-events-none absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
+          <PointCloudPanel
+            :metadata="viewer.pointCloud.metadata"
+            :settings="pcSettings"
+            :budget-cap="budgetCap"
+            :stats="viewer.pointCloud"
+            @update="setPointCloudSetting"
+          />
+        </div>
+
+        <!-- Measurement labels, anchored on the shapes -->
+        <div class="pointer-events-none absolute inset-0 z-10 overflow-hidden" data-measure-labels>
+          <div
+            v-for="label in viewer.measure.labels"
+            :key="label.id"
+            class="pointer-events-auto absolute flex -translate-x-1/2 -translate-y-full items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 font-mono text-[11px] shadow"
+            :class="label.status === 'drawing' ? 'bg-sky-500/90 text-white' : label.status === 'error' ? 'bg-destructive text-destructive-foreground' : 'bg-amber-500/95 text-black'"
+            :style="{ left: `${label.x}px`, top: `${label.y - 10}px` }"
+            :data-measure-label="label.kind"
+          >
+            <LoaderCircle v-if="label.status === 'pending'" class="size-3 animate-spin" />
+            <span>{{ label.text }}</span>
+            <button
+              v-if="label.status !== 'drawing'"
+              type="button"
+              class="ml-1 rounded px-1 text-black/60 hover:bg-black/10 hover:text-black"
+              title="Remove measurement"
+              aria-label="Remove measurement"
+              @click="viewer.removeMeasurement(label.id)"
+            >
+              ×
+            </button>
+          </div>
+        </div>
 
         <Transition
           enter-active-class="transition-opacity duration-300"
@@ -70,10 +115,10 @@
           leave-to-class="opacity-0"
         >
           <p
-            v-if="hintVisible"
+            v-if="hintVisible || viewer.measure.kind"
             class="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[calc(100%-1.5rem)] rounded-md bg-black/50 px-2.5 py-1 text-xs text-white/90 backdrop-blur"
           >
-            {{ hintText }}
+            {{ viewer.measure.kind ? measureHint : hintText }}
           </p>
         </Transition>
 
@@ -81,15 +126,23 @@
           class="pointer-events-auto absolute bottom-3 right-3 z-10 hidden rounded-md bg-black/50 px-2.5 py-1 font-mono text-[11px] text-white/80 backdrop-blur sm:block"
           :title="statsTitle"
         >
-          {{ formatCount(viewer.state.stats.triangles) }} tris · {{ formatBytes(viewer.state.stats.bytes) }}
+          <template v-if="isPointCloud">
+            {{ formatCount(viewer.pointCloud.visiblePoints) }} / {{ formatCount(viewer.pointCloud.totalPoints) }} pts<template v-if="viewer.pointCloud.loadingNodes"> · loading…</template>
+          </template>
+          <template v-else>
+            {{ formatCount(viewer.state.stats.triangles) }} tris · {{ formatBytes(viewer.state.stats.bytes) }}
+          </template>
         </p>
       </template>
 
-      <!-- Loading -->
-      <div v-if="viewer.state.status === 'loading' || taskLoading" class="absolute inset-0 z-20 flex items-center justify-center bg-[#1c2030]/85">
-        <div class="w-64 text-center">
+      <!-- Loading (download / parse, or the first-open octree conversion) -->
+      <div v-if="viewer.state.status === 'loading' || taskLoading || converting" class="absolute inset-0 z-20 flex items-center justify-center bg-[#1c2030]/85">
+        <div class="w-72 text-center" data-loading>
           <LoaderCircle class="mx-auto mb-3 size-8 animate-spin text-primary" />
           <p class="text-sm text-white/90">{{ loadingLabel }}</p>
+          <p v-if="converting" class="mt-1 text-xs text-white/60">
+            The first open converts the point cloud into a streamable octree. This can take a few minutes for large clouds; later opens are instant.
+          </p>
           <template v-if="viewer.state.phase === 'download'">
             <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/15">
               <div
@@ -105,14 +158,16 @@
         </div>
       </div>
 
-      <!-- Error -->
-      <div v-else-if="viewer.state.status === 'error'" class="absolute inset-0 z-20 flex items-center justify-center bg-[#1c2030]/85 p-4">
-        <div class="max-w-md text-center">
+      <!-- Error (viewer or conversion) -->
+      <div v-else-if="viewer.state.status === 'error' || conversionError" class="absolute inset-0 z-20 flex items-center justify-center bg-[#1c2030]/85 p-4">
+        <div class="max-w-md text-center" data-error>
           <TriangleAlert class="mx-auto mb-3 size-10 text-warning" />
-          <p class="text-sm font-medium text-white">The 3D model could not be displayed</p>
-          <p class="mt-1 text-sm text-white/70">{{ viewer.state.error }}</p>
+          <p class="text-sm font-medium text-white">
+            {{ conversionError ? 'The point cloud could not be prepared' : isPointCloud ? 'The point cloud could not be displayed' : 'The 3D model could not be displayed' }}
+          </p>
+          <p class="mt-1 text-sm text-white/70">{{ conversionError || viewer.state.error }}</p>
           <div class="mt-4 flex justify-center gap-2">
-            <Button size="sm" @click="loadModel">
+            <Button size="sm" @click="retry">
               <RefreshCw />
               Retry
             </Button>
@@ -132,7 +187,7 @@
           <div class="mt-4 flex justify-center gap-2">
             <a v-if="source.url" :href="source.url" download class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90">
               <Download class="size-3.5" />
-              Download model
+              {{ isPointCloud ? 'Download point cloud' : 'Download model' }}
             </a>
             <Button size="sm" variant="outline" @click="backToProject">Back to project</Button>
           </div>
@@ -176,6 +231,15 @@
             <div class="flex justify-between gap-3"><dt>Zoom &amp; pan</dt><dd class="text-right">Two fingers</dd></div>
           </dl>
           <p class="mt-3 text-xs text-muted-foreground">The Rotate / Pan / Zoom buttons change what the left button and one finger do.</p>
+          <template v-if="isPointCloud">
+            <p class="mb-1.5 mt-4 font-medium text-foreground">Measuring (point cloud)</p>
+            <dl class="space-y-1 text-muted-foreground">
+              <div class="flex justify-between gap-3"><dt>Add a point</dt><dd class="text-right">Click on the cloud</dd></div>
+              <div class="flex justify-between gap-3"><dt>Finish</dt><dd class="text-right">Enter, double-click, or click the first point</dd></div>
+              <div class="flex justify-between gap-3"><dt>Cancel</dt><dd class="text-right">Esc</dd></div>
+            </dl>
+            <p class="mt-2 text-xs text-muted-foreground">Distances follow the picked points in 3D; areas are horizontal. Volumes come from the task's DSM, never from the points, so they need a DSM.</p>
+          </template>
         </div>
         <div>
           <p class="mb-1.5 font-medium text-foreground">Keyboard</p>
@@ -197,12 +261,14 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Box, Download, LoaderCircle, MonitorX, RefreshCw, Terminal, TriangleAlert } from 'lucide-vue-next'
 import { Badge, Button, Dialog, Select } from '@/components/ui'
 import ModelToolbar from '@/components/ModelToolbar.vue'
+import PointCloudPanel from '@/components/PointCloudPanel.vue'
 import { statusVariant } from '@/lib/status'
+import { toast } from '@/lib/toast'
 import { useModelViewer } from '@/composables/useModelViewer'
 import {
   PROCESSING_STATUSES,
@@ -216,6 +282,20 @@ import {
   progressPercent,
 } from '@/lib/modelViewer'
 import { listPlugins, listRuns } from '@/lib/plugins'
+import {
+  CONVERTING_STATUSES,
+  MEASURE_LABELS,
+  POINT_CLOUD_SOURCE,
+  budgetCapFor,
+  computeVolumeNative,
+  conversionLabel,
+  defaultColorMode,
+  getPotreeState,
+  loadPointCloudSettings,
+  pointCloudRoute,
+  savePointCloudSettings,
+} from '@/lib/potree'
+import { loadVolumeBaseMethod } from '@/lib/volumeMethods'
 
 const KEYBOARD_HELP = [
   [['←', '→', '↑', '↓'], 'Pan (also W A S D)'],
@@ -224,10 +304,13 @@ const KEYBOARD_HELP = [
   [['1', '2', '3', '4'], 'Isometric / Top / North / East'],
   [['G'], 'Toggle ground grid'],
   [['F'], 'Fullscreen'],
+  [['Enter'], 'Finish measurement'],
+  [['Esc'], 'Cancel measurement'],
   [['?'], 'This help'],
 ]
 
 const POLL_MS = 5000
+const CONVERSION_POLL_MS = 4000
 const HINT_MS = 6000
 
 const route = useRoute()
@@ -243,27 +326,47 @@ const modelRuns = ref([])
 const pluginLabels = ref({})
 const helpOpen = ref(false)
 const hintVisible = ref(false)
+// Octree conversion state from the backend (point cloud source only).
+const potreeState = ref(null)
 
 let pollTimer = null
+let conversionTimer = null
 let hintTimer = null
 let requestSeq = 0
 
-const viewer = useModelViewer(canvasRef, { onInteract: () => showHint(false) })
+const viewer = useModelViewer(canvasRef, {
+  onInteract: () => showHint(false),
+  onVolume: computeVolume,
+  onMeasureMiss: () => toast.info('No point under the cursor — click on the point cloud'),
+})
 // Dev-only hook so browser tests can read camera state without scraping pixels.
 if (import.meta.env.DEV) window.__modelViewer = viewer
 
 const taskId = computed(() => String(route.params.taskId || ''))
 const projectId = computed(() => String(route.params.id || ''))
 const runId = computed(() => (route.query.run ? String(route.query.run) : ''))
+const sourceKind = computed(() => (route.query.source === POINT_CLOUD_SOURCE ? POINT_CLOUD_SOURCE : ''))
 
-// What is shown: the task's ODM model, or a reconstruction run's model (?run=).
-const source = computed(() => modelSourceFor(task.value, modelRuns.value, runId.value))
+// What is shown: the task's ODM model, a reconstruction run's model (?run=),
+// or the task's point cloud (?source=pointcloud).
+const source = computed(() => modelSourceFor(task.value, modelRuns.value, runId.value, sourceKind.value))
+const isPointCloud = computed(() => source.value.kind === 'pointcloud')
 const labelFor = id => pluginLabels.value[id] || String(id || '').split('.').pop()
 const sourceLabel = computed(() => (source.value.run ? labelFor(source.value.run.plugin) : ''))
 const choices = computed(() => modelChoices(datasets.value, modelRuns.value, taskId.value, labelFor))
-const currentChoice = computed(() => (source.value.kind === 'run' ? `run:${runId.value}` : `task:${taskId.value}`))
+const currentChoice = computed(() => {
+  if (source.value.kind === 'run') return `run:${runId.value}`
+  if (sourceKind.value === POINT_CLOUD_SOURCE) return `pointcloud:${taskId.value}`
+  return `task:${taskId.value}`
+})
 
 const emptyState = computed(() => (taskLoading.value ? null : emptyStateFor(task.value, source.value)))
+const hasDsm = computed(() => !!(task.value?.dsm || potreeState.value?.has_dsm))
+
+const converting = computed(() => isPointCloud.value && !!potreeState.value
+  && (CONVERTING_STATUSES.includes(potreeState.value.status) || (potreeState.value.status === 'Ready' && potreeState.value.cache === 'warming')))
+const conversionError = computed(() => (isPointCloud.value && potreeState.value?.status === 'Failed'
+  ? potreeState.value.error || 'The conversion failed' : null))
 
 const taskProgress = computed(() => {
   const p = task.value?.node_progress ?? task.value?.progress
@@ -274,8 +377,22 @@ const downloadPercent = computed(() => progressPercent(viewer.state.loaded, view
 
 const coarsePointer = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches
 const hintText = computed(() => hintFor(viewer.state.mode, coarsePointer))
+const measureHint = computed(() => {
+  const kind = viewer.measure.kind
+  if (!kind) return ''
+  const n = viewer.measure.points.length
+  const need = kind === 'distance' ? 2 : 3
+  if (n < need) return `${MEASURE_LABELS[kind]}: click ${need - n} more point${need - n === 1 ? '' : 's'} on the cloud (Esc to cancel)`
+  return kind === 'distance'
+    ? `${viewer.measure.text} — click to add points, Enter or double-click to finish`
+    : `${viewer.measure.text} — click the first point, Enter or double-click to close`
+})
 
 const statsTitle = computed(() => {
+  if (isPointCloud.value) {
+    const pc = viewer.pointCloud
+    return `${pc.visiblePoints.toLocaleString()} of ${pc.totalPoints.toLocaleString()} points drawn · ${pc.visibleNodes} octree nodes`
+  }
   const { vertices, textures, textureCap } = viewer.state.stats
   const parts = [`${vertices.toLocaleString()} vertices`, `${textures} textures`]
   if (textureCap) parts.push(`textures limited to ${textureCap} px for this device`)
@@ -284,6 +401,7 @@ const statsTitle = computed(() => {
 
 const loadingLabel = computed(() => {
   if (taskLoading.value) return 'Loading task…'
+  if (converting.value) return conversionLabel(potreeState.value)
   switch (viewer.state.phase) {
     case 'download': return 'Downloading model…'
     case 'extract': return 'Extracting archive…'
@@ -292,9 +410,53 @@ const loadingLabel = computed(() => {
         ? `Decoding textures ${viewer.state.texturesDone}/${viewer.state.texturesTotal}…`
         : 'Decoding geometry…'
     case 'prepare': return 'Preparing scene…'
+    case 'octree': return 'Loading point cloud…'
     default: return 'Loading…'
   }
 })
+
+// ------------------------------------------------------- point cloud UI
+
+const budgetCap = budgetCapFor(typeof navigator !== 'undefined' ? navigator.deviceMemory : undefined, coarsePointer)
+const pcSettings = reactive({
+  ...loadPointCloudSettings(),
+  colorMode: 'rgb',
+  elevationFilter: null,
+  hiddenClasses: [],
+})
+if (pcSettings.pointBudget > budgetCap) pcSettings.pointBudget = budgetCap
+
+function setPointCloudSetting(key, value) {
+  pcSettings[key] = value
+  viewer.setPointCloudOption(key, value)
+  if (['pointSize', 'pointBudget', 'background'].includes(key)) savePointCloudSettings(pcSettings)
+}
+
+function applyPointCloudSettings() {
+  pcSettings.colorMode = defaultColorMode(viewer.pointCloud.metadata)
+  pcSettings.elevationFilter = null
+  pcSettings.hiddenClasses = []
+  for (const key of ['colorMode', 'pointSize', 'pointBudget', 'background', 'elevationFilter', 'hiddenClasses']) {
+    viewer.setPointCloudOption(key, pcSettings[key])
+  }
+}
+
+function setMeasure(kind) {
+  if (kind === 'volume' && !hasDsm.value) {
+    toast.error('Volume measurement needs a DSM; this task has none')
+    return
+  }
+  viewer.startMeasurement(kind)
+  showHint(false)
+}
+
+// Volume is never derived from the points: the polygon (native CRS) goes to
+// the DSM volume endpoint, which refuses when the task has no surface.
+async function computeVolume(points) {
+  if (!hasDsm.value) throw new Error('this task has no DSM')
+  const projection = viewer.pointCloud.metadata?.projection || 'native'
+  return computeVolumeNative(taskId.value, points, projection, loadVolumeBaseMethod())
+}
 
 // ------------------------------------------------------------ data access
 
@@ -319,12 +481,13 @@ async function fetchTask(name) {
   }
 }
 
-// Other tasks in this project that already have a model, for the switcher.
+// Other tasks in this project that already have a model or a point cloud, for the switcher.
 async function fetchDatasets() {
   try {
-    const filters = JSON.stringify([['project', '=', projectId.value], ['model', 'is', 'set']])
-    const fields = JSON.stringify(['name', 'title', 'status', 'model'])
-    const res = await fetch(`/api/resource/WebODM%20Task?filters=${encodeURIComponent(filters)}&fields=${encodeURIComponent(fields)}&limit_page_length=200`)
+    const filters = JSON.stringify([['project', '=', projectId.value]])
+    const orFilters = JSON.stringify([['model', 'is', 'set'], ['point_cloud', 'is', 'set']])
+    const fields = JSON.stringify(['name', 'title', 'status', 'model', 'point_cloud'])
+    const res = await fetch(`/api/resource/WebODM%20Task?filters=${encodeURIComponent(filters)}&or_filters=${encodeURIComponent(orFilters)}&fields=${encodeURIComponent(fields)}&limit_page_length=200`)
     if (!res.ok) return
     const data = await res.json()
     datasets.value = data.data || []
@@ -360,8 +523,10 @@ async function fetchPluginLabels() {
 async function loadTask() {
   const seq = ++requestSeq
   stopPolling()
+  stopConversionPolling()
   taskLoading.value = true
   task.value = null
+  potreeState.value = null
   viewer.clear()
 
   const [fetched] = await Promise.all([fetchTask(taskId.value), fetchDatasets(), fetchModelRuns(), fetchPluginLabels()])
@@ -369,7 +534,9 @@ async function loadTask() {
   task.value = fetched
   taskLoading.value = false
 
-  if (source.value.url) {
+  if (isPointCloud.value && source.value.url) {
+    await openPointCloud({ start: true })
+  } else if (source.value.url) {
     await loadModel()
   } else if (fetched && PROCESSING_STATUSES.includes(fetched.status)) {
     startPolling()
@@ -383,6 +550,56 @@ async function loadModel() {
   if (viewer.state.status === 'ready') showHint(true)
 }
 
+// Point cloud: ask the backend for the octree (starting the conversion on the
+// first open), poll while it is Queued/Running or being refetched from
+// object storage, then stream it.
+async function openPointCloud({ start = false, retry = false } = {}) {
+  const seq = requestSeq
+  let state
+  try {
+    state = await getPotreeState(taskId.value, { start, retry })
+  } catch (e) {
+    state = { status: 'Failed', error: e?.message || 'The conversion state could not be read' }
+  }
+  if (seq !== requestSeq) return
+  potreeState.value = state
+  if (state.status === 'Ready' && state.cache !== 'warming' && state.files) {
+    stopConversionPolling()
+    await viewer.loadPointCloud(taskId.value, state.files)
+    if (seq !== requestSeq) return
+    if (viewer.state.status === 'ready') {
+      applyPointCloudSettings()
+      showHint(true)
+    }
+  } else if (CONVERTING_STATUSES.includes(state.status) || (state.status === 'Ready' && state.cache === 'warming')) {
+    startConversionPolling()
+  } else if (!state.status && !start) {
+    // Not converted and we did not ask to start: a stale state after reprocessing.
+    await openPointCloud({ start: true })
+  }
+}
+
+function startConversionPolling() {
+  stopConversionPolling()
+  conversionTimer = setTimeout(() => openPointCloud(), CONVERSION_POLL_MS)
+}
+
+function stopConversionPolling() {
+  if (conversionTimer) clearTimeout(conversionTimer)
+  conversionTimer = null
+}
+
+function retry() {
+  if (conversionError.value) {
+    potreeState.value = { ...potreeState.value, status: 'Queued', error: null }
+    openPointCloud({ retry: true })
+  } else if (isPointCloud.value) {
+    openPointCloud({ start: true })
+  } else {
+    loadModel()
+  }
+}
+
 function startPolling() {
   stopPolling()
   pollTimer = setInterval(async () => {
@@ -392,7 +609,8 @@ function startPolling() {
     if (source.value.url) {
       stopPolling()
       fetchDatasets()
-      await loadModel()
+      if (isPointCloud.value) await openPointCloud({ start: true })
+      else await loadModel()
     } else if (!PROCESSING_STATUSES.includes(updated.status)) {
       stopPolling()
     }
@@ -430,6 +648,11 @@ function onKeydown(event) {
   if (!action) return
   if (action === 'escape') {
     if (helpOpen.value) { helpOpen.value = false; event.preventDefault() }
+    else if (viewer.measure.kind) { viewer.cancelMeasurement(); event.preventDefault() }
+    return
+  }
+  if (action === 'finishMeasure') {
+    if (viewer.measure.kind) { viewer.finishMeasurement(); event.preventDefault() }
     return
   }
   event.preventDefault()
@@ -441,6 +664,10 @@ function onKeydown(event) {
 function switchDataset(value) {
   if (!value || value === currentChoice.value) return
   const [kind, name] = String(value).split(/:(.+)/)
+  if (kind === 'pointcloud') {
+    router.push(pointCloudRoute(projectId.value, name))
+    return
+  }
   const base = `/project/${encodeURIComponent(projectId.value)}/task/${encodeURIComponent(kind === 'run' ? taskId.value : name)}/model`
   router.push(kind === 'run' ? `${base}?run=${encodeURIComponent(name)}` : base)
 }
@@ -456,8 +683,8 @@ function openConsole() {
 watch(taskId, (next, prev) => {
   if (next && next !== prev) loadTask()
 })
-watch(runId, (next, prev) => {
-  if (next !== prev && !taskLoading.value) loadTask()
+watch([runId, sourceKind], ([run, kind], [prevRun, prevKind]) => {
+  if ((run !== prevRun || kind !== prevKind) && !taskLoading.value) loadTask()
 })
 
 onMounted(() => {
@@ -468,6 +695,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   requestSeq++
   stopPolling()
+  stopConversionPolling()
   clearTimeout(hintTimer)
   viewer.dispose()
 })

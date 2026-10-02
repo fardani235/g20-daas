@@ -860,3 +860,72 @@ Compose is unchanged and stays the local-dev path; this adds a cluster path next
   LoadBalancer / real ACME issuance, an Ingress controller, NetworkPolicy enforcement (minikube's
   default CNI ignores policies), a full ODM processing run, the backup's S3 upload branch.
 - **Docs**: `docs/deployment/kubernetes.md`, `infra/helm/webodm/README.md`.
+
+## Phase 21: Point cloud (LAZ) viewer (2026-10-03)
+
+- The 3D viewer (`pages/ModelView.vue`, same renderer/camera/controls) gained a point cloud mode
+  (`?source=pointcloud`, switcher entry `pointcloud:<task>`, map card button *Point cloud*): the
+  task's LAZ is converted **on first open** to a Potree 2.0 octree (`metadata.json`, `hierarchy.bin`,
+  `octree.bin`, uncompressed) and streamed with byte ranges. Docs: `docs/point-cloud/README.md`
+  (user guide, architecture, decisions, ops, troubleshooting); spec `openspec/specs/point-cloud-viewer/`.
+- **Geospatial**: `POST /pointcloud/to-potree {path, output_path, projection?, name?}` (both local or
+  both `s3://`; S3 source → download to `COG_SCRATCH_DIR` → convert → upload 3 objects), `GET
+  /pointcloud/converter`, `/health.potree_converter`. `app/utils/pointcloud.py` = own LAS header/VLR
+  parser (count, format, bounds, WKT 2112 / GeoTIFF keys 34735 → EPSG; works on LAZ, header is
+  uncompressed), converter wrapper (temp sibling dir + atomic rename, `log.txt` dropped, projection
+  written into metadata.json by Python — the converter's `--projection` embeds WKT unescaped and
+  produces invalid JSON). `objectstore.download_file` added. Semaphore `POTREE_MAX_CONCURRENT` per
+  worker, `POTREE_TIMEOUT_SECONDS`, `POTREE_CONVERTER_BIN`. `/volume` + `api.tiles.volume` accept
+  `polygon_crs` (`EPSG:4326` default | `native` | WKT / `EPSG:n`). Dockerfile builds **PotreeConverter
+  2.1.1** in a stage (tag is `ARG POTREE_CONVERTER_REF`; 2.1.5 needs GCC 14 + C++23 `<print>` and
+  still fails on nlohmann::json overloads; `liblaszip.so` is in `build/`, not `Converter/libs`; the
+  binary canonicalises argv[0] → always call it by absolute path). CI `geospatial-image` now builds
+  with `load: true`, runs `tests/test_pointcloud.py` inside the image (conversion tests skip on the
+  plain runner), then pushes. 130 geospatial tests.
+- **Frappe**: `WebODM Task` fields `potree_status` (Queued|Running|Ready|Failed) / `potree_error` /
+  `potree_source` (point_cloud URL the octree came from) / `potree_summary` (JSON) / `potree_updated`;
+  `WebODM Task Asset.kind` += `potree_metadata|potree_hierarchy|potree_octree` (`assets.POTREE_KINDS`,
+  kept out of `ASSET_KINDS`). `processing/potree.py`: `ensure()` (row lock `for_update` + enqueue
+  `job_id=webodm:potree:<task>`, `deduplicate=True`, `timeout` 7800 s; Failed retried only with
+  `retry`; Queued/Running older than `STALE_SECONDS` restarted), `convert_job` (host mode: converter
+  writes to `private/processing/potree-<task>/` on the shared sites volume → `save_private_file_from_path`;
+  S3 mode when the LAZ asset row has a `storage_key`: S3 → S3 under `assets/potree/` then
+  write-through cache + asset rows with keys, so `cache.evict`/`serving.materialize_private_file`
+  treat them like other outputs), `state()` (`cache: warm|warming`, enqueues `cache.enqueue_fill`),
+  `clear_files`. API `webodm_core.api.pointcloud.potree_state(task_name, start, retry)`. Files are
+  plain private attachments `<task>_potree_<file>` served by Frappe's `/private/files/` route —
+  **206 + Content-Range confirmed** through the WSGI app (`api/test_pointcloud.TestServing`, uses
+  `get_test_client(use_cookies=False)` in a thread: werkzeug's cookie jar strips a manual `Cookie`
+  header, and the request thread needs committed rows). `reset_outputs` also clears potree state/
+  files; `WebODMTask.on_trash` calls `potree.clear_files`. Gotcha: `File.on_trash` keeps the blob
+  when another File shares the `content_hash` (Frappe's dedup) → `assets.remove_blob` after
+  `delete_doc` (also applied to the old-output loop in `reset_outputs`). 19 new FrappeTestCase tests
+  (`api/test_pointcloud.py`; fixtures get-or-create because the job commits).
+- **Frontend**: `potree-core@2.0.15` on three 0.185.1 (builds + runs; proven in headless Chrome
+  before any UI). Three runtime patches on the material (`composables/pointCloudLayer.js:
+  patchMaterial`): Potree-2 vertex path ignores colour type (`vColor = rgba`), class culling only in
+  classification mode, and the default sRGB→linear pass washes Potree 2 colours out to white →
+  encodings LINEAR/LINEAR. Clip *planes* never get their shader define (count stored after the
+  rebuild) → elevation filter uses a clip **box**. Potree colours/clips by world **Z** → point cloud
+  scene stays Z-up (`presetPosition(…, up='z')`, rotated grid, `camera.up`), native coords =
+  local + origin. `lib/potree.js` (pure, tested): request manager (`potree://<task>/metadata.json`
+  virtual base → private URLs, cookies + `Range` kept; jsdom's `Headers` drops `Range`, hence plain
+  objects), `availableColorModes` (rgb needs max>0, intensity max>min, classification >1 class from
+  the converter's `histogram`), measurement math, settings persistence, API calls.
+  `PointCloudPanel.vue` (colour, elevation sliders, class checkboxes, size, budget capped by
+  `budgetCapFor(deviceMemory)`, background), measure chip in `ModelToolbar.vue`; measurements in
+  `useModelViewer` (click = pick via `pco.pick` GPU readback, Enter / dblclick / first-vertex click
+  finish, Esc cancel, labels projected after each render); volume → `tiles.volume` with the octree's
+  `projection` as `polygon_crs`, disabled without a DSM. Frontend 293 tests. Browser check
+  `e2e/point-cloud.e2e.mjs` (mocked backend via Playwright routes — register the catch-all route
+  *first*, newest route wins; serves a real octree with 206 ranges): 29 checks, ~2 min.
+- Local proof data: `/tmp/oak-pc/octree211/bcrlc6t165` (from `~/Downloads/bcrlc6t165_georeferenced_model.laz`,
+  1.95 M pts, 6 s to convert, 72 MB octree.bin). Native converter for tests: `docker cp` the binary +
+  `liblaszip.so` + `libtbb.so.12` out of the image, `LD_LIBRARY_PATH=<dir> POTREE_CONVERTER_BIN=<dir>/PotreeConverter`.
+  Frappe test recipe for this worktree: `/tmp/oak-frappe-test.sh up|test --module …|down` (derived
+  image `oak-webodm-frappe:test` = 16.34.0 + boto3, network `oak-test`, containers `oak-pg`,
+  `oak-redis-*`, volume `oak-sites`, worktree `webodm_core` mounted at `/workspace/webodm_core`).
+- Infra: compose/helm env `POTREE_MAX_CONCURRENT`, `POTREE_TIMEOUT_SECONDS` (`geospatial.potree.*`
+  values); geospatial IAM write path += `assets/potree/*` (**apply on upgrade**, else `upload failed`).
+- Out of scope / next: COPC or Brotli octrees, conversion progress, profiles, export (the
+  `/pointcloud/export` stub stays 501), plugin-run clouds.

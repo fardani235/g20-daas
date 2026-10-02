@@ -42,6 +42,16 @@ ASSET_FILENAMES = {
     "model": "model.glb",
 }
 
+# Viewer octree built on demand from ``point_cloud`` (see processing/potree.py).
+# Kept apart from ASSET_KINDS: these rows have no parent Attach field, live
+# under ``assets/potree/`` in the bucket and are cleared with the outputs.
+POTREE_KINDS = ("potree_metadata", "potree_hierarchy", "potree_octree")
+POTREE_FILENAMES = {
+    "potree_metadata": "metadata.json",
+    "potree_hierarchy": "hierarchy.bin",
+    "potree_octree": "octree.bin",
+}
+
 SYNC_JOB = "webodm_core.storage.assets.sync_dataset_inputs_job"
 
 DATASET_DOCTYPE = "WebODM Dataset"
@@ -188,6 +198,35 @@ def input_sources(task) -> list[tuple[str, object]]:
 # -- outputs ----------------------------------------------------------------
 
 
+def blob_path(file_url: str) -> str | None:
+    """Absolute path of a private file's blob, or ``None`` when the File row is gone."""
+    try:
+        return abs_path_for_file_url(file_url)
+    except Exception:
+        return None
+
+
+def remove_blob(path: str | None):
+    """Unlink a blob left behind by ``File.on_trash``.
+
+    Frappe keeps the blob when another File shares the ``content_hash``
+    (its own de-duplication), but our per-task copies never share a URL, so
+    once the document is gone the file is an orphan.
+    """
+    if path and os.path.isfile(path):
+        try:
+            os.remove(path)
+        except OSError as e:
+            frappe.log_error(f"could not remove {path}: {e}", "WebODM Storage")
+
+
+def potree_rows(task) -> list:
+    """The ``WebODM Task Asset`` rows of the viewer octree (may be empty)."""
+    return frappe.get_all("WebODM Task Asset",
+                          filters={"parent": task.name, "parenttype": "WebODM Task", "kind": ("in", POTREE_KINDS)},
+                          fields=["name", "kind", "filename", "file_url", "storage_key", "file_size"])
+
+
 def asset_row(task, kind: str):
     for row in task.get("assets") or []:
         if row.kind == kind:
@@ -278,6 +317,8 @@ def reset_outputs(task) -> dict:
 
     stats = {"files": 0, "objects": 0}
     old_urls = [task.get(kind) for kind in ASSET_KINDS if task.get(kind)]
+    # The viewer octree was built from the old point cloud: drop its files too.
+    old_urls += [row.file_url for row in potree_rows(task) if row.file_url]
 
     frappe.db.delete("WebODM Task Asset", {"parent": task.name, "parenttype": "WebODM Task"})
     frappe.db.delete(raster_metadata.CHILD_DOCTYPE, {"parent": task.name, "parenttype": "WebODM Task"})
@@ -287,11 +328,14 @@ def reset_outputs(task) -> dict:
         # Int columns are NOT NULL in Frappe's schema; 0 is "unset" (the relay
         # only fills epsg when falsy, so 0 is re-derived like None would be).
         "epsg": 0, "wkt": None,
+        "potree_status": None, "potree_error": None, "potree_source": None,
+        "potree_summary": None, "potree_updated": None,
     })
     task.set("assets", [])
     task.set(raster_metadata.PARENT_FIELD, [])
 
     for url in old_urls:
+        blob = blob_path(url)
         for name in frappe.get_all(
             "File", filters={"file_url": url, "attached_to_doctype": "WebODM Task", "attached_to_name": task.name},
             pluck="name",
@@ -301,6 +345,7 @@ def reset_outputs(task) -> dict:
                 stats["files"] += 1
             except Exception as e:
                 frappe.log_error(f"{task.name}: could not delete old output {url}: {e}", "WebODM Storage")
+        remove_blob(blob)
 
     if storage.configured() and task.organization:
         try:

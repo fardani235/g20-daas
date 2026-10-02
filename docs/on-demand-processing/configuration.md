@@ -67,8 +67,11 @@ derives them from the `WEBODM_S3_*` values.
 | `S3_ENDPOINT_URL` | *(empty = AWS)* | `http://minio:9000` | Custom endpoint (with scheme). |
 | `AWS_REGION` / `AWS_DEFAULT_REGION` | *(unset)* | `eu-central-1` | Region for AWS S3. |
 | `S3_FORCE_PATH_STYLE` | `true` if an endpoint is set, else `false` | `true` | Path-style addressing (MinIO). |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (+ `_FILE`) | *(default chain)* | — | **Raster converter** identity: read `raw/`, `assets/`, `plugin-runs/`; write `assets/*.tif`. Compose mounts `secrets/s3_geospatial_*`. |
-| `COG_SCRATCH_DIR` | `/tmp` (`/scratch` in compose) | `/scratch` | Container-local scratch for S3 → S3 conversion. Never the shared sites volume. Size it for the largest raster. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (+ `_FILE`) | *(default chain)* | — | **Converter** identity: read `raw/`, `assets/`, `plugin-runs/`; write `assets/*.tif` (COGs) and `assets/potree/*` (viewer octrees). Compose mounts `secrets/s3_geospatial_*`. |
+| `COG_SCRATCH_DIR` | `/tmp` (`/scratch` in compose) | `/scratch` | Container-local scratch for S3 → S3 conversion (rasters, and the LAZ + octree of a point cloud conversion). Never the shared sites volume. Size it for the largest raster / ~3× the largest LAZ. |
+| `POTREE_CONVERTER_BIN` | `PotreeConverter` | — | PotreeConverter binary used for point cloud → octree conversion (built into the image). |
+| `POTREE_MAX_CONCURRENT` | `1` | `2` | Point cloud conversions per uvicorn worker. |
+| `POTREE_TIMEOUT_SECONDS` | `7200` | `14400` | Kill a conversion after this long (the task's octree is marked Failed; Retry in the viewer). |
 
 GDAL range-read tuning is fixed in `gdal_options()`
 (`GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`, merged ranges, 64 MB VSI cache,

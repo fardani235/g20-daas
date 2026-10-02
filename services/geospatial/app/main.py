@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import tiles, export, pointcloud, volume, analysis, raster
 from app.utils import objectstore
+from app.utils import pointcloud as pointcloud_utils
 
 app = FastAPI(
     title="G20 Tech Geospatial Service",
-    description="Raster tile serving, COG processing, and point cloud export for WebODM",
+    description="Raster tile serving, COG processing, and point cloud conversion for WebODM",
     version="0.1.0",
 )
 
@@ -33,4 +34,6 @@ async def health():
         "service": "webodm-geospatial",
         # Which buckets this instance may read/convert (never credentials).
         "object_storage": sorted(objectstore.allowed_buckets()),
+        # Whether LAS/LAZ -> Potree conversion is possible on this instance.
+        "potree_converter": pointcloud_utils.converter_available(),
     }

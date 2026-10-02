@@ -84,6 +84,16 @@
                 <Box />
                 3D
               </Button>
+              <Button
+                v-if="task.point_cloud"
+                variant="outline"
+                size="sm"
+                title="Open the point cloud in the 3D viewer"
+                @click.stop="openTaskPointCloud(task)"
+              >
+                <Cloud />
+                Point cloud
+              </Button>
             </div>
 
             <p
@@ -500,7 +510,7 @@ import {
   Terminal,
   Trash2,
   X,
-} from 'lucide-vue-next'
+ Cloud } from 'lucide-vue-next'
 import { Badge, Button, Dialog, Input, Label, Select } from '@/components/ui'
 import { statusVariant } from '@/lib/status'
 import { toast } from '@/lib/toast'
@@ -1205,6 +1215,10 @@ function openTaskConsole(task) {
 
 function openTaskModel(task) {
   router.push(`/project/${route.params.id}/task/${encodeURIComponent(task.name)}/model`)
+}
+
+function openTaskPointCloud(task) {
+  router.push(pointCloudRoute(route.params.id, task.name))
 }
 
 function zoomToFit() {

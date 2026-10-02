@@ -170,13 +170,17 @@ DEFAULT_VOLUME_BASE_METHOD = "triangulate"
 
 
 @frappe.whitelist(allow_guest=False)
-def volume(task_name, polygon, method=None):
+def volume(task_name, polygon, method=None, polygon_crs=None):
     """Compute stockpile/earthwork volume for a polygon over the task's DSM.
 
-    ``polygon`` is a GeoJSON Polygon (EPSG:4326), sent as a JSON string. ``method``
-    selects the base surface (see ``VOLUME_BASE_METHODS``); it defaults to
-    ``triangulate``, matching WebODM's measure plugin. Resolves the task's DSM
-    (throws if absent) and forwards to the geospatial service.
+    ``polygon`` is a GeoJSON Polygon sent as a JSON string, in EPSG:4326 unless
+    ``polygon_crs`` says otherwise (``"native"`` = the DSM's CRS, or a WKT /
+    ``EPSG:n`` string — the 3D viewer sends vertices picked on the point cloud
+    in the cloud's recorded projection). ``method`` selects the base surface
+    (see ``VOLUME_BASE_METHODS``); it defaults to ``triangulate``, matching
+    WebODM's measure plugin. Resolves the task's DSM (throws if absent, so a
+    volume is never guessed without a surface) and forwards to the geospatial
+    service.
     """
     path = _resolve_raster_path(task_name, "dsm")
     poly = frappe.parse_json(polygon) if isinstance(polygon, str) else polygon
@@ -191,7 +195,8 @@ def volume(task_name, polygon, method=None):
     try:
         resp = requests.post(
             f"{_geospatial_url().rstrip('/')}/volume",
-            json={"path": path, "polygon": poly, "method": base_method},
+            json={"path": path, "polygon": poly, "method": base_method,
+                  **({"polygon_crs": str(polygon_crs)} if polygon_crs else {})},
             timeout=120,
         )
         resp.raise_for_status()

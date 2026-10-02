@@ -144,10 +144,11 @@
 - [ ] Implement KMZ export
 - [ ] Implement MBTiles export
 
-### Point Cloud ⬜
-- [ ] Implement LAS/LAZ/Ply export
-- [ ] Implement Potree format conversion
-- [ ] Implement point cloud bounds/crs extraction
+### Point Cloud 🟡
+- [ ] Implement LAS/LAZ/Ply export (out of scope for the viewer)
+- [x] Implement Potree format conversion (`/pointcloud/to-potree`, on demand from the viewer)
+- [x] Implement point cloud bounds/crs extraction (LAS header + VLR parser in `app/utils/pointcloud.py`)
+- [ ] COPC / Brotli octrees once loader support settles
 
 ### Raster Processing ⬜
 - [ ] Implement hillshade generation
@@ -228,8 +229,8 @@
 - [x] Fullscreen toggle
 - [x] Asset download button
 - [x] Dataset switcher (other tasks in the project with a model)
-- [ ] Point cloud (LAZ) viewer
-- [ ] Measurement tools (distance, area, volume)
+- [x] Point cloud (LAZ) viewer (`docs/point-cloud/README.md`)
+- [x] Measurement tools (distance, area, volume) — point cloud mode; volume via the DSM endpoint
 - [ ] Camera view save/restore
 - [ ] Unit selector
 - [ ] Share button

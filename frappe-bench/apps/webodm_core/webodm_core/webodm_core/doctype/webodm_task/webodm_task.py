@@ -46,6 +46,13 @@ class WebODMTask(Document):
             compute.release_for_task(self)
         except Exception as e:
             frappe.log_error(f"{self.name}: release on delete failed: {e}", "WebODM Compute")
+        # The viewer octree files are attachments (Frappe drops them below) but
+        # their blobs may survive Frappe's shared-content check; remove them now.
+        from webodm_core.webodm_core.processing import potree
+        try:
+            potree.clear_files(self)
+        except Exception as e:
+            frappe.log_error(f"{self.name}: octree cleanup on delete failed: {e}", "WebODM Potree")
         assets.delete_task_objects(self)
 
     def delete_plugin_runs(self) -> list[str]:

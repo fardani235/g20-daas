@@ -76,3 +76,31 @@ def test_volume_endpoint_treats_blank_method_as_default(tmp_path):
     req = VolumeRequest(path=_dsm(tmp_path), polygon=_square_poly(), method="")
     res = asyncio.run(volume(req))
     assert res["base_plane"] == "triangulate"
+
+
+def test_volume_accepts_native_and_wkt_polygon_crs(tmp_path):
+    """The 3D viewer sends vertices in the point cloud's CRS, not lon/lat."""
+    path = _dsm(tmp_path)
+    geom_utm = {"type": "Polygon", "coordinates": [[
+        [500010, 4499990], [500040, 4499990],
+        [500040, 4499960], [500010, 4499960], [500010, 4499990],
+    ]]}
+    poly_4326 = transform_geom("EPSG:32615", "EPSG:4326", geom_utm)
+    base = asyncio.run(volume(VolumeRequest(path=path, polygon=poly_4326)))
+    native = asyncio.run(volume(VolumeRequest(path=path, polygon=geom_utm, polygon_crs="native")))
+    epsg = asyncio.run(volume(VolumeRequest(path=path, polygon=geom_utm, polygon_crs="EPSG:32615")))
+    with rasterio.open(path) as ds:
+        wkt = ds.crs.to_wkt()
+    by_wkt = asyncio.run(volume(VolumeRequest(path=path, polygon=geom_utm, polygon_crs=wkt)))
+    assert base["fill"] > 0
+    for res in (native, epsg, by_wkt):
+        assert res["fill"] == pytest.approx(base["fill"], rel=1e-3)
+        assert res["area"] == pytest.approx(base["area"], rel=1e-3)
+
+
+def test_volume_rejects_bad_polygon_crs(tmp_path):
+    path = _dsm(tmp_path)
+    geom = {"type": "Polygon", "coordinates": [[[500010, 4499990], [500040, 4499990], [500040, 4499960], [500010, 4499990]]]}
+    with pytest.raises(HTTPException) as excinfo:
+        asyncio.run(volume(VolumeRequest(path=path, polygon=geom, polygon_crs="not-a-crs")))
+    assert excinfo.value.status_code == 422

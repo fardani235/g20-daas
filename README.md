@@ -85,7 +85,7 @@ submodule).
 |---|---|
 | Framework | FastAPI |
 | Raster Processing | GDAL, Rasterio, rio-tiler |
-| Point Cloud | PDAL |
+| Point Cloud | PotreeConverter 2.x (LAS/LAZ → Potree octree), potree-core in the viewer |
 
 ## Quick Start
 

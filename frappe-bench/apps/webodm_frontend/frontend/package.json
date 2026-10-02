@@ -19,6 +19,7 @@
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "lucide-vue-next": "^1.0.0",
+    "potree-core": "^2.0.15",
     "radix-vue": "^1.9.17",
     "tailwind-merge": "^2.6.1",
     "three": "^0.185.1",
