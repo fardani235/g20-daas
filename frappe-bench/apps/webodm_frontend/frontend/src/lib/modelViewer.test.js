@@ -193,6 +193,39 @@ describe('page state', () => {
     expect(modelChoices([], runs, 'other')).toEqual([])
   })
 
+  it('offers a point cloud entry per task that has one and resolves ?source=pointcloud', () => {
+    const rows = [
+      { name: 't1', title: 'Flight A', model: '/private/files/a.glb', point_cloud: '/private/files/a.laz' },
+      { name: 't2', title: 'Flight B', model: null, point_cloud: '/private/files/b.laz' },
+      { name: 't3', title: 'Flight C', model: '/private/files/c.glb', point_cloud: null },
+    ]
+    expect(modelChoices(rows, [], 't1').map(c => c.value)).toEqual(['task:t1', 'pointcloud:t1', 'pointcloud:t2', 'task:t3'])
+    expect(modelChoices(rows, [], 't1')[1]).toEqual({ value: 'pointcloud:t1', kind: 'pointcloud', label: 'Flight A · Point cloud' })
+
+    const task = { model: '/private/files/a.glb', point_cloud: '/private/files/a.laz', status: 'Completed' }
+    expect(modelSourceFor(task, [], '', 'pointcloud')).toEqual({ kind: 'pointcloud', url: '/private/files/a.laz', run: null })
+    expect(modelSourceFor(task, [], '')).toEqual({ kind: 'task', url: '/private/files/a.glb', run: null })
+    const missing = modelSourceFor({ ...task, point_cloud: null }, [], '', 'pointcloud')
+    expect(missing.kind).toBe('pointcloud-missing')
+    expect(emptyStateFor({ ...task, point_cloud: null }, missing).title).toBe('No point cloud for this task')
+    expect(emptyStateFor({ status: 'Running' }, missing).kind).toBe('processing')
+    expect(emptyStateFor(task, modelSourceFor(task, [], '', 'pointcloud'))).toBeNull()
+  })
+
+  it('frames Z-up point clouds with the same presets', () => {
+    const c = { x: 0, y: 0, z: 0 }
+    const top = presetPosition('top', c, 10, 'z')
+    expect(top.z).toBeGreaterThan(9.9)
+    const north = presetPosition('north', c, 10, 'z')
+    expect(north.y).toBeLessThan(0) // sits south, looking north
+    expect(north.z).toBeGreaterThan(0)
+    const iso = presetPosition('iso', c, 10, 'z')
+    expect(iso.x).toBeGreaterThan(0)
+    expect(iso.y).toBeLessThan(0)
+    expect(dist(iso, c)).toBeCloseTo(10, 5)
+    expect(keyAction({ key: 'Enter', target: {} })).toBe('finishMeasure')
+  })
+
   it('describes processing, failed, missing and no-model tasks', () => {
     expect(emptyStateFor({ status: 'Running' }).kind).toBe('processing')
     expect(emptyStateFor({ status: 'Queued' }).kind).toBe('processing')

@@ -171,7 +171,7 @@ def resolve_read_path(path: str) -> str:
     return path
 
 
-# -- boto3 side: existence, size, upload --------------------------------------
+# -- boto3 side: existence, size, upload, download --------------------------------------
 
 
 def _client():
@@ -221,6 +221,29 @@ def upload_file(local_path: str, uri: str, content_type: str = "image/tiff"):
         _client().upload_file(local_path, bucket, key, ExtraArgs={"ContentType": content_type})
     except Exception as e:
         raise ObjectStoreError(f"upload failed: {e.__class__.__name__}") from None
+
+
+def download_file(uri: str, local_path: str) -> str:
+    """Fetch an object to ``local_path`` (written via a ``.part`` file, then renamed).
+
+    Used for inputs a tool needs as a real file (PotreeConverter reads LAS/LAZ
+    from disk); rasters keep going through ``/vsis3/`` range reads instead.
+    """
+    bucket, key = parse_uri(uri)
+    part = local_path + ".part"
+    try:
+        _client().download_file(bucket, key, part)
+        os.replace(part, local_path)
+    except Exception as e:
+        try:
+            os.unlink(part)
+        except OSError:
+            pass
+        code = getattr(e, "response", {}).get("Error", {}).get("Code", "") if hasattr(e, "response") else ""
+        if code in ("404", "NoSuchKey", "NotFound"):
+            raise ObjectStoreError("object not found") from None
+        raise ObjectStoreError(f"download failed: {code or e.__class__.__name__}") from None
+    return local_path
 
 
 def scratch_dir() -> str:

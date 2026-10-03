@@ -29,6 +29,12 @@
   "dsm_extent",
   "dtm_extent",
   "raster_metadata",
+  "potree_section",
+  "potree_status",
+  "potree_error",
+  "potree_source",
+  "potree_summary",
+  "potree_updated",
   "processing_state_section",
   "dispatch_attempts",
   "poll_failures",
@@ -196,6 +202,50 @@
    "description": "Normalized header metadata of the orthophoto / DSM / DTM (size, bands, CRS, pixel size, tiling, overviews...), one row per raster, filled automatically when the outputs land."
   },
   {
+   "fieldname": "potree_section",
+   "fieldtype": "Section Break",
+   "label": "Point Cloud Viewer",
+   "collapsible": 1,
+   "description": "Potree 2.0 octree built on demand from the point cloud the first time it is opened in the 3D viewer."
+  },
+  {
+   "fieldname": "potree_status",
+   "fieldtype": "Select",
+   "label": "Octree Status",
+   "options": "\nQueued\nRunning\nReady\nFailed",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "description": "Empty until someone opens the point cloud. Re-processing the task clears it."
+  },
+  {
+   "fieldname": "potree_error",
+   "fieldtype": "Small Text",
+   "label": "Octree Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "potree_source",
+   "fieldtype": "Data",
+   "label": "Octree Source",
+   "read_only": 1,
+   "hidden": 1,
+   "length": 1024,
+   "description": "file_url of the point cloud the octree was built from (stale when it differs from point_cloud)."
+  },
+  {
+   "fieldname": "potree_summary",
+   "fieldtype": "JSON",
+   "label": "Octree Summary",
+   "read_only": 1,
+   "description": "Point count, bounds, spacing, projection and attribute ranges reported by the converter."
+  },
+  {
+   "fieldname": "potree_updated",
+   "fieldtype": "Datetime",
+   "label": "Octree Updated",
+   "read_only": 1
+  },
+  {
    "fieldname": "processing_state_section",
    "fieldtype": "Section Break",
    "label": "Processing State",
@@ -240,7 +290,7 @@
    "in_standard_filter": 1
   }
  ],
- "modified": "2026-09-30 00:00:00.000000",
+ "modified": "2026-10-03 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "WebODM Core",
  "name": "WebODM Task",

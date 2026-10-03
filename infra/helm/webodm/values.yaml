@@ -249,9 +249,16 @@ redisQueue:
 
 geospatial:
   replicas: 1
-  # Scratch for S3 -> S3 COG conversion (emptyDir).
+  # Scratch for S3 -> S3 conversions (emptyDir): COGs, and the LAZ + octree
+  # of a point cloud conversion (~3x the largest LAZ).
   scratchSizeLimit: 20Gi
   resources: {}
+  # On-demand LAS/LAZ -> Potree octree conversion (PotreeConverter is built
+  # into the image). Conversions are memory-hungry: budget ~1 GB per 50 M
+  # points on top of the service's baseline.
+  potree:
+    maxConcurrent: 1
+    timeoutSeconds: 7200
 
 pluginRunner:
   enabled: true

@@ -164,3 +164,44 @@ def cogify(path: str, output_path: str | None = None, timeout: int = 900) -> dic
         raise GeospatialError(f"cogify failed: {detail or e}") from e
     except Exception as e:
         raise GeospatialUnavailable(f"geospatial service unreachable: {e}") from e
+
+
+def to_potree(path: str, output_path: str, projection: str | None = None, name: str | None = None,
+              timeout: int = 7200) -> dict:
+    """Convert a LAS/LAZ to a Potree 2.0 octree via ``POST /pointcloud/to-potree``.
+
+    ``path`` is the point cloud (absolute path on the shared volume or an
+    ``s3://`` URI) and ``output_path`` the directory / ``s3://`` prefix the three
+    octree files go under; both must be local or both in S3. ``projection``
+    (WKT or ``EPSG:n``) is recorded in ``metadata.json``; when omitted the
+    service reads it from the LAS header. Blocks for the whole conversion, so
+    call it from a background job. Returns the service's summary: ``files``
+    (name -> ``{path, size}``), ``points``, ``bounding_box``, ``spacing``,
+    ``projection``, ``attributes``. Raises ``GeospatialError`` on a 4xx
+    (unreadable cloud) and ``GeospatialUnavailable`` when the service cannot
+    be reached, has no converter installed (503) or errors.
+    """
+    url = f"{geospatial_url().rstrip('/')}/pointcloud/to-potree"
+    body = {"path": path, "output_path": output_path}
+    if projection:
+        body["projection"] = projection
+    if name:
+        body["name"] = name
+    try:
+        resp = requests.post(url, json=body, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            detail = e.response.text if e.response is not None else ""
+        if e.response is not None and e.response.status_code >= 500:
+            raise GeospatialUnavailable(f"point cloud conversion failed: {detail or e}") from e
+        raise GeospatialError(f"point cloud conversion failed: {detail or e}") from e
+    except Exception as e:
+        raise GeospatialUnavailable(f"geospatial service unreachable: {e}") from e
+    if not isinstance(data, dict) or not isinstance(data.get("files"), dict):
+        raise GeospatialError("point cloud conversion failed: unexpected response")
+    return data

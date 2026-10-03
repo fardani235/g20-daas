@@ -29,3 +29,26 @@ E2E_PLAYWRIGHT_DIR=/path/to/scratch node e2e/model-viewer.e2e.mjs
 The task must be Completed with a `model`. Software WebGL is used automatically
 (`--use-angle=swiftshader`); a 34 MB survey model reaches "ready" in roughly 12 s.
 Exit code 0 means every check passed.
+
+## Point cloud viewer (mocked backend)
+
+`point-cloud.e2e.mjs` drives the point cloud mode of the same page without a
+stack: Playwright intercepts the Frappe API (session, task, `potree_state`,
+`tiles.volume`) and serves a converted octree from disk through the
+`/private/files/<task>_potree_*` URLs with byte-range support. It checks the
+conversion overlay and polling, Z-up loading, range streaming, that only the
+cloud's attributes are offered as colour modes, the elevation filter, size /
+budget / background persistence, distance / area / volume measurements (the
+volume polygon is asserted to be in the cloud's CRS), the no-DSM guard, the
+Failed → Retry path and a clean dispose.
+
+```sh
+# an octree: PotreeConverter <cloud.laz> -o /tmp/octree (or copy one out of a task)
+npx vite --port 8082 --host 127.0.0.1 &
+E2E_OCTREE_DIR=/tmp/octree E2E_SHOTS=/tmp/pc-shots E2E_CHROME=/usr/bin/google-chrome \
+E2E_PLAYWRIGHT_DIR=/path/to/scratch node e2e/point-cloud.e2e.mjs
+```
+
+The dev server is enough (no proxy needed) because every backend call is
+mocked. A 2 M point octree reaches "ready" in ~20 s under swiftshader, most
+of it the simulated Queued → Running → Ready polling.

@@ -370,14 +370,21 @@ services:
       S3_FORCE_PATH_STYLE: ${WEBODM_S3_FORCE_PATH_STYLE:-}
       AWS_ACCESS_KEY_ID_FILE: /run/secrets/s3_geospatial_access_key_id
       AWS_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_geospatial_secret_access_key
+      # Scratch for S3 -> S3 conversions (COGs, and the LAZ + octree of a
+      # point cloud conversion). Size it for the largest point cloud x ~3.
       COG_SCRATCH_DIR: /scratch
+      # Point cloud -> Potree octree conversion (PotreeConverter is built into
+      # the image). One conversion at a time per worker; the converter is
+      # killed after the timeout and the task's octree is marked Failed.
+      POTREE_MAX_CONCURRENT: ${POTREE_MAX_CONCURRENT:-1}
+      POTREE_TIMEOUT_SECONDS: ${POTREE_TIMEOUT_SECONDS:-7200}
     secrets:
       - s3_geospatial_access_key_id
       - s3_geospatial_secret_access_key
     volumes:
       - frappe_data:/data
       - frappe_sites:/workspace/frappe-bench/sites
-      # Container-local scratch for S3 -> S3 COG conversion; never the sites volume.
+      # Container-local scratch for S3 -> S3 conversions; never the sites volume.
       - geospatial_scratch:/scratch
     # backend only: the service is unauthenticated and is reached exclusively
     # through the Frappe tile proxy (webodm_core.api.tiles), never from Caddy.

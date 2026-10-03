@@ -97,3 +97,4 @@ The mode buttons only remap the primary button and one-finger gesture; secondary
 - Point-cloud (LAZ) rendering; measurements; saved camera views.
 - Per-user quality override (e.g. "full texture resolution" toggle) on top of the automatic budget.
 - Potree is no longer planned for this page; SPEC/TRD updated accordingly.
+  *(Superseded 2026-10-03: the page gained a point cloud mode on the same renderer — `docs/point-cloud/README.md`.)*

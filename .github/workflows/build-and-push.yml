@@ -268,11 +268,31 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - name: Build image (local)
+        uses: docker/build-push-action@v6
         with:
           context: ./services/geospatial
           file: ./services/geospatial/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          load: true
+          tags: webodm-geospatial:ci
+          cache-from: type=gha,scope=geospatial
+          cache-to: type=gha,mode=max,scope=geospatial
+
+      # test-geospatial runs on a plain runner where PotreeConverter is not
+      # installed and the conversion tests skip; the image builds the converter,
+      # so run them (and the LAS header/validation tests) in there for real.
+      - name: Point cloud conversion tests inside the image
+        run: |
+          docker run --rm -v "$PWD/services/geospatial/tests:/app/tests:ro" webodm-geospatial:ci \
+            sh -c "/usr/local/bin/PotreeConverter --help >/dev/null && python -m pytest -q tests/test_pointcloud.py"
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./services/geospatial
+          file: ./services/geospatial/Dockerfile
+          push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-geospatial:1
             ${{ env.REGISTRY }}/${{ env.OWNER }}/webodm-geospatial:1-${{ github.sha }}

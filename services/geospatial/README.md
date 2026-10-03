@@ -9,8 +9,9 @@ shared volume — the host serving cache — or an `s3://bucket/key` URI, and
 passes that to this service. Local paths are read from disk; object URIs are
 read straight from S3 through GDAL's `/vsis3/` with HTTP range requests, which
 is what makes tiling a Cloud-Optimized GeoTIFF in object storage cheap (a few
-small reads per tile, never a download). Point cloud endpoints are stubbed
-pending Phase 4.
+small reads per tile, never a download). Point clouds are converted to
+Potree 2.0 octrees on demand (`/pointcloud/to-potree`, PotreeConverter built
+into the image); the viewer streams the result through Frappe, never from here.
 
 Object storage is opt-in and environment-configured (`S3_BUCKETS` allow-list,
 `S3_ENDPOINT_URL` for MinIO-style services, `AWS_REGION`, `AWS_ACCESS_KEY_ID` /
@@ -31,8 +32,10 @@ Without it every path must be local, exactly as before.
 | POST | `/export/hillshade` | 🚧 Stub | Hillshade from DEM |
 | POST | `/export/colormap` | 🚧 Stub | Apply custom colormap |
 | POST | `/export/formula` | 🚧 Stub | Band formula (NDVI, etc.) |
-| POST | `/pointcloud/export` | 🚧 Stub | LAS/LAZ/PLY export |
-| POST | `/pointcloud/to-potree` | 🚧 Stub | Potree conversion |
+| POST | `/pointcloud/to-potree` | ✅ | LAS/LAZ → Potree 2.0 octree (local or S3 → S3), returns points/bounds/attributes |
+| GET | `/pointcloud/converter` | ✅ | Whether PotreeConverter is installed, concurrency and timeout |
+| POST | `/volume` | ✅ | DSM volume under a polygon; `polygon_crs` = `EPSG:4326` (default), `native`, WKT / `EPSG:n` |
+| POST | `/pointcloud/export` | 🚧 Stub | LAS/LAZ/PLY export (out of scope for the viewer) |
 
 ### Tile rendering
 
@@ -56,6 +59,32 @@ embedded `metadata` is read from the *output*, i.e. from the S3 object.
 Response: `path`, `is_cog`, `epsg`, `wkt`, `extent` (GeoJSON Polygon, EPSG:4326),
 `bounds_4326` `[minx,miny,maxx,maxy]`, `band_count`, `width`, `height`, and
 `metadata` (the `/raster/metadata` document of the output, or `null` if reading it failed).
+
+### `/pointcloud/to-potree`
+
+Request: `{ "path": "/abs/georeferenced_model.laz", "output_path": "/abs/dir", "projection": null, "name": null }`.
+`path` and `output_path` are both absolute paths on the shared volume or both
+`s3://` URIs (`output_path` is then a prefix); mixing them is a 400. An object
+source is downloaded to `COG_SCRATCH_DIR`, converted there and the three files
+uploaded with their content types, so nothing touches host disk. The output
+directory is replaced atomically (a temporary sibling is renamed into place
+only when `metadata.json`, `hierarchy.bin` and `octree.bin` all exist).
+`projection` (WKT or `EPSG:n`) is written into `metadata.json`; by default it
+is read from the LAS header (WKT VLR 2112, else the GeoTIFF key directory).
+The converter's own `--projection` flag is never used: it embeds WKT
+unescaped and breaks the JSON.
+
+Response: `files` (`{name: {path, size}}`), `points`, `spacing`, `bounding_box`,
+`offset`, `scale`, `projection`, `encoding` (`UNCOMPRESSED`), `attributes`
+(`name`, `type`, `min`, `max` and, for classification, `present_values` from the
+converter's histogram), `duration_s`, `output_path`. Errors: 400 (paths), 404
+(missing input), 422 (unreadable cloud / converter failure, message included),
+502 (object storage), 503 (converter not installed).
+
+Environment: `POTREE_CONVERTER_BIN` (default `PotreeConverter`),
+`POTREE_MAX_CONCURRENT` (per worker, default 1), `POTREE_TIMEOUT_SECONDS`
+(default 7200). The call is synchronous and bounded by an in-process
+semaphore; the caller (a Frappe background job) owns the job state.
 
 ### `/raster/metadata`
 

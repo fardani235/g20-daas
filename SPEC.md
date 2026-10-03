@@ -60,7 +60,7 @@ dedicated FastAPI geospatial microservice.
 | **Frappe Scheduler** | Periodic task dispatch | Python 3.14, Frappe RQ Beat |
 | **Frappe SocketIO** | Real-time updates to desk | Node.js, Socket.IO |
 | **Vue SPA** | Map view, 3D model viewer, task console | Vue 3, frappe-ui, Leaflet, Three.js |
-| **Geospatial** | Raster tiles, COG processing (local or S3 → S3), point cloud export | FastAPI, rio-tiler, GDAL (`/vsis3/`), PDAL |
+| **Geospatial** | Raster tiles, COG processing (local or S3 → S3), point cloud → Potree octree conversion | FastAPI, rio-tiler, GDAL (`/vsis3/`), PotreeConverter 2.x |
 | **Plugin Runner** | Sandboxed execution of user analysis plugins | FastAPI, rlimits, internal network |
 | **Provisioner** | On-demand NodeODM compute: one provider interface (AWS EC2 now, vast.ai next), stateless HTTP API, holds all cloud credentials | FastAPI, boto3 |
 | **Object storage** | Canonical store for task inputs and outputs, org-namespaced keys | S3 or S3-compatible (MinIO) |
@@ -138,7 +138,7 @@ Core DocType — represents a photogrammetry processing job.
 - import_url: Data
 - images_count: Int
 - partial: Check
-- potree_scene: JSON
+- potree_status / potree_error / potree_source / potree_summary / potree_updated: on-demand viewer octree state (see `docs/point-cloud/README.md`)
 - epsg: Data
 - wkt: Text
 - tags: Table (Tag)
@@ -363,8 +363,9 @@ GDAL `/vsis3/` range reads), not a dataset id. See `services/geospatial/README.m
 | POST | `/export/hillshade` | 🚧 | Generate hillshade from DEM |
 | POST | `/export/colormap` | 🚧 | Apply custom colormap |
 | POST | `/export/formula` | 🚧 | Apply band formula (NDVI) |
-| POST | `/pointcloud/export` | 🚧 | Export point cloud |
-| POST | `/pointcloud/to-potree` | 🚧 | Convert to Potree format |
+| POST | `/pointcloud/export` | 🚧 | Export point cloud (out of scope) |
+| POST | `/pointcloud/to-potree` | ✅ | LAS/LAZ → Potree 2.0 octree (PotreeConverter), local or S3 → S3 |
+| GET | `/pointcloud/converter` | ✅ | Converter availability |
 
 ## 5. Task Processing Pipeline
 
