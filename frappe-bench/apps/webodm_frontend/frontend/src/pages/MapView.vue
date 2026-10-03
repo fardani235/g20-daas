@@ -560,6 +560,7 @@ import {
 import { detectionStyle, detectionLegend } from '@/lib/detections'
 import { segmentationStyle, segmentationLegend } from '@/lib/segmentation'
 import { applyModelChoice, matchingModel } from '@/lib/knownModels'
+import { pointCloudRoute } from '@/lib/potree'
 import {
   getRasterMetadata,
   summarize as summarizeRaster,
