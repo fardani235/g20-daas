@@ -274,19 +274,53 @@ nodes must allow TCP 3000 from the cluster's egress address.
 
 ## 5. Upgrade, roll back, uninstall
 
-**Upgrade** with the same command as the install. For a new application
-version, set the new image tags/digests in your values first.
+**Upgrade** resolves the current digest of every image the chart deploys and
+applies them to the release, so no digest is edited by hand.
+`scripts/k8s-upgrade.py` wraps `helm upgrade`, taking the same values layering
+plus any extra helm flags:
 
 ```bash
-helm upgrade --install webodm infra/helm/webodm -n webodm \
+scripts/k8s-upgrade.py webodm infra/helm/webodm -n webodm \
   -f infra/helm/webodm/values.prod.yaml -f my-site.yaml
 kubectl -n webodm get pods -w
 ```
+
+It resolves every `images.<name>` (community images included) with
+`docker buildx imagetools inspect`, writes the digests to a temporary,
+highest-precedence values file, and runs `helm upgrade --install`. No tracked
+file is modified, and the digests that were applied are recoverable afterwards
+with `helm -n webodm get values webodm` (they appear as
+`images.<name>.digest`).
+
+Prerequisites on the deploying machine: Python 3 with PyYAML, `docker` (with
+buildx) and `helm`.
+
+| Option | Effect |
+|---|---|
+| `--check` | Resolve and print `repository`, `tag`, `digest` per image; no helm and no cluster change. Exits non-zero if an image cannot be resolved. |
+| `--dry-run[=MODE]` | Forward `--dry-run[=MODE]` to helm to review the rendered manifests with the resolved digests. |
+| `--skip NAME` | Leave image `NAME` floating instead of pinning it, e.g. `--skip nodeodm`. |
+| `--no-install` | Do not add `--install` to the helm command. |
+
+Anything else after the release and chart is passed through to `helm upgrade`,
+e.g. `--atomic` or `--timeout 10m`.
 
 A changed Frappe image or site setting produces a new `frappe-init-<hash>`
 Job, which runs `migrate`. New Frappe pods wait for it before starting and old
 pods keep serving until the new ones are Ready. An upgrade that changes neither
 does not re-run it; to force a run: `--set bootstrap.runId=$(date +%s)`.
+
+**Fallback — edit the committed digests.** `values.prod.yaml` still pins digests
+by hand, which works without the script:
+
+```bash
+# set the new tag/digest for each changed image in values.prod.yaml first
+helm upgrade --install webodm infra/helm/webodm -n webodm \
+  -f infra/helm/webodm/values.prod.yaml -f my-site.yaml
+```
+
+Keep those committed digests aligned with the compose pins after
+`scripts/pin-images.sh` runs.
 
 **Roll back** the release with `helm rollback webodm <revision> -n webodm`.
 This restores the manifests, not the database: a migration that already ran is

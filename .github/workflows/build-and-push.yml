@@ -61,6 +61,15 @@ jobs:
       # credential in the rendered output.
       - name: Lint and render the chart for both environments
         run: scripts/check-helm.sh
+      # The deploy-time pinning script parses the chart's values; its tests
+      # mock registry resolution, so they need no network or docker.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install image-pinning test deps
+        run: python -m pip install --quiet pyyaml pytest
+      - name: Test the deploy-time image pinning script
+        run: python -m pytest scripts/tests -q
 
   test-frontend:
     name: webodm_frontend (vitest)
