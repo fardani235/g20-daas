@@ -70,6 +70,21 @@ fi
 grep -q '^kind: Job' "$out/dev-minimal.yaml" && fail "bootstrap.enabled=false still renders a Job"
 grep -q '^kind: CronJob' "$out/dev-minimal.yaml" && fail "backup.enabled=false still renders a CronJob"
 
+# A Job's pod template is immutable, so the Job name must change whenever the
+# template does (otherwise `helm upgrade` fails with "field is immutable").
+# Render the dev overlay with an added imagePullSecret and assert both Job
+# names change: guards the whole-pod-template hash in _helpers.tpl.
+render dev-pull -f "$chart/values.dev.yaml" --set 'imagePullSecrets[0].name=ghcr-pull'
+job_name() { grep -oE "^  name: ${1}-[a-f0-9]+" "$2" | head -1 | sed 's/^  name: //'; }
+for job in frappe-init minio-init; do
+  before="$(job_name "$job" "$out/dev.yaml")"
+  after="$(job_name "$job" "$out/dev-pull.yaml")"
+  [ -n "$before" ] || fail "job-name guard: $job missing from the dev render"
+  [ -n "$after" ] || fail "job-name guard: $job missing from the dev-pull render"
+  [ "$before" != "$after" ] || fail "job-name guard: $job name unchanged when the pod template changed ($before)"
+done
+echo "ok: Job names track the pod template"
+
 # The guards reject values that cannot work.
 expect_fail() { # description, then helm args
   local what="$1"; shift

@@ -184,16 +184,104 @@ http://provisioner:5002
 {{ include "webodm.frappe.secretEnv" . }}
 {{- end -}}
 
-{{/* Job names carry a hash of what the Job depends on: a Job's pod template is
-     immutable, so a changed input must produce a new Job, and the app pods wait
-     for exactly the Job that matches their own configuration. */}}
+{{/* A Job's pod template is immutable, so its name must hash the WHOLE template:
+     a changed image, env, imagePullSecrets/nodeSelector/tolerations (podCommon),
+     affinity, resources or volumes has to produce a new Job, otherwise a later
+     `helm upgrade` fails with "spec.template: ... field is immutable". The name
+     helpers hash the rendered template (plus bootstrap.runId, the force-a-rerun
+     escape hatch) rather than a hand-picked list of inputs. */}}
+{{- define "webodm.bootstrap.podTemplate" -}}
+metadata:
+  labels:
+    {{- include "webodm.selectorLabels" (dict "ctx" . "component" "frappe-init") | nindent 4 }}
+    webodm/frappe: "true"
+    {{- include "webodm.sharedStorageLabel" . | nindent 4 }}
+spec:
+  {{- include "webodm.podCommon" . | nindent 2 }}
+  {{- include "webodm.sharedStorageAffinity" . | nindent 2 }}
+  automountServiceAccountToken: false
+  restartPolicy: OnFailure
+  initContainers:
+    - name: wait-for-datastores
+      image: {{ include "webodm.image" .Values.images.frappe }}
+      imagePullPolicy: {{ .Values.images.frappe.pullPolicy }}
+      command:
+        - bash
+        - -c
+        - |
+          until pg_isready -q -h postgres -p 5432; do echo "waiting for postgres"; sleep 3; done
+          for target in redis-cache:13000 redis-queue:11000; do
+            until (exec 3<>"/dev/tcp/${target%:*}/${target#*:}") 2>/dev/null; do echo "waiting for ${target}"; sleep 3; done
+          done
+  containers:
+    - name: frappe-init
+      image: {{ include "webodm.image" .Values.images.frappe }}
+      imagePullPolicy: {{ .Values.images.frappe.pullPolicy }}
+      env:
+        - name: FRAPPE_ROLE
+          value: init
+        {{- include "webodm.frappe.env" . | nindent 8 }}
+      {{- with .Values.bootstrap.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumeMounts:
+        - name: sites
+          mountPath: /workspace/frappe-bench/sites
+  volumes:
+    - name: sites
+      persistentVolumeClaim:
+        claimName: frappe-sites
+{{- end -}}
+
 {{- define "webodm.bootstrap.jobName" -}}
-{{- $inputs := printf "%s\n%s\n%s" (include "webodm.image" .Values.images.frappe) (include "webodm.frappe.configEnv" .) .Values.bootstrap.runId -}}
+{{- $inputs := printf "%s\n%s" (include "webodm.bootstrap.podTemplate" .) .Values.bootstrap.runId -}}
 frappe-init-{{ $inputs | sha256sum | trunc 10 }}
 {{- end -}}
 
+{{- define "webodm.minio.podTemplate" -}}
+metadata:
+  labels:
+    {{- include "webodm.selectorLabels" (dict "ctx" . "component" "minio-init") | nindent 4 }}
+spec:
+  {{- include "webodm.podCommon" . | nindent 2 }}
+  automountServiceAccountToken: false
+  restartPolicy: OnFailure
+  containers:
+    - name: minio-init
+      image: {{ include "webodm.image" .Values.images.mc }}
+      imagePullPolicy: {{ .Values.images.mc.pullPolicy }}
+      command: [/bin/sh, /scripts/minio-init.sh]
+      env:
+        - name: MINIO_ENDPOINT
+          value: http://minio:9000
+        - name: BUCKET
+          value: {{ include "webodm.s3.bucket" . | quote }}
+        # mc keeps its alias config here; the default home is not writable.
+        - name: MC_CONFIG_DIR
+          value: /tmp/mc
+        {{- include "webodm.secretEnv" (dict "ctx" . "name" "MINIO_ROOT_USER" "key" "minio_root_user") | nindent 8 }}
+        {{- include "webodm.secretEnv" (dict "ctx" . "name" "MINIO_ROOT_PASSWORD" "key" "minio_root_password") | nindent 8 }}
+        {{- include "webodm.secretEnv" (dict "ctx" . "name" "APP_ACCESS_KEY_ID" "key" "s3_app_access_key_id") | nindent 8 }}
+        {{- include "webodm.secretEnv" (dict "ctx" . "name" "APP_SECRET_ACCESS_KEY" "key" "s3_app_secret_access_key") | nindent 8 }}
+        {{- include "webodm.secretEnv" (dict "ctx" . "name" "GEO_ACCESS_KEY_ID" "key" "s3_geospatial_access_key_id" "optional" true) | nindent 8 }}
+        {{- include "webodm.secretEnv" (dict "ctx" . "name" "GEO_SECRET_ACCESS_KEY" "key" "s3_geospatial_secret_access_key" "optional" true) | nindent 8 }}
+      volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: scripts
+      configMap:
+        name: webodm-scripts
+    - name: tmp
+      emptyDir: {}
+{{- end -}}
+
 {{- define "webodm.minio.jobName" -}}
-{{- $inputs := printf "%s\n%s\n%s" (include "webodm.image" .Values.images.mc) (include "webodm.s3.bucket" .) (.Files.Get "files/minio-init.sh") -}}
+{{- $inputs := printf "%s\n%s" (include "webodm.minio.podTemplate" .) (.Files.Get "files/minio-init.sh") -}}
 minio-init-{{ $inputs | sha256sum | trunc 10 }}
 {{- end -}}
 
