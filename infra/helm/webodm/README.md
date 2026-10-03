@@ -25,11 +25,14 @@ echo "$(minikube ip) webodm.local admin.webodm.local" | sudo tee -a /etc/hosts
 kubectl -n webodm get secret webodm-secrets -o jsonpath='{.data.admin_password}' | base64 -d; echo
 ```
 
-Upgrade with the same `helm upgrade --install` command; remove with
-`helm uninstall webodm -n webodm`. Uninstalling keeps the data: the Postgres
-and Redis queue volumes, the site, data, backup, MinIO and Caddy claims
-(`helm.sh/resource-policy: keep`) and the Secret, so a reinstall picks up
-where it left off. Delete the namespace to remove everything.
+Upgrade with the same `helm upgrade --install` command. When an upgrade changes
+an image tag or digest, use `scripts/k8s-upgrade.py` instead: it resolves every
+`images.<name>` tag to its current digest and applies them (see
+[`docs/deployment/kubernetes.md` §5](../../../docs/deployment/kubernetes.md#5-upgrade-roll-back-uninstall)).
+Remove with `helm uninstall webodm -n webodm`. Uninstalling keeps the data:
+the Postgres and Redis queue volumes, the site, data, backup, MinIO and Caddy
+claims (`helm.sh/resource-policy: keep`) and the Secret, so a reinstall picks
+up where it left off. Delete the namespace to remove everything.
 
 ## What gets deployed
 

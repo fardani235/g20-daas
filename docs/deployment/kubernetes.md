@@ -305,6 +305,75 @@ buildx) and `helm`.
 Anything else after the release and chart is passed through to `helm upgrade`,
 e.g. `--atomic` or `--timeout 10m`.
 
+### Upgrading when an image tag changes
+
+The chart deploys each `images.<name>` as `repository:tag` (optionally
+`@digest`). The **tag selects the build**; `k8s-upgrade.py` resolves that tag to
+its current digest at deploy time and applies it. So to roll out a new build,
+point the values at the tag you want *first*, then run the script:
+
+```bash
+# values.prod.yaml: images.frappe.tag: "16.35.0"   (or pass --set below)
+scripts/k8s-upgrade.py webodm infra/helm/webodm -n webodm \
+  -f infra/helm/webodm/values.prod.yaml -f my-site.yaml
+```
+
+Preview with `--check` first: it prints each `repository:tag` and the digest it
+resolves to without touching the cluster. A digest committed in the values file
+is only a fallback — for every image it resolves the script writes the fresh
+digest at the highest precedence, so the committed digest does not need editing
+for the script path (keep it in step for the manual fallback below).
+
+CI publishes each image on the default branch after its tests pass:
+
+| Image | Tags |
+|---|---|
+| `webodm-frappe` (also the `backup` CronJob) | `<frappe-version>`, `<frappe-version>-<sha>`, `latest` |
+| `webodm-geospatial`, `webodm-plugin-runner`, `webodm-provisioner` | `1`, `1-<sha>`, `latest` |
+| `webodm-caddy` | `2`, `2-<sha>`, `latest` |
+
+`<frappe-version>` is the `frappe-bench/apps/frappe` submodule pin
+(`scripts/frappe-version.sh`). The bare `<frappe-version>` / `1` / `2` / `latest`
+tags are moving: a later CI push repoints them, so re-running the script without
+a tag change already picks up the newest build. Use a `<...>-<sha>` tag to pin a
+specific commit.
+
+The community images the chart also deploys (`nodeodm`, `postgres`, `redis`,
+`minio`, `mc`, `kubectl`) come from their upstream registries; move those by
+bumping their `tag` in the values.
+
+**Dev (minikube).** `values.dev.yaml` inherits its tags from `values.yaml`, so
+the same command works; add `--set` to bump one:
+
+```bash
+scripts/k8s-upgrade.py webodm infra/helm/webodm -n webodm \
+  -f infra/helm/webodm/values.dev.yaml \
+  --set images.frappe.tag=16.35.0
+```
+
+**A local build that is not in the registry.** Build it, load it into the
+cluster, and keep the script from trying to resolve it:
+
+```bash
+docker buildx build --load -t ghcr.io/fardani235/webodm-frappe:my-build \
+  -f frappe-bench/apps/Dockerfile \
+  --build-context sites=./frappe-bench/sites --build-context root=. frappe-bench/apps
+minikube image load ghcr.io/fardani235/webodm-frappe:my-build
+
+scripts/k8s-upgrade.py webodm infra/helm/webodm -n webodm \
+  -f infra/helm/webodm/values.dev.yaml \
+  --skip frappe \
+  --set images.frappe.tag=my-build \
+  --set images.frappe.digest= \
+  --set images.frappe.pullPolicy=IfNotPresent
+```
+
+`--skip frappe` leaves that image out of digest resolution (there is nothing in
+the registry to resolve); `images.frappe.digest=` clears a digest pinned by an
+earlier release so the tag is used. On a real cluster, push the image to your
+registry instead of `minikube image load` and drop the `--skip`/`pullPolicy`
+overrides so the script pins its digest normally.
+
 A changed Frappe image or site setting produces a new `frappe-init-<hash>`
 Job, which runs `migrate`. New Frappe pods wait for it before starting and old
 pods keep serving until the new ones are Ready. An upgrade that changes neither
