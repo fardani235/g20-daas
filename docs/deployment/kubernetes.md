@@ -7,6 +7,11 @@ overlays:
 - `values.dev.yaml`: a single-node cluster (minikube), fully self-contained.
 - `values.prod.yaml`: a real cluster with a public domain, TLS and external S3.
 
+Pass **one** overlay with `-f`; they are alternatives, not layers. Combining
+them (e.g. `-f values.prod.yaml -f values.dev.yaml`) merges contradictory
+settings — prod's `imagePullSecrets` and external S3 with dev's in-cluster
+MinIO — and can make an upgrade fail.
+
 Docker Compose is still how you develop locally and is still a supported way
 to run a single VM ([production guide](production-deployment-guide.md),
 [runbook](../runbook.md)). Nothing here changes it.
@@ -375,9 +380,12 @@ registry instead of `minikube image load` and drop the `--skip`/`pullPolicy`
 overrides so the script pins its digest normally.
 
 A changed Frappe image or site setting produces a new `frappe-init-<hash>`
-Job, which runs `migrate`. New Frappe pods wait for it before starting and old
-pods keep serving until the new ones are Ready. An upgrade that changes neither
-does not re-run it; to force a run: `--set bootstrap.runId=$(date +%s)`.
+Job, which runs `migrate`. The hash covers the whole Job pod template (image,
+env, `imagePullSecrets`, nodeSelector/tolerations, affinity, resources), so any
+such change yields a new Job rather than an immutable-patch failure. New Frappe
+pods wait for it before starting and old pods keep serving until the new ones
+are Ready. An upgrade that changes nothing in the template does not re-run it;
+to force a run: `--set bootstrap.runId=$(date +%s)`.
 
 **Fallback — edit the committed digests.** `values.prod.yaml` still pins digests
 by hand, which works without the script:

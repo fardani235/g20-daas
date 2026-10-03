@@ -8,6 +8,10 @@ One chart for the whole stack, two environments:
 | `values.dev.yaml` | A single-node cluster (minikube): in-cluster Postgres, Redis, MinIO and NodeODM, NodePort edge, small requests |
 | `values.prod.yaml` | A real cluster: public domain over TLS, external S3, pinned image digests, resource requests, LoadBalancer edge, registry pull secret |
 
+The two overlays are **alternatives**: pass one, not both. Combining them
+(`-f values.prod.yaml -f values.dev.yaml`) merges contradictory settings —
+prod's `imagePullSecrets`/external S3 with dev's in-cluster MinIO.
+
 The full walkthrough (prerequisites, production install, moving data across)
 is in [`docs/deployment/kubernetes.md`](../../../docs/deployment/kubernetes.md).
 Docker Compose remains the local development path; this chart does not change it.
@@ -66,11 +70,12 @@ Nothing serves traffic before the site bootstrap has finished:
 3. `frappe-web` only becomes Ready, and so only receives traffic from Caddy,
    once `/api/method/ping` answers.
 
-The `<hash>` covers the Frappe image and the site settings. A Job's pod
-template is immutable, so a changed image produces a *new* Job, which runs the
-migration, and the new pods wait for exactly that one. An upgrade that changes
-neither leaves the Job and the pods alone. Force a re-run with
-`--set bootstrap.runId=$(date +%s)`.
+The `<hash>` covers the whole Job pod template — image, env,
+`imagePullSecrets`, nodeSelector/tolerations, affinity, resources — plus
+`bootstrap.runId`. A Job's pod template is immutable, so any such change
+produces a *new* Job, which runs the migration, and the new pods wait for
+exactly that one. An upgrade that changes none of it leaves the Job and the
+pods alone. Force a re-run with `--set bootstrap.runId=$(date +%s)`.
 
 With `bootstrap.enabled=false` the Job and the wait are both dropped; use it
 only when the site already exists on the `frappe-sites` claim and you run
