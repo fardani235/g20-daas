@@ -44,7 +44,7 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Object Storage Key",
-   "length": 1024,
+   "length": 1000,
    "read_only": 1,
    "description": "Canonical object key in the configured bucket (org-namespaced). Empty for host-only legacy assets."
   },

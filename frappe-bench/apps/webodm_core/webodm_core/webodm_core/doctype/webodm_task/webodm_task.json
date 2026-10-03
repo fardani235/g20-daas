@@ -229,7 +229,7 @@
    "label": "Octree Source",
    "read_only": 1,
    "hidden": 1,
-   "length": 1024,
+   "length": 1000,
    "description": "file_url of the point cloud the octree was built from (stale when it differs from point_cloud)."
   },
   {

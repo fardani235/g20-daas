@@ -38,7 +38,7 @@
    "fieldname": "storage_key",
    "fieldtype": "Data",
    "label": "Object Storage Key",
-   "length": 1024,
+   "length": 1000,
    "read_only": 1,
    "description": "Canonical object key of this image in the configured bucket; empty until synced."
   },
