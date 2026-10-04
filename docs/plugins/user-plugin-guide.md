@@ -9,7 +9,7 @@ layer that can also be downloaded. There are two kinds:
 | Who provides them | The platform (`services/geospatial/app/analysis/ops`) | Your organization, as an uploaded package |
 | Who can see them | Every organization | Only the organization that uploaded them |
 | Where they run | Inside the geospatial service | In an isolated sandbox (`services/plugin-runner`) |
-| Examples | Hillshade, Contours, Segmentation | Anything you write in Python — e.g. the [Semantic Segmentation](semantic-segmentation.md) and [Object Detection](object-detection.md) plugins |
+| Examples | Hillshade, Contours, Segmentation | Anything you write in Python — e.g. the [Semantic Segmentation](semantic-segmentation.md), [Object Detection](object-detection.md) and [Building Footprints](building-footprints.md) plugins |
 
 Both kinds appear in the same **Plugins** page and run from the same task
 panel; the core processing pipeline knows nothing about individual plugins.
@@ -152,10 +152,11 @@ runner reads them from the file.
 
 ### What you can use
 
-The sandbox interpreter has **numpy**, **rasterio** (GDAL), **shapely**,
-**Pillow**, **onnxruntime** (CPU), **laspy** (+ **lazrs**, LAS/LAZ point
-clouds), **fast-simplification** (mesh decimation), **DracoPy** (Draco
-encode/decode) and the Python standard library. It cannot install
+The sandbox interpreter has **numpy**, **scipy**, **scikit-image**,
+**rasterio** (GDAL), **shapely**, **Pillow**, **onnxruntime** (CPU), **laspy**
+(+ **lazrs**, LAS/LAZ point clouds), **fast-simplification** (mesh
+decimation), **DracoPy** (Draco encode/decode) and the Python standard
+library. It cannot install
 packages and has no network access, so pure-Python helpers — and any model
 files — must ship inside your package. ONNX is the supported way to run a
 machine-learning model: export it once, put the `.onnx` file in the package

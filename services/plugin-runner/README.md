@@ -44,8 +44,9 @@ While `/run` blocks, the plugin may write `{"percent", "message"}` to
 the caller polls that file on the shared volume. It is the only runner file
 left in `run_dir` next to the output.
 
-Libraries available to plugins: numpy, rasterio, shapely, Pillow, onnxruntime
-(CPU), laspy + lazrs, fast-simplification, DracoPy (see `requirements.txt`).
+Libraries available to plugins: numpy, scipy, scikit-image, rasterio, shapely,
+Pillow, onnxruntime (CPU), laspy + lazrs, fast-simplification, DracoPy (see
+`requirements.txt`).
 
 ## Isolation
 

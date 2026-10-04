@@ -1,0 +1,44 @@
+{
+  "id": "hot-dinov3s-buildings",
+  "label": "HOT DINOv3-S building footprints (aerial RGB)",
+  "description": "Humanitarian OpenStreetMap Team's building model: a frozen DINOv3 ViT-S/16 encoder with a UperNet decoder and three heads (building mask, boundary, signed distance), trained on ~58k OpenAerialMap chips labelled from OpenStreetMap worldwide. Apache-2.0. The signed-distance head is what separates touching buildings.",
+  "file": "dinov3s_buildings.onnx",
+  "sha256": "9a28e28403accc06c70a3104aedb31eca50401ed23c8ba4314b26357c25e9043",
+  "default": true,
+  "class": { "name": "building", "color": "#d7301f" },
+  "onnx": {
+    "input": "image",
+    "output": "logits",
+    "input_size": 256,
+    "channels": ["red", "green", "blue"],
+    "scale": "unit",
+    "mean": [0.4297, 0.4002, 0.3433],
+    "std": [0.2056, 0.1674, 0.1599],
+    "outputs": {
+      "mask":     { "channel": 0, "activation": "sigmoid", "meaning": "building probability" },
+      "boundary": { "channel": 1, "activation": "sigmoid", "meaning": "building-edge probability (not used by the pipeline)" },
+      "distance": { "channel": 2, "activation": "tanh",    "meaning": "signed distance to the nearest building edge, positive inside, -1..1" }
+    }
+  },
+  "recommended": {
+    "resolution_m": 0.25,
+    "tile_size": 256,
+    "overlap": 64,
+    "confidence": 0.5,
+    "seed_min_distance": 5,
+    "large_blob_area_px": 2000,
+    "h_maxima_depth": 0.1,
+    "min_area_m2": 4.0,
+    "simplify_m": 0.3,
+    "regularize_area_threshold": 0.85,
+    "regularize_overlap_tol_m2": 1.0
+  },
+  "source": {
+    "name": "kshitijrajsharma/dinov3-hot-buildings",
+    "url": "https://huggingface.co/kshitijrajsharma/dinov3-hot-buildings/resolve/main/dinov3s_buildings.onnx",
+    "license": "Apache-2.0",
+    "size_bytes": 219574600,
+    "paper": "Siméoni et al., DINOv3, arXiv:2508.10104 (encoder); HOT fAIr dinov3_buildings pipeline (decoder, heads, watershed recipe)",
+    "export": "End-to-end ONNX (opset 18) exported by HOT: image[1,3,256,256] float32 in [0,1] normalised with the mean/std above (the graph does not normalise) -> logits[1,3,256,256] raw head output (no activations in the graph): 0 = mask logit, 1 = boundary logit, 2 = signed distance before tanh. The 1.4 GB ViT-L export (dinov3l_buildings.onnx) exists too but exceeds the 1 GB extracted package limit."
+  }
+}

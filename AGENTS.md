@@ -929,3 +929,41 @@ Compose is unchanged and stays the local-dev path; this adds a cluster path next
   values); geospatial IAM write path += `assets/potree/*` (**apply on upgrade**, else `upload failed`).
 - Out of scope / next: COPC or Brotli octrees, conversion progress, profiles, export (the
   `/pointcloud/export` stub stays 501), plugin-run clouds.
+
+## Phase 22: Building Footprints user plugin (2026-10-04)
+
+- New user plugin `plugins/building-footprints/` (docs: `docs/plugins/building-footprints.md`, change
+  `openspec/changes/archive/2026-10-04-add-building-footprints-plugin/`, spec `openspec/specs/building-footprints/`).
+  One polygon per building from the orthophoto; `output_kind: vector`, `render_kind: segmentation` (reuses
+  `lib/segmentation.js`, no frontend change). Model-card driven: `models/hot-dinov3s-buildings.json` = HOT's
+  DINOv3-S + UperNet building export (`kshitijrajsharma/dinov3-hot-buildings`, Apache-2.0, 220 MB, **not
+  committed** — `tools/fetch_models.py` downloads + sha-256-verifies; `.gitignore` covers `models/*.onnx`).
+  Graph facts (inspected with onnx): `image[1,3,256,256]` → `logits[1,3,256,256]`, **no normalisation and no
+  activations inside** → the card carries mean/std (`[0.4297,0.4002,0.3433]/[0.2056,0.1674,0.1599]`) and per-output
+  activation (ch0 mask sigmoid, ch1 boundary sigmoid, ch2 signed distance tanh, positive inside). With the
+  normalisation mask>0.5 and distance>0 agree at r=0.91 on a real ortho (0.83 without). The ViT-L export is 1.4 GB
+  (> 1 GB extracted-package limit) — a card edit on a deployment with raised limits.
+- `bfplugin/`: `grid.py` (WarpedVRT from the matching overview; **hard 50 Mpx budget that fails before reading**
+  with a suggested resolution verified against the real ceil'd grid size — not silent coarsening), `tiling.py`
+  (Gaussian σ=side/8 weights, row-band `PlaneBlender` = weighted mean of planes), `inference.py` (sha-256, graph⇄card
+  validation, output-shape check per window, ORT single-thread retry when the pool can't start), `instances.py`
+  (per-blob bounding-box processing writing ids in place; small blobs: local maxima within 0.02 of the
+  (2d+1)² window max, labelled connected; large blobs: **extended maxima** = `local_maxima(reconstruction(f−h, f))`;
+  then `watershed(-d, markers, mask, connectivity=2)`), `vectorize.py` (exterior ring, DP simplify, MRR
+  regularisation guarded by a neighbour-overlap tolerance via STRtree, score = `ndimage.mean(prob)`).
+- Gotchas learned: `skimage.morphology.h_maxima` marks only the exact-top pixels of a dome → a crest rippling by
+  0.001 gave 8 disconnected seeds (1 with the extended-maxima formulation); `peak_local_max` thins a crest to
+  several coordinates → splits one building; exact EDT ridges are plateaus → distance stored as float32 (float16
+  would create plateaus everywhere). Running `app.cli` outside the container fails ORT's `pthread_create` with
+  EAGAIN because `RLIMIT_NPROC=128` counts the developer's processes → `PLUGIN_MAX_PROCESSES=8192` locally.
+- Sandbox image gained **scipy** and **scikit-image** (`services/plugin-runner/requirements.txt`; README and
+  user-plugin-guide library lists updated) — rebuild/pull before uploading the plugin. CI `test-plugin-runner`
+  runs the plugin's 75 tests (synthetic 1×1-conv ONNX fixtures with the real contract; scene whose R/G channels
+  encode mask and per-building distance). Validation: `~/Downloads/j1u49j8ore_orthophoto.tif` (2820² @ 5 cm,
+  EPSG:32632) through `app.cli` under RLIMIT_AS 2 GB → 9 windows, 9 footprints, peak RSS 652 MB, 33 s;
+  `if7iq9jhap_orthophoto.tif` (14718×11640, 43 ha) → 6.85 Mpx grid at 0.25 m, 180 windows (51 empty skipped),
+  477 s (2.6 s/window), peak RSS 762 MB, 128 blobs → 125 instances (31 split) → 119 footprints; terraces and
+  semi-detached pairs separated, a textureless industrial roof fragmented. Real outlines fill 0.63–0.75 of their
+  MRR (quartiles) → the 0.85 regularisation default is deliberately conservative.
+  Preview helper used: render ortho + outlines to PNG with rasterio (no matplotlib in the venv).
+- Venv for the plugin tests: `/tmp/bfvenv` (numpy, scipy, scikit-image, rasterio, shapely, onnxruntime, onnx, pytest).
