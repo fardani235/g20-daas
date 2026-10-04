@@ -15,4 +15,9 @@ Pillow>=10.0.0
 laspy[lazrs]>=2.5.0
 fast-simplification>=0.1.9
 DracoPy>=1.4.0,<2
+# Image-analysis stack (plugins/building-footprints): connected components and
+# distance transforms (scipy.ndimage), marker-controlled watershed, morphological
+# reconstruction / regional maxima (scikit-image). BSD-3 licensed, pip wheels.
+scipy>=1.13.0
+scikit-image>=0.24.0
 pytest>=8.0.0

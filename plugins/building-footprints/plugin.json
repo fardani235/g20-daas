@@ -1,0 +1,117 @@
+{
+  "id": "building-footprints",
+  "label": "Building Footprints",
+  "version": "1.0.0",
+  "description": "Extract one polygon per building from a task's orthophoto with the HOT DINOv3 building model (mask + boundary + signed-distance heads). Touching buildings are separated by a watershed on the distance plane, outlines are simplified and near-rectangular ones regularised. Result: GeoJSON footprints with class, score and area, drawn as a layer on the map. Models are cards in models/: swap the card to run a different export.",
+  "entrypoint": "main.py",
+  "inputs": [
+    {
+      "name": "orthophoto",
+      "label": "Orthophoto (RGB)",
+      "datasets": [
+        "orthophoto"
+      ]
+    }
+  ],
+  "params_schema": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "description": "Footprint model to run (a model card in models/). hot-dinov3s-buildings: HOT DINOv3-S building footprints (aerial RGB) (Apache-2.0). Parameters left at 0/-1/auto use the card's recommended values.",
+        "enum": [
+          "hot-dinov3s-buildings"
+        ],
+        "default": "hot-dinov3s-buildings"
+      },
+      "resolution_m": {
+        "type": "number",
+        "title": "Processing resolution (m)",
+        "description": "Ground sample distance of the processing grid the model sees; 0 uses the model's recommended value (0.25 m). Coarser is faster and lets larger areas fit the sandbox's memory budget; finer than ~0.15 m rarely helps.",
+        "minimum": 0,
+        "default": 0
+      },
+      "tile_size": {
+        "type": "integer",
+        "title": "Window size (px)",
+        "description": "Side of the windows the model is run on; 0 uses the model's value (fixed at 256 px for the HOT model).",
+        "minimum": 0,
+        "maximum": 4096,
+        "default": 0
+      },
+      "overlap": {
+        "type": "integer",
+        "title": "Window overlap (px)",
+        "description": "Overlap between neighbouring windows, blended with Gaussian weights so seams do not show; -1 uses the model's value (64). 128 gives the smoothest result at about twice the run time.",
+        "minimum": -1,
+        "maximum": 2048,
+        "default": -1
+      },
+      "confidence": {
+        "type": "number",
+        "title": "Confidence threshold",
+        "description": "Minimum building probability for a pixel to count as building; 0 uses the model's value (0.5). Lower finds more (and merges more), higher is stricter.",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0
+      },
+      "seed_min_distance": {
+        "type": "integer",
+        "title": "Seed spacing (px)",
+        "description": "Small blobs: minimum distance in grid pixels between two seeds (local maxima of the distance plane) before they count as separate buildings; 0 uses the model's value (5).",
+        "minimum": 0,
+        "maximum": 500,
+        "default": 0
+      },
+      "large_blob_area_px": {
+        "type": "integer",
+        "title": "Large blob area (px)",
+        "description": "Blobs with at least this many grid pixels are seeded with h-maxima (prominence) instead of plain local maxima; 0 uses the model's value (2000). Lower it to use the more robust prominence seeding on smaller blobs too.",
+        "minimum": 0,
+        "default": 0
+      },
+      "h_maxima_depth": {
+        "type": "number",
+        "title": "Seed prominence (h-maxima)",
+        "description": "Large blobs: a distance maximum must stand out by at least this much (on the model's -1..1 distance scale) to seed a building; 0 uses the model's value (0.1). Higher merges more, lower splits more.",
+        "minimum": 0,
+        "maximum": 2,
+        "default": 0
+      },
+      "min_area_m2": {
+        "type": "number",
+        "title": "Minimum footprint area (m²)",
+        "description": "Footprints smaller than this are dropped; -1 uses the model's value (4 m²), 0 keeps everything.",
+        "minimum": -1,
+        "default": -1
+      },
+      "simplify_m": {
+        "type": "number",
+        "title": "Outline simplification (m)",
+        "description": "Douglas-Peucker tolerance for the footprint outlines; -1 uses the model's value (0.3 m), 0 keeps the raw pixel outline.",
+        "minimum": -1,
+        "default": -1
+      },
+      "regularize_area_threshold": {
+        "type": "number",
+        "title": "Rectangle fill threshold",
+        "description": "A footprint filling at least this fraction of its minimum rotated rectangle is replaced by that rectangle; 0 uses the model's value (0.85), 1 disables regularisation.",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0
+      },
+      "regularize_overlap_tol_m2": {
+        "type": "number",
+        "title": "Rectangle overlap tolerance (m²)",
+        "description": "A rectangle is only used when it adds at most this much new overlap with neighbouring footprints; -1 uses the model's value (1 m²), 0 allows none.",
+        "minimum": -1,
+        "default": -1
+      }
+    },
+    "required": []
+  },
+  "output_kind": "vector",
+  "render_kind": "segmentation",
+  "timeout_seconds": 3600
+}
