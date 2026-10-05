@@ -366,6 +366,8 @@ GDAL `/vsis3/` range reads), not a dataset id. See `services/geospatial/README.m
 | POST | `/pointcloud/export` | 🚧 | Export point cloud (out of scope) |
 | POST | `/pointcloud/to-potree` | ✅ | LAS/LAZ → Potree 2.0 octree (PotreeConverter), local or S3 → S3 |
 | GET | `/pointcloud/converter` | ✅ | Converter availability |
+| POST | `/pointcloud/profile` | ✅ | Elevation profile along a transect from the Potree octree (byte ranges, local or S3); see `docs/point-cloud/elevation-profile.md` |
+| GET | `/pointcloud/profile/limits` | ✅ | Profile point / bin budgets |
 
 ## 5. Task Processing Pipeline
 

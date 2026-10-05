@@ -86,7 +86,7 @@ submodule).
 |---|---|
 | Framework | FastAPI |
 | Raster Processing | GDAL, Rasterio, rio-tiler |
-| Point Cloud | PotreeConverter 2.x (LAS/LAZ → Potree octree), potree-core in the viewer |
+| Point Cloud | PotreeConverter 2.x (LAS/LAZ → Potree octree), potree-core in the viewer; server-side octree reader for elevation profiles (`docs/point-cloud/elevation-profile.md`) |
 
 ## Quick Start
 
@@ -263,7 +263,7 @@ services/geospatial/              # Standalone FastAPI service
 │   ├── routers/
 │   │   ├── tiles.py              # TMS tile endpoints
 │   │   ├── export.py             # Raster export + COG endpoints
-│   │   ├── pointcloud.py         # Point cloud endpoints
+│   │   ├── pointcloud.py         # Point cloud endpoints (Potree conversion, elevation profile)
 │   │   ├── analysis.py           # Analysis plugin endpoints
 │   │   └── volume.py             # Volume measurement endpoints
 │   ├── models/task.py            # Pydantic models

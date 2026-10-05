@@ -52,6 +52,10 @@ RUN ldconfig && /usr/local/bin/PotreeConverter --help > /dev/null
 ENV POTREE_CONVERTER_BIN=/usr/local/bin/PotreeConverter \
     POTREE_TIMEOUT_SECONDS=7200 \
     POTREE_MAX_CONCURRENT=1
+# Elevation profiles over the octree (app/utils/profile.py): point budget per
+# request and maximum bins returned.
+ENV PROFILE_MAX_POINTS=5000000 \
+    PROFILE_MAX_BINS=2000
 
 # Managed models directory shared by the analysis operations (the variable
 # name predates object detection moving out to a user plugin; it is kept so

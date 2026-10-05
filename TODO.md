@@ -231,6 +231,7 @@
 - [x] Dataset switcher (other tasks in the project with a model)
 - [x] Point cloud (LAZ) viewer (`docs/point-cloud/README.md`)
 - [x] Measurement tools (distance, area, volume) — point cloud mode; volume via the DSM endpoint
+- [x] Elevation profile along a transect — point cloud mode, sampled server-side from the octree (`docs/point-cloud/elevation-profile.md`)
 - [ ] Camera view save/restore
 - [ ] Unit selector
 - [ ] Share button

@@ -22,6 +22,7 @@ import {
   pointCloudRoute,
   polygonArea,
   polylineLength,
+  polylineLength2D,
   potreeBaseUrl,
   potreeFileFor,
   requestHeaders,
@@ -173,6 +174,14 @@ describe('measurements', () => {
     expect(canFinish('distance', square.slice(0, 2))).toBe(true)
     expect(canFinish('area', square.slice(0, 2))).toBe(false)
     expect(canFinish('volume', square.slice(0, 3))).toBe(true)
+  })
+
+  it('treats a profile as a polyline measured horizontally', () => {
+    expect(polylineLength2D([[0, 0, 0], [3, 4, 100], [3, 4, 0]])).toBe(5)
+    expect(measurementText('profile', [[0, 0, 0]])).toMatch(/at least 2/)
+    expect(measurementText('profile', [[0, 0, 0], [3, 4, 50]])).toBe('5.0 m · finish to compute')
+    expect(canFinish('profile', [[0, 0, 0]])).toBe(false)
+    expect(canFinish('profile', [[0, 0, 0], [1, 1, 1]])).toBe(true)
   })
 })
 

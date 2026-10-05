@@ -39,8 +39,12 @@ stack: Playwright intercepts the Frappe API (session, task, `potree_state`,
 conversion overlay and polling, Z-up loading, range streaming, that only the
 cloud's attributes are offered as colour modes, the elevation filter, size /
 budget / background persistence, distance / area / volume measurements (the
-volume polygon is asserted to be in the cloud's CRS), the no-DSM guard, the
-Failed → Retry path and a clean dispose.
+volume polygon is asserted to be in the cloud's CRS), the elevation profile
+tool (line → request in the cloud CRS → dock with chart, legend, stats and
+hover readout; width re-request; remembered settings; backend refusal →
+retry; close — the profile endpoint is mocked, from `E2E_PROFILE_JSON` when
+given, else synthesised), the no-DSM guard, the Failed → Retry path and a
+clean dispose.
 
 ```sh
 # an octree: PotreeConverter <cloud.laz> -o /tmp/octree (or copy one out of a task)

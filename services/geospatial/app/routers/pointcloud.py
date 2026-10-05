@@ -11,6 +11,13 @@ The call is synchronous (the caller — a Frappe background job — holds the
 request open, as it does for cogify) and bounded per worker by an in-process
 semaphore (``POTREE_MAX_CONCURRENT``); job state lives in Frappe, never here.
 
+``POST /pointcloud/profile`` computes an elevation profile along a transect
+from the task's *octree* (the three files above, each an absolute path or an
+``s3://`` URI — they may be mixed, since the host cache can hold one and have
+evicted another). Only the octree nodes under the corridor are read, by byte
+range, so the cost scales with the transect, not the cloud; see
+``app/utils/profile.py`` for the sampling and summary definitions.
+
 ``POST /pointcloud/export`` (re-export as LAS/LAZ/PLY/CSV) stays a stub: the
 viewer does not need it and exporting the cloud is out of scope for now.
 """
@@ -27,7 +34,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from app.utils import objectstore, pointcloud
+from app.utils import objectstore, pointcloud, potree_octree, profile
 
 log = logging.getLogger("webodm.geospatial.pointcloud")
 
@@ -143,6 +150,73 @@ async def convert_to_potree(req: ToPotreeRequest):
 
     summary["output_path"] = req.output_path
     return summary
+
+
+class ProfileRequest(BaseModel):
+    # The octree's three files: absolute paths on shared storage or s3:// URIs (any mix).
+    metadata: str
+    hierarchy: str
+    octree: str
+    # Transect vertices [[x, y], ...] in the cloud's CRS (2-50 vertices).
+    line: list[list[float]]
+    # Full corridor width (CRS units, metres for projected clouds).
+    width: float = 1.0
+    # Bin size along the line; default: ~500 bins, never finer than the sampled spacing.
+    step: float | None = None
+    # Longest ground gap (m) bridged by interpolation for height-above-ground.
+    ground_fill_max: float | None = None
+    # Unclassified clouds: widest object (m) the morphological ground filter removes; 0 disables.
+    ground_window: float | None = None
+
+
+@router.get("/profile/limits")
+async def profile_limits():
+    """Point and bin budgets this instance applies to profile requests."""
+    return {
+        "max_points": profile.max_points(),
+        "max_bins": profile.max_bins(),
+        "max_vertices": profile.MAX_VERTICES,
+        "width": [profile.MIN_WIDTH, profile.MAX_WIDTH],
+        "min_step": profile.MIN_STEP,
+    }
+
+
+def _compute_profile(req: ProfileRequest) -> dict:
+    with potree_octree.open_octree(req.metadata, req.hierarchy, req.octree) as tree:
+        return profile.compute_profile(
+            tree, req.line, width=req.width, step=req.step,
+            ground_fill_max=req.ground_fill_max if req.ground_fill_max is not None else profile.DEFAULT_GROUND_FILL_MAX,
+            ground_window=req.ground_window if req.ground_window is not None else profile.DEFAULT_GROUND_WINDOW,
+        )
+
+
+@router.post("/profile")
+async def elevation_profile(req: ProfileRequest):
+    """Elevation profile of a transect over a Potree octree.
+
+    Returns per-bin series (``distance``, ``ground``, ``ground_fill``,
+    ``top``, ``height``, ``min``, ``max``, ``count``, one layer per
+    classification code in ``classes``), the ``gaps``, ``stats`` (length,
+    elevation range, ascent / descent, steepest grade, heights) and
+    ``sampling`` (points read, whether the deepest levels had to be dropped
+    to stay within ``PROFILE_MAX_POINTS``). Bins without points are ``null``.
+    """
+    for label in ("metadata", "hierarchy", "octree"):
+        value = getattr(req, label)
+        is_object = _validate(label, value)
+        if not is_object and not os.path.isfile(value):
+            raise HTTPException(status_code=404, detail=f"{label} not found: {os.path.basename(value)}")
+    try:
+        return await run_in_threadpool(_compute_profile, req)
+    except profile.ProfileError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except potree_octree.OctreeError as e:
+        raise HTTPException(status_code=422, detail=f"octree: {e}")
+    except objectstore.ObjectStoreError as e:
+        raise HTTPException(status_code=502, detail=f"object storage: {e}")
+    except MemoryError:
+        raise HTTPException(status_code=507, detail="the profile needs more memory than the service has; "
+                                                    "narrow the corridor or shorten the line")
 
 
 @router.post("/export")

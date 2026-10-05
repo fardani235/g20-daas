@@ -967,3 +967,63 @@ Compose is unchanged and stays the local-dev path; this adds a cluster path next
   MRR (quartiles) → the 0.85 regularisation default is deliberately conservative.
   Preview helper used: render ortho + outlines to PNG with rasterio (no matplotlib in the venv).
 - Venv for the plugin tests: `/tmp/bfvenv` (numpy, scipy, scikit-image, rasterio, shapely, onnxruntime, onnx, pytest).
+
+## Phase 23: Point cloud elevation profile (2026-10-05)
+
+- Transect → elevation profile in the point cloud viewer, computed **server-side from the Potree
+  octree** (not from loaded nodes, not from the LAZ, not from the DSM). Design record with the options
+  weighed, every definition, API, decisions and evidence: `docs/point-cloud/elevation-profile.md`;
+  change `openspec/changes/archive/2026-10-05-add-elevation-profile/`, requirement added to
+  `openspec/specs/point-cloud-viewer/spec.md`.
+- **Geospatial**: `app/utils/potree_octree.py` = Potree 2.0 reader (format mirrored from potree-core's
+  loader: 22-byte hierarchy records `<BBIqq`, type 2 = proxy whose offset/size address a sub-chunk of
+  `hierarchy.bin`, child bit 0 → +Z half, 1 → +Y, 2 → +X, node data = `numPoints` **interleaved**
+  records in `metadata.attributes` order — attribute-major is only the Brotli encoding — `position`
+  int32×3 × `scale` + `offset`). `RangeSource` = local `os.pread` | S3 `GetObject(Range=)`; proxies are
+  expanded in *waves* (one coalesced batch per frontier) so S3 round trips ≈ depth/stepSize;
+  `coalesce_ranges` (gap 1 MB, ≤ 32 MB) + 8 threads; `np.frombuffer` on a structured dtype built from the
+  attributes (names with spaces are fine). `app/utils/profile.py`: polyline ≤ 50 vertices, per-segment
+  oriented rectangles, SAT box test, **budget by dropping whole levels deepest-first** (known from
+  `numPoints` before reading; `PROFILE_MAX_POINTS` 5 M), nearest-segment assignment at corners, one
+  `lexsort` for per-group count/min/max/mean/percentiles, class layers (codes ∉ {0,1,2,7,18}), ground =
+  class-2 median | p05 low envelope + **1-D progressive morphological filter** (windows 3,5,9,17… bins
+  to `ground_window` 20 m, dh = 0.3·Δw·step + 0.3, then fringe growth while the step down is steeper
+  than terrain) — added after a real survey's low envelope climbed an 11 m roof (546 % grade);
+  `ground_fill` = linear interpolation across runs ≤ 50 m, returned separately; ascent/descent with
+  **0.25 m hysteresis** over a 3-bin running median (raw deltas gave 24 m of climb on 14 m of relief);
+  steepest grade over 2 m windows that contain no gap. `POST /pointcloud/profile` (files may mix local
+  and `s3://`), `GET /pointcloud/profile/limits`. 31 tests (`tests/test_profile.py`) over
+  `tests/potree_fixture.py` = own Potree 2.0 **writer** (LOD at every level, `step_size=2` so proxies
+  occur, synthetic scene with slope/building/trees/wire/noise/hole); one test runs the real converter
+  (CI: inside the image). Validation on `~/Downloads/j1u49j8ore_georeferenced_model.laz` (4.86 M pts,
+  unclassified): all points read once; 170 m transect → 700 k pts / 39 MB / 0.25 s; corridor count vs
+  laspy 75 261 vs 75 313 (1 mm quantisation at the corridor edge); per-bin tops within 7 cm.
+- **Frappe**: `api.pointcloud.profile(task_name, line, width, step, ground_window)` → `check_permission`,
+  validation, `processing.potree.file_sources(task)` (Ready for the *current* cloud, `file_doc_for_url`
+  ownership per row, `cache.resolve_source` cache-first/S3-second, raises `OctreeNotReady`),
+  `plugins.geospatial.pointcloud_profile`. Gotcha caught by tests: `GeospatialUnavailable` subclasses
+  `GeospatialError` → catch it first. `api/test_profile_api.py` (plain unittest + mocks, 15 tests; run
+  with `test_tiles` inside the Frappe image: `--user root --entrypoint sh`, `mkdir -p /logs
+  /workspace/unit/logs`, `frappe.init(site="unit", sites_path=…)` with an `apps.txt`, then unittest —
+  `frappe.throw` needs a bound local and a logs dir).
+- **Frontend**: `profile` is a 4th `MEASURE_KINDS` entry (`lib/potree.js`, `polylineLength2D`); finishing
+  it calls `options.onProfile(points)` and switches the tool off (`useModelViewer`), `setProfile` /
+  `setProfileMarker` / `focusOn`; `pointCloudLayer.setProfile` draws transect, dashed corridor per
+  segment, sampled ground/top polylines, hover marker. `lib/profile.js` (API, `makeScales` fit | 1 : 1
+  — when the data is taller than long the *horizontal* scale shrinks, d3-style `ticks`, gap-aware
+  `linePath`/`bandPath`, `groundSeries` extends dashed runs onto neighbours so lines meet, `hoverInfo`,
+  `statRows`, CSV, settings in `pointcloud_profile_settings`), `ProfileChart.vue` (SVG, hatched gaps,
+  class bands, crosshair + readout, emits hover/select), `ProfilePanel.vue` (width/step/scale, legend
+  toggles, stats, notes, CSV), dock in `ModelView.vue` (`h-[38%]`). Tests: 16 + 5 + 6 + potree kind;
+  jsdom gotchas: `Blob.text()` missing (use `FileReader`), svg `getBoundingClientRect` must be stubbed.
+  e2e `point-cloud.e2e.mjs` § 5b (press `1` to return to iso before picking — the top-view preset from
+  § 5 leaves no points under the centre clicks); mocked profile = `E2E_PROFILE_JSON` or synthetic.
+  Playwright for e2e: `/home/ridwan/works/llm-explaination/node_modules/playwright` + system Chrome.
+- Infra: `PROFILE_MAX_POINTS` / `PROFILE_MAX_BINS` in Dockerfile, compose, Helm (`geospatial.profile.*`);
+  CI `geospatial-image` also runs `tests/test_profile.py`. No IAM change (read of `assets/potree/*`
+  already granted).
+- Local tooling this round: the pinned geospatial image predates PotreeConverter and `docker build`
+  fails in this sandbox (apt TLS), so the converter was built natively: `pip install cmake tbb
+  tbb-devel` into `/tmp/geovenv`, `cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DTBB_DIR=<venv TBBConfig>`,
+  then relink with `-L/tmp/geovenv/lib -Wl,-rpath,/tmp/geovenv/lib` (`/tmp/elm-pc/src/build`). Octree
+  for tests/e2e: `/tmp/elm-pc/octree/j1u49j8ore`.

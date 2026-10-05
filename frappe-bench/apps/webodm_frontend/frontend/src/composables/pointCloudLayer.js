@@ -31,6 +31,9 @@ import {
 
 const MEASURE_COLOR = 0xf59e0b
 const DRAWING_COLOR = 0x38bdf8
+const PROFILE_COLOR = 0xa78bfa
+const PROFILE_GROUND_COLOR = 0xf59e0b
+const PROFILE_TOP_COLOR = 0x4ade80
 
 const COLOR_TYPES = {
   rgb: PointColorType.RGB,
@@ -92,6 +95,8 @@ export function createPointCloudLayer({ scene, getCamera, getRenderer, requestRe
   let colorMode = 'rgb'
   let drawingObjects = null
   const measurementObjects = new Map()
+  let profileObjects = null // transect line, corridor outline, sampled ground/top lines
+  let profileMarker = null // hover marker: vertical line ground->top + dot
 
   async function load(taskName, files, { signal } = {}) {
     dispose()
@@ -286,6 +291,101 @@ export function createPointCloudLayer({ scene, getCamera, getRenderer, requestRe
     requestRender()
   }
 
+  // ------------------------------------------------------------- profile
+
+  function toLocal(p) {
+    return new THREE.Vector3(p[0] - origin[0], p[1] - origin[1], p[2] - origin[2])
+  }
+
+  function lineObject(localPoints, color, { dashed = false, opacity = 0.95, order = 22 } = {}) {
+    const geometry = new THREE.BufferGeometry().setFromPoints(localPoints)
+    const material = dashed
+      ? new THREE.LineDashedMaterial({ color, dashSize: 0.6, gapSize: 0.4, depthTest: false, transparent: true, opacity })
+      : new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity })
+    const line = new THREE.Line(geometry, material)
+    if (dashed) line.computeLineDistances()
+    line.renderOrder = order
+    return line
+  }
+
+  /**
+   * Draw a transect: `line` = native [x, y, z] vertices as picked, `width` the
+   * corridor width (m). When `profile` (the backend result) is given, the
+   * sampled ground and top are drawn along the line too, so the chart and the
+   * scene show the same thing. `null` removes everything.
+   */
+  function setProfile(spec) {
+    disposeObject(profileObjects)
+    profileObjects = null
+    setProfileMarker(null)
+    if (!spec?.line?.length) { requestRender(); return }
+    const group = new THREE.Group()
+    group.name = 'profile'
+    const pts = spec.line.map(toLocal)
+    group.add(lineObject(pts, PROFILE_COLOR, { opacity: 1, order: 23 }))
+    const dots = new THREE.Points(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.PointsMaterial({ color: PROFILE_COLOR, size: 9, sizeAttenuation: false, depthTest: false, transparent: true }),
+    )
+    dots.renderOrder = 24
+    group.add(dots)
+    // Corridor outline per segment, at the picked elevations.
+    const half = (spec.width || 1) / 2
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i]
+      const d = new THREE.Vector2(b.x - a.x, b.y - a.y)
+      if (d.length() < 1e-6) continue
+      d.normalize()
+      const n = new THREE.Vector3(-d.y * half, d.x * half, 0)
+      group.add(lineObject([a.clone().add(n), b.clone().add(n), b.clone().sub(n), a.clone().sub(n), a.clone().add(n)], PROFILE_COLOR, { dashed: true, opacity: 0.7 }))
+    }
+    // Sampled ground / top along the bin centres (gaps break the line).
+    const profile = spec.profile
+    if (profile?.x && profile?.y) {
+      const series = (values, color) => {
+        let run = []
+        const flush = () => { if (run.length > 1) group.add(lineObject(run, color, { opacity: 0.9, order: 22 })); run = [] }
+        for (let i = 0; i < profile.bins; i++) {
+          const z = values[i]
+          if (typeof z === 'number') run.push(toLocal([profile.x[i], profile.y[i], z]))
+          else flush()
+        }
+        flush()
+      }
+      const groundAny = (profile.ground || []).map((g, i) => (typeof g === 'number' ? g : profile.ground_fill?.[i]))
+      series(groundAny, PROFILE_GROUND_COLOR)
+      series(profile.top || [], PROFILE_TOP_COLOR)
+    }
+    profileObjects = group
+    measureGroup.add(group)
+    requestRender()
+  }
+
+  /** Highlight a spot along the transect: `{ x, y, ground, top }` (native) or null. */
+  function setProfileMarker(spot) {
+    disposeObject(profileMarker)
+    profileMarker = null
+    if (spot && typeof spot.x === 'number' && typeof spot.y === 'number') {
+      const zLo = typeof spot.ground === 'number' ? spot.ground : spot.top
+      const zHi = typeof spot.top === 'number' ? spot.top : spot.ground
+      if (typeof zLo === 'number' && typeof zHi === 'number') {
+        const group = new THREE.Group()
+        const a = toLocal([spot.x, spot.y, Math.min(zLo, zHi)])
+        const b = toLocal([spot.x, spot.y, Math.max(zLo, zHi) + 0.001])
+        group.add(lineObject([a, b], 0xffffff, { opacity: 1, order: 25 }))
+        const dot = new THREE.Points(
+          new THREE.BufferGeometry().setFromPoints([a, b]),
+          new THREE.PointsMaterial({ color: 0xffffff, size: 11, sizeAttenuation: false, depthTest: false, transparent: true }),
+        )
+        dot.renderOrder = 26
+        group.add(dot)
+        profileMarker = group
+        measureGroup.add(group)
+      }
+    }
+    requestRender()
+  }
+
   /** Screen position (px, relative to the canvas) of a native point, or null when behind the camera. */
   function project(native, width, height) {
     const camera = getCamera()
@@ -298,6 +398,7 @@ export function createPointCloudLayer({ scene, getCamera, getRenderer, requestRe
   function dispose() {
     setDrawing(null)
     setMeasurements([])
+    setProfile(null)
     if (pco) {
       group.remove(pco)
       pco.dispose()
@@ -311,7 +412,7 @@ export function createPointCloudLayer({ scene, getCamera, getRenderer, requestRe
   return {
     load, update, stats, dispose, pick, project,
     setColorMode, setPointSize, setPointBudget, setElevationFilter, setHiddenClasses, setBackground,
-    setDrawing, setMeasurements,
+    setDrawing, setMeasurements, setProfile, setProfileMarker,
     get metadata() { return metadata },
     get origin() { return origin },
     get box() { return localBox },

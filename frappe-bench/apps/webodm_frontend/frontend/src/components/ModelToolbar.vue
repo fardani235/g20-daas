@@ -3,7 +3,7 @@
 // viewer state passed in and emits intents; pages/ModelView.vue wires them to
 // the useModelViewer composable. Icon-only with tooltips so it stays compact
 // on phones; the Help dialog lists every control in full.
-import { Box, ChevronDown, Compass, Grid3x3, CircleHelp, Hand, Home, Maximize2, Minimize2, Pentagon, Rotate3d, Ruler, Trash2, ZoomIn, ZoomOut } from 'lucide-vue-next'
+import { Box, ChartLine, ChevronDown, Compass, Grid3x3, CircleHelp, Hand, Home, Maximize2, Minimize2, Pentagon, Rotate3d, Ruler, Trash2, ZoomIn, ZoomOut } from 'lucide-vue-next'
 import { Button, DropdownMenu, DropdownMenuItem, DropdownMenuLabel } from '@/components/ui'
 import { MODES, MODE_LABELS, VIEW_PRESETS, VIEW_LABELS } from '@/lib/modelViewer'
 import { MEASURE_KINDS, MEASURE_LABELS } from '@/lib/potree'
@@ -24,11 +24,12 @@ const emit = defineEmits(['update:mode', 'zoom-in', 'zoom-out', 'reset', 'view',
 const MODE_ICONS = { rotate: Rotate3d, pan: Hand, zoom: ZoomIn }
 const MODE_KEYS = { rotate: 'left-drag', pan: 'left-drag (or right-drag in Rotate)', zoom: 'left-drag up/down (or scroll)' }
 const VIEW_KEYS = { iso: '1', top: '2', north: '3', east: '4' }
-const MEASURE_ICONS = { distance: Ruler, area: Pentagon, volume: Box }
+const MEASURE_ICONS = { distance: Ruler, area: Pentagon, volume: Box, profile: ChartLine }
 const MEASURE_HINTS = {
   distance: 'Measure distance — click points, Enter or double-click to finish',
   area: 'Measure area — click 3+ points, click the first point or press Enter to close',
   volume: 'Measure volume over the DSM — click 3+ points, click the first point or press Enter to close',
+  profile: 'Elevation profile — click 2+ points along a line, Enter or double-click to compute',
 }
 </script>
 

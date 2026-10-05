@@ -34,6 +34,8 @@ Without it every path must be local, exactly as before.
 | POST | `/export/formula` | 🚧 Stub | Band formula (NDVI, etc.) |
 | POST | `/pointcloud/to-potree` | ✅ | LAS/LAZ → Potree 2.0 octree (local or S3 → S3), returns points/bounds/attributes |
 | GET | `/pointcloud/converter` | ✅ | Whether PotreeConverter is installed, concurrency and timeout |
+| POST | `/pointcloud/profile` | ✅ | Elevation profile along a transect, read from a Potree octree by byte range (local or S3); ground / top / height / per-class layers / gaps / stats |
+| GET | `/pointcloud/profile/limits` | ✅ | Point and bin budgets for profile requests |
 | POST | `/volume` | ✅ | DSM volume under a polygon; `polygon_crs` = `EPSG:4326` (default), `native`, WKT / `EPSG:n` |
 | POST | `/pointcloud/export` | 🚧 Stub | LAS/LAZ/PLY export (out of scope for the viewer) |
 
@@ -85,6 +87,27 @@ Environment: `POTREE_CONVERTER_BIN` (default `PotreeConverter`),
 `POTREE_MAX_CONCURRENT` (per worker, default 1), `POTREE_TIMEOUT_SECONDS`
 (default 7200). The call is synchronous and bounded by an in-process
 semaphore; the caller (a Frappe background job) owns the job state.
+
+### `/pointcloud/profile`
+
+Request: `{ "metadata": …, "hierarchy": …, "octree": …, "line": [[x, y], …], "width": 1.0, "step": null, "ground_fill_max": null, "ground_window": null }`.
+The three files are the octree's `metadata.json` / `hierarchy.bin` /
+`octree.bin`, each an absolute path or an `s3://` URI in any mix (the host
+cache may hold one and have evicted another). `line` is a 2–50 vertex
+polyline in the cloud's CRS, `width` the full corridor width (0.05–200),
+`step` the bin size (default ≈ 500 bins, never finer than the sampled
+spacing). Only the octree nodes whose boxes meet the corridor are read, at
+every level, with coalesced byte-range reads; when they hold more than
+`PROFILE_MAX_POINTS` the deepest levels are dropped (reported in
+`sampling`). Response: per-bin `distance`, `x`, `y`, `count`, `min`, `max`,
+`ground` (measured), `ground_fill` (interpolated), `top`, `height`, one
+layer per classification code in `classes`, `gaps`, `classification`
+(how the ground was derived), `sampling`, `stats` (length, elevation
+range, ascent / descent, steepest grade, heights, coverage). Errors: 400
+(paths), 404 (missing local file), 422 (bad transect / unreadable octree),
+502 (object storage), 507 (memory). Full definitions:
+`docs/point-cloud/elevation-profile.md`. Environment: `PROFILE_MAX_POINTS`
+(default 5,000,000), `PROFILE_MAX_BINS` (default 2000).
 
 ### `/raster/metadata`
 
