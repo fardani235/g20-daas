@@ -39,7 +39,8 @@ import frappe
 from frappe.utils import add_to_date, get_datetime, now_datetime
 
 from webodm_core.plugins import geospatial
-from webodm_core.plugins.files import abs_path_for_file_url, save_private_file_from_path, save_private_file_from_stream
+from webodm_core.plugins.files import (abs_path_for_file_url, file_doc_for_url, save_private_file_from_path,
+                                       save_private_file_from_stream)
 from webodm_core import storage
 from webodm_core.storage import assets, cache
 
@@ -147,6 +148,40 @@ def state(task, *, warm: bool = True) -> dict:
                 out["files"] = None
             else:
                 out["cache"] = "warm"
+    return out
+
+
+class OctreeNotReady(Exception):
+    """The task has no Ready octree (message is safe to show)."""
+
+
+def file_sources(task) -> dict[str, str]:
+    """``{"metadata": <path|s3 uri>, "hierarchy": ..., "octree": ...}`` for a Ready octree.
+
+    What the geospatial service needs to read the octree server-side (the
+    elevation profile): each file cache-first (absolute path) and S3 second
+    (``s3://`` URI, with a background refill queued), so the request works
+    whether or not the host copy was evicted. Every row is checked to be a
+    File attached to *this* task before its blob is resolved — the same
+    guard the raster paths use. Raises :class:`OctreeNotReady` when the
+    octree is not Ready for the task's current point cloud.
+    """
+    current = state(task, warm=False)
+    if current["status"] != "Ready":
+        raise OctreeNotReady(current.get("error") or "the point cloud has not been prepared for viewing yet; "
+                             "open it in the 3D viewer first")
+    out = {}
+    for row in assets.potree_rows(task):
+        if row.kind not in FILES or not row.file_url:
+            continue
+        file_doc_for_url(row.file_url, attached_to_doctype="WebODM Task", attached_to_name=task.name)
+        try:
+            _source, location = cache.resolve_source(row.file_url, row.storage_key, task.organization)
+        except cache.CacheMiss as e:
+            raise OctreeNotReady(f"the octree is not available on this host: {e}") from None
+        out[row.kind.removeprefix("potree_")] = location
+    if set(out) != {"metadata", "hierarchy", "octree"}:
+        raise OctreeNotReady("the octree files are missing; retry the conversion")
     return out
 
 

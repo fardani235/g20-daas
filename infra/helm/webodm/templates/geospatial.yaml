@@ -32,6 +32,11 @@ spec:
               value: {{ .Values.geospatial.potree.maxConcurrent | quote }}
             - name: POTREE_TIMEOUT_SECONDS
               value: {{ .Values.geospatial.potree.timeoutSeconds | quote }}
+            # Elevation profile budgets (app/utils/profile.py).
+            - name: PROFILE_MAX_POINTS
+              value: {{ .Values.geospatial.profile.maxPoints | quote }}
+            - name: PROFILE_MAX_BINS
+              value: {{ .Values.geospatial.profile.maxBins | quote }}
             # Same bucket as the app, with its own read + convert identity.
             - name: S3_BUCKETS
               value: {{ include "webodm.s3.bucket" . | quote }}

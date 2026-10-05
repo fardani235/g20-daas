@@ -205,3 +205,42 @@ def to_potree(path: str, output_path: str, projection: str | None = None, name: 
     if not isinstance(data, dict) or not isinstance(data.get("files"), dict):
         raise GeospatialError("point cloud conversion failed: unexpected response")
     return data
+
+
+def pointcloud_profile(files: dict, line: list, *, width: float = 1.0, step: float | None = None,
+                       ground_window: float | None = None, timeout: int = 180) -> dict:
+    """Elevation profile along ``line`` via ``POST /pointcloud/profile``.
+
+    ``files`` maps ``metadata`` / ``hierarchy`` / ``octree`` to the octree
+    file's absolute path on the shared volume or its ``s3://`` URI (the two
+    may be mixed: the host cache can hold one file and have evicted another).
+    ``line`` is ``[[x, y], ...]`` in the cloud's CRS, ``width`` the corridor
+    width and ``step`` the bin size (``None`` = automatic). Raises
+    ``GeospatialError`` on a 4xx (bad transect, unreadable octree) and
+    ``GeospatialUnavailable`` when the service cannot be reached or errors.
+    """
+    url = f"{geospatial_url().rstrip('/')}/pointcloud/profile"
+    body = {"metadata": files["metadata"], "hierarchy": files["hierarchy"], "octree": files["octree"],
+            "line": line, "width": width}
+    if step is not None:
+        body["step"] = step
+    if ground_window is not None:
+        body["ground_window"] = ground_window
+    try:
+        resp = requests.post(url, json=body, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            detail = e.response.text if e.response is not None else ""
+        if e.response is not None and e.response.status_code >= 500:
+            raise GeospatialUnavailable(f"profile failed: {detail or e}") from e
+        raise GeospatialError(f"profile failed: {detail or e}") from e
+    except Exception as e:
+        raise GeospatialUnavailable(f"geospatial service unreachable: {e}") from e
+    if not isinstance(data, dict) or "distance" not in data:
+        raise GeospatialError("profile failed: unexpected response")
+    return data

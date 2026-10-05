@@ -13,6 +13,7 @@ octree that is built on demand the first time someone opens it.
 | [Decisions](#decisions) | Developers / reviewers |
 | [Operations](#operations) | Operators |
 | [Testing](#testing) | Developers |
+| [Elevation profile](elevation-profile.md) | The transect / profile tool: design, algorithm, API, operations |
 | [`openspec/specs/point-cloud-viewer/spec.md`](../../openspec/specs/point-cloud-viewer/spec.md) | Requirements and scenarios |
 
 ## User guide
@@ -59,6 +60,12 @@ double-click to focus, presets 1–4, `R` reset, `G` grid, `F` fullscreen,
   volume tool uses (base method as selected on the map). The button is
   disabled when the task has no DSM — a volume is never estimated from the
   points.
+- *Elevation profile* — click 2+ points along a line, Enter or double-click
+  to compute. The whole cloud is sampled along the line on the server and a
+  chart opens under the view: ground, top, height above ground, one band per
+  classification layer, gaps where there is no data, and the numbers (length,
+  elevation range, ascent / descent, steepest grade, heights). Pointing at the
+  chart marks the spot in 3D. See [elevation-profile.md](elevation-profile.md).
 - Esc cancels the shape being drawn (a second Esc leaves the tool); `×` on a
   label removes that measurement; the bin icon clears all.
 
@@ -114,6 +121,12 @@ touches the host disk. The handler is synchronous (the Frappe job holds the
 request, as for cogify) and bounded per worker by `POTREE_MAX_CONCURRENT`.
 `GET /pointcloud/converter` and `/health` (`potree_converter: true|false`)
 report whether the binary is installed.
+
+`POST /pointcloud/profile {metadata, hierarchy, octree, line, width, step?}`
+reads the octree *server-side* (`app/utils/potree_octree.py`, byte ranges
+from the host cache or S3) and summarises the points under a transect
+(`app/utils/profile.py`); Frappe's `api.pointcloud.profile` is the
+permission-checked proxy. Details: [elevation-profile.md](elevation-profile.md).
 
 `app/utils/pointcloud.py` parses the LAS public header + VLRs itself (point
 count, format, bounds, WKT or GeoTIFF-key EPSG) — no PDAL / laspy — and runs
@@ -223,6 +236,7 @@ converter does not report progress and the spec does not need it.
 | `POTREE_MAX_CONCURRENT` | `1` | Conversions per uvicorn worker (`WEB_CONCURRENCY=2` → 2 at most). |
 | `POTREE_TIMEOUT_SECONDS` | `7200` | Kill the converter after this long; the task's octree is marked Failed. |
 | `COG_SCRATCH_DIR` | `/tmp` (`/scratch` in compose/helm) | Also holds the LAZ + octree of an S3 → S3 conversion (~3× the LAZ). |
+| `PROFILE_MAX_POINTS` / `PROFILE_MAX_BINS` | `5000000` / `2000` | Elevation profile budgets (see [elevation-profile.md](elevation-profile.md#operations)). |
 
 Memory: the converter is out-of-core but still wants roughly 1 GB per 50 M
 points. The compose service limit is 2 GB and the Helm default has no
@@ -264,15 +278,18 @@ fields and `WebODM Task Asset.kind` the three `potree_*` options.
   isolation, `206` serving through the WSGI app) plus `api.test_tiles`
   (`polygon_crs`). Worktree recipe: see AGENTS.md Phase 21.
 - Frontend: `npm test` (`lib/potree.test.js`, `components/PointCloudPanel.test.js`,
-  `lib/modelViewer.test.js`). Browser: `e2e/point-cloud.e2e.mjs` drives the
-  real page in headless Chrome against a mocked backend that serves a
-  converted octree with byte ranges — conversion states, colour modes,
-  filters, measurements, the DSM volume call, the no-DSM guard and the retry
+  `lib/modelViewer.test.js`, and `lib/profile.test.js` /
+  `components/ProfileChart.test.js` / `components/ProfilePanel.test.js` for
+  the profile). Browser: `e2e/point-cloud.e2e.mjs` drives the real page in
+  headless Chrome against a mocked backend that serves a converted octree
+  with byte ranges — conversion states, colour modes, filters, measurements,
+  the DSM volume call, the elevation profile, the no-DSM guard and the retry
   path (`e2e/README.md`).
 
 ## Out of scope / follow-ups
 
 Plugin-run point clouds, arbitrary uploads and non-LAS inputs; fine-grained
-conversion progress; elevation profiles; exporting or reclassifying the
-cloud; COPC / EPT output (likely next once loader support settles —
-`/pointcloud/export` stays a 501 stub until then).
+conversion progress; exporting or reclassifying the cloud; COPC / EPT output
+(likely next once loader support settles — `/pointcloud/export` stays a 501
+stub until then). Elevation profiles are implemented: see
+[elevation-profile.md](elevation-profile.md) for its own follow-ups.

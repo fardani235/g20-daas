@@ -93,8 +93,9 @@ function disposeObject(root) {
 
 /**
  * @param {import('vue').Ref<HTMLElement|null>} containerRef element the canvas is mounted into
- * @param {{ onInteract?: () => void, onVolume?: (points: number[][]) => Promise<string>, onMeasureMiss?: () => void }} [options]
- *   `onVolume` receives a finished volume polygon (native CRS vertices) and resolves to the readout.
+ * @param {{ onInteract?: () => void, onVolume?: (points: number[][]) => Promise<string>, onMeasureMiss?: () => void, onProfile?: (points: number[][]) => void }} [options]
+ *   `onVolume` receives a finished volume polygon (native CRS vertices) and resolves to the readout;
+ *   `onProfile` receives a finished transect (native CRS vertices) — the page computes and shows the profile.
  */
 export function useModelViewer(containerRef, options = {}) {
   const state = reactive({
@@ -800,6 +801,18 @@ export function useModelViewer(containerRef, options = {}) {
     const kind = measure.kind
     if (!kind || !canFinish(kind, measure.points)) return false
     const points = measure.points.slice()
+    if (kind === 'profile') {
+      // Not a measurement kept in the scene: the page owns the transect and
+      // its chart (pointCloudLayer.setProfile draws it). The tool switches off
+      // so the user can orbit; clicking it again starts a new line.
+      measure.points = []
+      measure.text = ''
+      measure.kind = null
+      layer?.setDrawing(null)
+      requestRender()
+      options.onProfile?.(points)
+      return true
+    }
     const id = `m${++measureSeq}`
     const entry = {
       id, kind, points,
@@ -846,6 +859,26 @@ export function useModelViewer(containerRef, options = {}) {
   function screenPositionOf(native) {
     if (!renderer || !layer) return null
     return layer.project(native, renderer.domElement.clientWidth, renderer.domElement.clientHeight)
+  }
+
+  // --------------------------------------------------------------- profile
+
+  /** Draw (or remove, with null) a transect and its sampled profile in the scene. */
+  function setProfile(spec) {
+    layer?.setProfile(spec)
+  }
+
+  /** Marker for the spot the chart's pointer is on: `{ x, y, ground, top }` (native) or null. */
+  function setProfileMarker(spot) {
+    layer?.setProfileMarker(spot)
+  }
+
+  /** Re-target the orbit on a native point (what the chart's click does). */
+  function focusOn(native) {
+    if (!camera || !controls || !layer?.loaded) return
+    const point = new THREE.Vector3(native[0] - pointCloud.origin[0], native[1] - pointCloud.origin[1], native[2] - pointCloud.origin[2])
+    const delta = point.clone().sub(controls.target)
+    animateCamera(camera.position.clone().add(delta), point, 350)
   }
 
   /** Where each measurement's readout sits on screen (anchored on the shape). */
@@ -1000,6 +1033,9 @@ export function useModelViewer(containerRef, options = {}) {
     finishMeasurement,
     removeMeasurement,
     clearMeasurements,
+    setProfile,
+    setProfileMarker,
+    focusOn,
     clear,
     dispose,
     resize,

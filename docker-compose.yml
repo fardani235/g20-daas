@@ -378,6 +378,11 @@ services:
       # killed after the timeout and the task's octree is marked Failed.
       POTREE_MAX_CONCURRENT: ${POTREE_MAX_CONCURRENT:-1}
       POTREE_TIMEOUT_SECONDS: ${POTREE_TIMEOUT_SECONDS:-7200}
+      # Elevation profiles read the octree by byte range; a request reads at
+      # most this many points (deeper octree levels are dropped beyond it)
+      # and returns at most this many bins. See docs/point-cloud/elevation-profile.md.
+      PROFILE_MAX_POINTS: ${PROFILE_MAX_POINTS:-5000000}
+      PROFILE_MAX_BINS: ${PROFILE_MAX_BINS:-2000}
     secrets:
       - s3_geospatial_access_key_id
       - s3_geospatial_secret_access_key

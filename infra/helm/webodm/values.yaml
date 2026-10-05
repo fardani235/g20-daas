@@ -259,6 +259,12 @@ geospatial:
   potree:
     maxConcurrent: 1
     timeoutSeconds: 7200
+  # Elevation profiles (point cloud viewer): per-request point budget (the
+  # deepest octree levels are dropped beyond it; ~30 bytes per point of RAM)
+  # and the maximum number of bins returned.
+  profile:
+    maxPoints: 5000000
+    maxBins: 2000
 
 pluginRunner:
   enabled: true

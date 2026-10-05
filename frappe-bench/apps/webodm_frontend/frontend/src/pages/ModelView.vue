@@ -215,6 +215,22 @@
       </div>
     </div>
 
+    <!-- Elevation profile dock (point cloud only) -->
+    <div v-if="profile.open" class="h-[38%] max-h-[440px] min-h-[240px] flex-shrink-0" data-profile-dock>
+      <ProfilePanel
+        :profile="profile.data"
+        :loading="profile.loading"
+        :error="profile.error"
+        :settings="profile.settings"
+        :task-name="taskId"
+        @update="setProfileSetting"
+        @hover="onProfileHover"
+        @select="onProfileSelect"
+        @close="closeProfile"
+        @retry="rerunProfile"
+      />
+    </div>
+
     <Dialog v-model:open="helpOpen" title="Viewer controls" description="Mouse, touch and keyboard shortcuts.">
       <div class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
         <div>
@@ -239,6 +255,7 @@
               <div class="flex justify-between gap-3"><dt>Cancel</dt><dd class="text-right">Esc</dd></div>
             </dl>
             <p class="mt-2 text-xs text-muted-foreground">Distances follow the picked points in 3D; areas are horizontal. Volumes come from the task's DSM, never from the points, so they need a DSM.</p>
+            <p class="mt-2 text-xs text-muted-foreground">The elevation profile tool samples the whole point cloud along the line you draw (ground, top and each classification layer) and opens a chart below the view; pointing at the chart marks the spot in the scene, clicking it focuses the camera there.</p>
           </template>
         </div>
         <div>
@@ -267,6 +284,7 @@ import { ArrowLeft, Box, Download, LoaderCircle, MonitorX, RefreshCw, Terminal, 
 import { Badge, Button, Dialog, Select } from '@/components/ui'
 import ModelToolbar from '@/components/ModelToolbar.vue'
 import PointCloudPanel from '@/components/PointCloudPanel.vue'
+import ProfilePanel from '@/components/ProfilePanel.vue'
 import { statusVariant } from '@/lib/status'
 import { toast } from '@/lib/toast'
 import { useModelViewer } from '@/composables/useModelViewer'
@@ -282,9 +300,11 @@ import {
   progressPercent,
 } from '@/lib/modelViewer'
 import { listPlugins, listRuns } from '@/lib/plugins'
+import { fetchProfile, hoverInfo, loadProfileSettings, saveProfileSettings } from '@/lib/profile'
 import {
   CONVERTING_STATUSES,
   MEASURE_LABELS,
+  MEASURE_MIN_POINTS,
   POINT_CLOUD_SOURCE,
   budgetCapFor,
   computeVolumeNative,
@@ -338,6 +358,7 @@ const viewer = useModelViewer(canvasRef, {
   onInteract: () => showHint(false),
   onVolume: computeVolume,
   onMeasureMiss: () => toast.info('No point under the cursor — click on the point cloud'),
+  onProfile: runProfile,
 })
 // Dev-only hook so browser tests can read camera state without scraping pixels.
 if (import.meta.env.DEV) window.__modelViewer = viewer
@@ -381,8 +402,9 @@ const measureHint = computed(() => {
   const kind = viewer.measure.kind
   if (!kind) return ''
   const n = viewer.measure.points.length
-  const need = kind === 'distance' ? 2 : 3
+  const need = MEASURE_MIN_POINTS[kind] || 2
   if (n < need) return `${MEASURE_LABELS[kind]}: click ${need - n} more point${need - n === 1 ? '' : 's'} on the cloud (Esc to cancel)`
+  if (kind === 'profile') return `${viewer.measure.text} — click to add points along the line, Enter or double-click to compute the profile`
   return kind === 'distance'
     ? `${viewer.measure.text} — click to add points, Enter or double-click to finish`
     : `${viewer.measure.text} — click the first point, Enter or double-click to close`
@@ -458,6 +480,89 @@ async function computeVolume(points) {
   return computeVolumeNative(taskId.value, points, projection, loadVolumeBaseMethod())
 }
 
+// ------------------------------------------------------- elevation profile
+//
+// The transect is picked on the rendered points (native CRS vertices); the
+// backend samples the *whole* cloud along it (see lib/profile.js) and the
+// result is drawn both in the chart (ProfilePanel) and in the scene
+// (pointCloudLayer.setProfile), so what the chart shows is what the 3D view
+// marks. One profile at a time: a new line replaces the previous one.
+
+const profile = reactive({
+  open: false,
+  line: null, // native [x, y, z] vertices as picked
+  data: null, // backend result
+  loading: false,
+  error: null,
+  settings: loadProfileSettings(),
+})
+let profileSeq = 0
+
+async function runProfile(points) {
+  if (!points || points.length < 2) return
+  profile.line = points.slice()
+  profile.open = true
+  await requestProfile()
+}
+
+async function requestProfile() {
+  if (!profile.line) return
+  const seq = ++profileSeq
+  profile.loading = true
+  profile.error = null
+  viewer.setProfile({ line: profile.line, width: profile.settings.width, profile: null })
+  try {
+    const data = await fetchProfile(taskId.value, profile.line, {
+      width: profile.settings.width,
+      step: profile.settings.step || null,
+    })
+    if (seq !== profileSeq) return
+    profile.data = data
+    viewer.setProfile({ line: profile.line, width: profile.settings.width, profile: data })
+  } catch (e) {
+    if (seq !== profileSeq) return
+    profile.data = null
+    profile.error = e?.message || 'The profile could not be computed'
+  } finally {
+    if (seq === profileSeq) profile.loading = false
+  }
+}
+
+function rerunProfile() {
+  requestProfile()
+}
+
+function setProfileSetting(key, value) {
+  profile.settings[key] = value
+  saveProfileSettings(profile.settings)
+  // Width and step change what is sampled (and the request redraws the
+  // corridor); the vertical scale only changes how the chart is drawn.
+  if ((key === 'width' || key === 'step') && profile.line) requestProfile()
+}
+
+function onProfileHover(index) {
+  const info = index === null || index === undefined ? null : hoverInfo(profile.data, index)
+  viewer.setProfileMarker(info && !info.gap ? { x: info.x, y: info.y, ground: info.ground, top: info.top } : null)
+}
+
+function onProfileSelect(index) {
+  const info = hoverInfo(profile.data, index)
+  if (!info || info.gap) return
+  const z = info.ground ?? info.top
+  if (typeof z === 'number') viewer.focusOn([info.x, info.y, z])
+}
+
+function closeProfile() {
+  profileSeq++
+  profile.open = false
+  profile.line = null
+  profile.data = null
+  profile.loading = false
+  profile.error = null
+  viewer.setProfile(null)
+  if (viewer.measure.kind === 'profile') viewer.cancelMeasurement()
+}
+
 // ------------------------------------------------------------ data access
 
 function csrfHeaders() {
@@ -527,6 +632,7 @@ async function loadTask() {
   taskLoading.value = true
   task.value = null
   potreeState.value = null
+  closeProfile()
   viewer.clear()
 
   const [fetched] = await Promise.all([fetchTask(taskId.value), fetchDatasets(), fetchModelRuns(), fetchPluginLabels()])

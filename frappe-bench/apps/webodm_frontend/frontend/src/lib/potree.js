@@ -316,9 +316,12 @@ export function formatElevation(value) {
 // for projected ODM outputs).
 // ---------------------------------------------------------------------------
 
-export const MEASURE_KINDS = ['distance', 'area', 'volume']
-export const MEASURE_LABELS = { distance: 'Distance', area: 'Area', volume: 'Volume' }
-export const MEASURE_MIN_POINTS = { distance: 2, area: 3, volume: 3 }
+// `profile` is drawn like a distance (a polyline) but is not a measurement
+// kept in the scene: finishing it hands the vertices to the elevation
+// profile (lib/profile.js), which samples the whole cloud along the line.
+export const MEASURE_KINDS = ['distance', 'area', 'volume', 'profile']
+export const MEASURE_LABELS = { distance: 'Distance', area: 'Area', volume: 'Volume', profile: 'Elevation profile' }
+export const MEASURE_MIN_POINTS = { distance: 2, area: 3, volume: 3, profile: 2 }
 
 export function segmentLength(a, b) {
   return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
@@ -328,6 +331,13 @@ export function segmentLength(a, b) {
 export function polylineLength(points) {
   let total = 0
   for (let i = 1; i < points.length; i++) total += segmentLength(points[i - 1], points[i])
+  return total
+}
+
+/** Horizontal (map) length of a polyline — what a profile's distance axis measures. */
+export function polylineLength2D(points) {
+  let total = 0
+  for (let i = 1; i < points.length; i++) total += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1])
   return total
 }
 
@@ -353,6 +363,7 @@ export function measurementText(kind, points) {
   if (kind === 'distance') return formatDistance(polylineLength(points))
   if (kind === 'area') return formatArea(polygonArea(points))
   if (kind === 'volume') return points.length >= 3 ? `${formatArea(polygonArea(points))} · finish to compute` : 'Pick at least 3 points'
+  if (kind === 'profile') return points.length >= 2 ? `${formatDistance(polylineLength2D(points))} · finish to compute` : 'Pick at least 2 points'
   return ''
 }
 

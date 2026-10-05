@@ -2,11 +2,14 @@
 // real browser); see e2e/README.md. The backend is mocked with Playwright
 // route interception so the viewer can be exercised without a Frappe stack:
 // the conversion state machine (Queued -> Running -> Ready, Failed -> retry),
-// the private-file byte-range serving, colour modes, filters, measurements
-// and the DSM-backed volume call.
+// the private-file byte-range serving, colour modes, filters, measurements,
+// the DSM-backed volume call and the elevation profile tool (the profile
+// endpoint is mocked from E2E_PROFILE_JSON — a real backend response saved
+// to disk — or, without it, synthesised from the picked line).
 //
 //   E2E_BASE_URL        SPA origin+base (default http://127.0.0.1:8082/assets/webodm_frontend/frontend)
 //   E2E_OCTREE_DIR      directory with metadata.json / hierarchy.bin / octree.bin (PotreeConverter output)
+//   E2E_PROFILE_JSON    optional: a saved `webodm_core.api.pointcloud.profile` response for this octree
 //   E2E_CHROME          optional path to a Chrome/Chromium binary
 //   E2E_SHOTS           optional directory for screenshots
 //   E2E_PLAYWRIGHT_DIR  directory whose node_modules holds playwright (default: this project)
@@ -54,9 +57,53 @@ const mock = {
   states: [], // scripted potree_state responses (shift on each call)
   stateCalls: [],
   volumeCalls: [],
+  profileCalls: [],
+  profileStatus: 200, // set to 422 to simulate a backend refusal
   ranges: 0,
   fullReads: 0,
   dsm: '/private/files/t1_dsm.tif',
+}
+const SAVED_PROFILE = process.env.E2E_PROFILE_JSON ? JSON.parse(fs.readFileSync(process.env.E2E_PROFILE_JSON, 'utf8')) : null
+
+// A plausible profile for the picked line when no saved response is given:
+// a gently sloping ground, a 3-bin "building" layer and a gap in the middle.
+function syntheticProfile(line, width, step = 0.5) {
+  const pts = line.map(([x, y]) => [x, y])
+  let length = 0
+  for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])
+  const bins = Math.max(1, Math.ceil(length / step))
+  const z0 = metadata.boundingBox.min[2] + 1
+  const r = n => Math.round(n * 1000) / 1000
+  const distance = [], xs = [], ys = [], count = [], ground = [], fill = [], top = [], height = [], min = [], max = []
+  const bcount = [], bmin = [], bmax = [], bheight = []
+  const gap = [Math.floor(bins * 0.45), Math.floor(bins * 0.55)]
+  const bld = [Math.floor(bins * 0.2), Math.floor(bins * 0.3)]
+  for (let i = 0; i < bins; i++) {
+    const d = (i + 0.5) * step
+    const t = d / length
+    distance.push(r(d)); xs.push(r(pts[0][0] + (pts[pts.length - 1][0] - pts[0][0]) * t)); ys.push(r(pts[0][1] + (pts[pts.length - 1][1] - pts[0][1]) * t))
+    const g = z0 + 0.03 * d
+    const inGap = i >= gap[0] && i < gap[1], inBld = i >= bld[0] && i < bld[1]
+    count.push(inGap ? 0 : 40)
+    ground.push(inGap || inBld ? null : r(g)); fill.push(inGap || inBld ? r(g) : null)
+    const tz = inBld ? g + 6 : g + 0.3
+    top.push(inGap ? null : r(tz)); height.push(inGap ? null : r(tz - g)); min.push(inGap ? null : r(g - 0.05)); max.push(inGap ? null : r(tz))
+    bcount.push(inBld ? 40 : 0); bmin.push(inBld ? r(g + 5.8) : null); bmax.push(inBld ? r(g + 6) : null); bheight.push(inBld ? 6 : null)
+  }
+  return {
+    crs: metadata.projection || '', line: pts, width, step, length: r(length), bins, distance, x: xs, y: ys, count, min, max,
+    ground, ground_fill: fill, top, height,
+    vertices: [{ distance: 0, x: pts[0][0], y: pts[0][1] }, { distance: r(length), x: pts[pts.length - 1][0], y: pts[pts.length - 1][1] }],
+    classes: [{ code: 6, points: 40 * (bld[1] - bld[0]), bins: bld[1] - bld[0], count: bcount, min: bmin, max: bmax, median: bmax, height: bheight, max_height: 6, max_height_at: r((bld[0] + 0.5) * step) }],
+    gaps: [[r(gap[0] * step), r(gap[1] * step)]],
+    classification: { available: true, ground_method: 'class2_median', noise_excluded: [7, 18], ground_fill_max: 50 },
+    sampling: { points_read: 1000, points_available: 1000, points_in_corridor: 40 * (bins - (gap[1] - gap[0])), nodes_read: 10, full_resolution: true, max_level: 3, deepest_level: 3, spacing: 0.1 },
+    stats: { length: r(length), length_3d: r(length * 1.001), segments: pts.length - 1, bins, bins_with_data: bins - (gap[1] - gap[0]), coverage: r(1 - (gap[1] - gap[0]) / bins),
+      points: 40 * (bins - (gap[1] - gap[0])), ground_start: r(z0), ground_end: r(z0 + 0.03 * length), ground_min: r(z0), ground_min_at: r(step / 2), ground_max: r(z0 + 0.03 * length), ground_max_at: r(length - step / 2),
+      top_max: r(z0 + 6.3), top_max_at: r((bld[0] + 0.5) * step), height_max: 6, height_max_at: r((bld[0] + 0.5) * step), height_mean: 1,
+      ascent: r(0.03 * length), descent: 0, max_grade_pct: 3, max_grade_at: 2, mean_grade_pct: 3 },
+    duration_s: 0.1,
+  }
 }
 const readyState = () => ({
   task: TASK, status: 'Ready', error: null, files: FILES, cache: 'warm', has_dsm: !!mock.dsm,
@@ -100,6 +147,16 @@ async function install(page) {
     mock.volumeCalls.push(body)
     if (!mock.dsm) return r.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ message: 'Task has no dsm' }) })
     await json(r, { volume: 12.4, fill: 12.4, cut: 0, area: 100, base_plane: 'best_fit' })
+  })
+  await page.route('**/api/method/webodm_core.api.pointcloud.profile', async r => {
+    const body = JSON.parse(r.request().postData() || '{}')
+    mock.profileCalls.push(body)
+    if (mock.profileStatus !== 200) {
+      return r.fulfill({ status: mock.profileStatus, contentType: 'application/json',
+        body: JSON.stringify({ _server_messages: JSON.stringify([JSON.stringify({ message: 'the point cloud has not been prepared for viewing yet; open it in the 3D viewer first' })]) }) })
+    }
+    const line = JSON.parse(body.line)
+    await json(r, SAVED_PROFILE || syntheticProfile(line, body.width, body.step || 0.5))
   })
   await page.route('**/private/files/t1_potree_*', async r => {
     const name = r.request().url().split('t1_potree_')[1].split('?')[0]
@@ -267,6 +324,72 @@ async function install(page) {
   s = await snap(page)
   const horiz = Math.hypot(s.position[0] - s.target[0], s.position[1] - s.target[1])
   check('top-down preset looks down the Z axis', Math.abs(s.position[2] - s.target[2]) > horiz * 10, `pos=${s.position.map(v => v.toFixed(1))} target=${s.target.map(v => v.toFixed(1))}`)
+
+  // ---- 5b. elevation profile: pick a line, the backend samples it, the dock shows it
+  // Back to the isometric framing (the measurements above were picked there).
+  await page.keyboard.press('1')
+  await page.waitForFunction(() => !window.__modelViewer.snapshot().tweening, null, { timeout: 5000 }).catch(() => {})
+  await settle(page, 500)
+  await page.click('button[aria-label="Measure elevation profile"]')
+  s = await snap(page)
+  check('profile tool activates like a measurement', s.measure.kind === 'profile')
+  await page.mouse.click(cx - 80, cy + 30)
+  await page.waitForTimeout(250)
+  await page.mouse.click(cx + 80, cy - 20)
+  await page.waitForTimeout(250)
+  s = await snap(page)
+  check('profile vertices are picked on the cloud', s.measure.drawing === 2, `${s.measure.drawing} vertices`)
+  await page.keyboard.press('Enter')
+  const dockState = await Promise.race([
+    page.waitForSelector('[data-profile-dock] [data-profile-stats]', { timeout: 15000 }).then(() => 'stats'),
+    page.waitForSelector('[data-profile-error]', { timeout: 15000 }).then(() => 'error'),
+  ]).catch(() => 'timeout')
+  if (dockState !== 'stats') {
+    const detail = dockState === 'error' ? await page.textContent('[data-profile-error]') : (await page.textContent('[data-profile-dock]').catch(() => 'no dock'))
+    check('profile dock shows the result', false, `${dockState}: ${String(detail).replace(/\s+/g, ' ').slice(0, 160)}`)
+  }
+  s = await snap(page)
+  check('finishing the line leaves the tool and opens the dock', s.measure.kind === null && s.measure.measurements.length === 0)
+  const pb = mock.profileCalls[0]
+  const pline = pb ? JSON.parse(pb.line) : []
+  check('profile request carries the picked 2D line, the task and the width', !!pb && pb.task_name === TASK && pline.length === 2 && pline[0].length === 2 && pb.width > 0,
+    pb && `width=${pb.width}, ${pline.length} vertices`)
+  const inBounds = pline.every(([x, y]) => x >= bbox.min[0] - 1 && x <= bbox.max[0] + 1 && y >= bbox.min[1] - 1 && y <= bbox.max[1] + 1)
+  check('profile line is in the cloud CRS', inBounds, JSON.stringify(pline[0]))
+  const title = await page.textContent('[data-profile-title]')
+  check('dock title shows length and corridor', /Profile · .* m · .* m corridor/.test(title), title)
+  check('chart draws ground, top and a gap', (await page.$('[data-profile-chart] [data-ground]')) !== null && (await page.$('[data-profile-chart] [data-top]')) !== null
+    && (await page.$$('[data-profile-chart] [data-gap]')).length >= 1)
+  check('class layers appear as bands with a legend', (await page.$$('[data-profile-chart] [data-class-layer]')).length >= 1 && /Building|vegetation|Wire/.test(await page.textContent('[data-profile-legend]')))
+  const statsText = await page.textContent('[data-profile-stats]')
+  check('stats strip lists length, elevation, climb, grade, height and coverage', /Length/.test(statsText) && /Ascent/.test(statsText) && /Steepest grade/.test(statsText) && /Max height/.test(statsText) && /Coverage/.test(statsText))
+  // Hovering the chart reads out the bin and marks the scene.
+  const chart = await page.$('[data-profile-chart] svg')
+  const cb = await chart.boundingBox()
+  await page.mouse.move(cb.x + cb.width * 0.3, cb.y + cb.height * 0.5)
+  await page.waitForSelector('[data-profile-readout]', { timeout: 5000 })
+  const readout = await page.textContent('[data-profile-readout]')
+  check('hovering the chart shows distance, ground, top and height', /distance/.test(readout) && /ground/.test(readout) && /height/.test(readout), readout.replace(/\s+/g, ' ').slice(0, 80))
+  await shot(page, 'pc-05b-profile.png')
+  // Changing the corridor width re-samples.
+  await page.selectOption('select[aria-label="Corridor width"]', '5')
+  await page.waitForFunction(() => document.querySelector('[data-profile-title]')?.textContent.includes('5 m corridor'), null, { timeout: 10000 })
+  check('changing the width re-requests the profile', mock.profileCalls.length === 2 && mock.profileCalls[1].width === 5, `${mock.profileCalls.length} calls`)
+  const remembered = await page.evaluate(() => JSON.parse(localStorage.getItem('pointcloud_profile_settings') || '{}'))
+  check('profile settings are remembered', remembered.width === 5)
+  // A backend refusal is shown in the dock with a retry.
+  mock.profileStatus = 422
+  await page.selectOption('select[aria-label="Bin step"]', '1')
+  await page.waitForSelector('[data-profile-error]', { timeout: 10000 })
+  check('a refused profile shows the backend message', /not been prepared/.test(await page.textContent('[data-profile-error]')))
+  mock.profileStatus = 200
+  await page.click('[data-profile-error] button:has-text("Retry")')
+  await page.waitForSelector('[data-profile-dock] [data-profile-stats]', { timeout: 10000 })
+  check('Retry recomputes the profile', mock.profileCalls.length === 4)
+  await page.click('button[aria-label="Close the profile"]')
+  await page.waitForTimeout(200)
+  check('closing the dock removes it', (await page.$('[data-profile-dock]')) === null)
+  await page.selectOption('select[aria-label="Corridor width"]', '1').catch(() => {})
 
   // ---- 6. switcher keeps the source in the URL
   const options = await page.$$eval('select[aria-label="Model"] option', os => os.map(o => o.value))
