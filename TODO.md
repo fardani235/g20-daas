@@ -82,8 +82,8 @@
 ### Extended API ✅ (partial), ⬜ (rest)
 - [x] Implement task process/trigger endpoint (`process_task`)
 - [x] Implement task cancel endpoint (`cancel_task`)
-- [ ] Implement task duplicate endpoint
-- [ ] Implement task restart endpoint
+- [x] Implement task duplicate endpoint (`duplicate_task`, 2026-10-06 — `docs/tasks/README.md`)
+- [x] Implement task restart endpoint (covered by `process_task` on a finished task; `update_task` edits settings first)
 - [ ] Implement task download_asset endpoint
 - [ ] Implement task download_backup endpoint
 - [ ] Implement task import (ZIP) endpoint
@@ -196,13 +196,13 @@
 - [x] Zoom To Fit button
 
 ### MapView Extended ✅ (partial), ⬜ (rest)
-- [ ] Upload panel: drag-drop, chunked, progress bar
-- [ ] Edit task dialog (processing options, presets)
+- [x] Upload panel: drag-drop, progress bar (bytes / speed / ETA / finishing, cancel) — chunked upload still open
+- [x] Edit task dialog (processing options, presets) — refused while Queued / Provisioning / Running
 - [ ] Import task panel (ZIP, external URL)
 - [ ] Export asset dialog (format selection)
 - [ ] Share popup (public link, iframe embed)
 - [ ] Permissions panel (user/group management)
-- [ ] GCP upload popup
+- [x] GCP upload: ground control file with the upload or on the dataset page, sent to the node as gcp_list.txt
 - [ ] Image/PDF popup viewers
 - [x] Thumbnail grid (capped at 9 + "+N" badge)
 - [x] Raster tile overlays (orthophoto/DSM/DTM) via Frappe tile proxy
@@ -215,7 +215,7 @@
 - [ ] Band formula input
 - [ ] Basemap switcher
 - [ ] Unit selector (metric/imperial)
-- [ ] Progress bars (upload, processing, resize) — basic done
+- [x] Progress bars (upload: real bytes/speed/ETA; processing: node percent) — resize n/a
 - [ ] Histogram display
 - [ ] Error message display
 
@@ -251,7 +251,7 @@
 - [x] Basic upload modal (MapView)
 - [x] Toast notifications (frappe-ui)
 - [ ] Paginator component
-- [ ] FileUploader with progress
+- [x] FileUploader with progress (`UploadDropzone` + `UploadProgress`)
 - [ ] Tags field component
 - [ ] UnitSelector component
 - [ ] AssetDownloadButton component
@@ -266,7 +266,7 @@
 - [ ] `useGeospatial()` — tile loading + metadata
 - [ ] `useWebSocket()` — real-time updates
 - [ ] `usePermissions()` — role/permission checks
-- [ ] `useFileUpload()` — chunked upload with progress
+- [x] upload tracker with progress (`lib/upload.js: createUploadTracker`) — chunking still open
 
 ### Frontend Infrastructure
 - [x] Router configuration with auth guard

@@ -1027,3 +1027,55 @@ Compose is unchanged and stays the local-dev path; this adds a cluster path next
   tbb-devel` into `/tmp/geovenv`, `cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DTBB_DIR=<venv TBBConfig>`,
   then relink with `-L/tmp/geovenv/lib -Wl,-rpath,/tmp/geovenv/lib` (`/tmp/elm-pc/src/build`). Octree
   for tests/e2e: `/tmp/elm-pc/octree/j1u49j8ore`.
+
+## Phase 24: Ground control, upload progress, edit & duplicate tasks (2026-10-06)
+
+Design record with every decision and trade-off: `docs/tasks/README.md`; change
+`openspec/changes/archive/2026-10-06-add-task-management-essentials/`; new spec
+`openspec/specs/task-management/spec.md`, GCP requirement added to `openspec/specs/datasets/spec.md`.
+
+- **Ground control lives on the dataset** (`WebODM Dataset.gcp_file` / `gcp_filename` / `gcp_summary`
+  JSON / `gcp_storage_key`), not the task: the file is measurements *about the images*, must follow
+  every task / duplicate / re-run, and rides the dataset-owned input pipeline. It is the **one input
+  that may change after creation** (attach / replace / remove via `api.dataset.set_gcp` / `remove_gcp`;
+  images stay fixed). `webodm_core/gcp.py` parses ODM's gcp_list format (no Frappe; strict on shape,
+  lenient on content; refuses `geo.txt`-shaped files). `datasets.create_from_uploads(gcp_upload=)`
+  validates **before** any photo is written. Node contract reused: dispatch appends
+  `("gcp_list.txt", source)` as the **last** `images` part (NodeODM passes a `.txt` among the images
+  to ODM as `--gcp`); fixed name so a user's `geo.txt`/`align.*` can't be misread. An unreadable GCP
+  raises `assets.InputUnavailable` → task Failed (never silently dropped). Synced to
+  `datasets/<id>/inputs/gcp_<name>` by `_sync_gcp` inside `sync_inputs`, found by
+  `cache.storage_key_for_file_url`, backfilled by `sync_pending`, deleted by key with the dataset.
+  "Without GCP" on the same images = ODM's `use-exif` option (already in the catalog).
+- **Frappe gotchas met**: (1) `attach_files_to_document` (Frappe's `on_update` hook) creates a
+  *second* File for an Attach value when none exists on `(doc, field)` — always pass
+  `attached_to_field` to `save_private_file_from_stream` for parent Attach fields. (2) On PostgreSQL a
+  full `Document.save()` of a loaded `WebODM Task` would write the once-unwrapped `processing_options`
+  text back verbatim → top-level JSON array → next load is a `list` → "cannot be a list" on the
+  delete snapshot. Every post-insert task write stays `db_set` (`update_task` included); duplicates
+  re-encode via `_decode_processing_options` → `_encode_processing_options`.
+- **Edit**: `api.task.update_task` (`EDITABLE_STATUSES` = Pending/Completed/Failed/Cancelled;
+  `TaskBusy` otherwise — Queued would race the dispatch sweep, Running already has the options).
+  Saving never starts/resets; "Save and re-run" calls the existing `process_task`. Payloads gain
+  `options` (decoded `[{name,value}]`, progress payload) and `can_edit` (both payloads).
+- **Duplicate**: `api.task.duplicate_task` → Pending copy, same project + dataset (so GCP follows),
+  re-encoded options, `duplicate_title` "(copy)"/"(copy N)"; nothing a run produced is copied
+  (WebODM copies results; here they live in S3 and the next run wipes them).
+- **Frontend**: `lib/upload.js` — `uploadForm` (XHR, same URL/FormData/CSRF/envelope as fetch, progress
+  + AbortSignal), `partitionDrop` / `filesFromDataTransfer` (folders via `webkitGetAsEntry`),
+  `progressSnapshot` / `createUploadTracker(now, wrap)` (pass Vue `reactive` as `wrap`); phases
+  uploading → processing ("server is registering…") → done/failed/cancelled. `lib/tasks.js` client +
+  status rules. Components `UploadDropzone` (emits `gcp` for a dropped .txt), `UploadProgress`,
+  `GcpFileField`, `TaskSettingsDialog` (presets + `OdmOptionsForm`, Save / Save and start|re-run).
+  Wired in `MapView.vue` (Add Task dialog, Edit/Duplicate buttons — duplicate selects the copy and
+  opens its settings, GCP mark), `Datasets.vue`, `DatasetDetail.vue` (ground control section with
+  parsed summary + warnings), `Console.vue`. `lib/datasets.js` `createDataset`/`createTask` now take
+  `gcp`, `onProgress`, `signal`; tests stub `XMLHttpRequest` with a fake class.
+- **Tests**: backend `test_gcp.py` (12 unit), `api/test_gcp.py` (18), `api/test_task_management.py`
+  (15), node client +2 — full `webodm_core` suite on the throwaway site green (`/tmp/elm-frappe-test.sh
+  up|migrate|test|down`: postgis 16-3.4 + 2 redis on network `elm-test`, image
+  `ghcr.io/fardani235/webodm-frappe:16.34.0` which already ships boto3, worktree `webodm_core` mounted
+  at `/workspace/webodm_core`; run `migrate` after a DocType JSON change). Frontend 364 vitest, `vite
+  build` OK. No browser smoke this round.
+- Not done (by design): chunked/resumable uploads, node picker, per-task record of the GCP used,
+  two GCPs per dataset, duplicate-with-results, a GCP editor.

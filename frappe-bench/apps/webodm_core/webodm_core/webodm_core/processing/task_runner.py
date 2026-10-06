@@ -346,7 +346,14 @@ def process_task(task_name: str):
         except storage.StorageError as e:
             frappe.log_error(f"{task.name}: input sync failed: {e}", "WebODM Storage")
 
-    images = _get_task_images(task)
+    try:
+        images = _get_task_images(task)
+    except assets.InputUnavailable as e:
+        # A declared input (the ground control file) cannot be read anywhere.
+        # Processing without it would silently answer a different question
+        # than the one asked, so this is terminal like "no images".
+        _fail(task, f"cannot dispatch: {e}")
+        return
     if not images:
         # Nothing to send and nothing that a retry could fix.
         _fail(task, "task has no readable images")
@@ -428,6 +435,8 @@ def _get_task_images(task: Document) -> list[tuple[str, object]]:
     re-processing works after the cache has been evicted. Never file
     contents: the client streams one image at a time. Without a bucket
     configured only the host copy is used (``input_sources`` handles both).
+    The dataset's ground control file, when present, is the last pair
+    (``gcp_list.txt``); it rides the same upload loop to the node.
     """
     return assets.input_sources(task)
 

@@ -28,6 +28,30 @@ class WebODMDataset(Document):
         self._check_images_fixed()
         self._check_not_empty()
         self._recompute_summary()
+        self._check_gcp_fields()
+
+    def _check_gcp_fields(self):
+        """The GCP file is a private attachment of *this* dataset, or nothing.
+
+        ``gcp_file`` is user-writable through the REST resource; refusing any
+        URL that is not attached here keeps a member from pointing a dataset at
+        another organization's file and having dispatch stream it to a node.
+        The bookkeeping fields are cleared with the file so the summary never
+        describes a file that is gone.
+        """
+        if not self.gcp_file:
+            self.gcp_filename = None
+            self.gcp_summary = None
+            self.gcp_storage_key = None
+            return
+        from webodm_core.plugins.files import file_doc_for_url
+
+        try:
+            file_doc_for_url(self.gcp_file, attached_to_doctype="WebODM Dataset", attached_to_name=self.name)
+        except (frappe.DoesNotExistError, frappe.PermissionError):
+            frappe.throw("The ground control file must be uploaded through the dataset", frappe.PermissionError)
+        if not self.gcp_filename:
+            self.gcp_filename = self.gcp_file.rsplit("/", 1)[-1]
 
     def _check_not_empty(self):
         # An input set with nothing in it cannot feed a task. The flag is for
@@ -83,4 +107,5 @@ class WebODMDataset(Document):
 
         assets.delete_dataset_objects(self)
         datasets.remove_image_blobs(self)
+        datasets.remove_gcp_blob(self)
         datasets.remove_thumbnails(self.name)

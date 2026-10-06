@@ -32,6 +32,14 @@
           <div class="text-xs text-muted-foreground mt-1 flex items-center gap-2">
             <Badge :variant="statusVariant(task.status)">{{ task.status }}</Badge>
             <span v-if="imageCount(task)" :title="task.dataset_summary?.title || 'Dataset'">📷 {{ imageCount(task) }}</span>
+            <span
+              v-if="task.dataset_summary?.gcp"
+              data-task-gcp
+              class="inline-flex items-center gap-0.5"
+              :title="`Ground control: ${gcpSummaryText(task.dataset_summary.gcp)}`"
+            >
+              <MapPin class="size-3" /> GCP
+            </span>
             <span v-if="task.status === 'Provisioning'" class="text-muted-foreground" title="A processing node is being started on demand for this task. This usually takes a few minutes.">starting node…</span>
             <span v-else-if="task.progress > 0">{{ task.progress }}%</span>
           </div>
@@ -75,6 +83,28 @@
               >
                 <CircleX />
                 Cancel
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                data-task-edit
+                :disabled="!canEditTask(task)"
+                :title="editBlockedReason(task) || 'Change the title and processing options'"
+                @click.stop="openEditTask(task)"
+              >
+                <Pencil />
+                Edit
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                data-task-duplicate
+                :loading="duplicating === task.name"
+                title="Create a fresh copy of this task over the same images, ready to tweak"
+                @click.stop="duplicateTaskFromCard(task)"
+              >
+                <Copy />
+                Duplicate
               </Button>
               <Button variant="outline" size="sm" @click.stop="openTaskConsole(task)">
                 <Terminal />
@@ -397,21 +427,26 @@
             No datasets yet — upload new images instead, or create one on the
             <router-link to="/datasets" class="text-primary hover:underline">Datasets</router-link> page.
           </p>
+          <p v-else-if="selectedDatasetChoice" class="text-xs text-muted-foreground" data-dataset-gcp>
+            <template v-if="selectedDatasetChoice.gcp">
+              Ground control: {{ gcpLabel(selectedDatasetChoice.gcp) }} — sent to the engine with the images.
+            </template>
+            <template v-else>
+              No ground control on this dataset. Add one on the
+              <router-link :to="`/datasets/${selectedDatasetChoice.name}`" class="text-primary hover:underline">dataset page</router-link>
+              if the images lack GPS or you need survey-grade accuracy.
+            </template>
+          </p>
         </div>
 
         <div v-else class="space-y-3">
-          <input
-            type="file"
-            multiple
-            accept="image/*"
-            class="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
-            @change="onUploadFiles"
-          />
+          <UploadDropzone v-model="uploadFileList" :disabled="uploading" @gcp="onDroppedGcp" />
+          <GcpFileField v-model="uploadGcp" :disabled="uploading" input-id="upload-gcp" />
           <div class="space-y-1.5">
             <Label for="upload-dataset-title">Dataset title</Label>
             <Input id="upload-dataset-title" v-model="uploadDatasetTitle" :placeholder="uploadTitlePlaceholder" />
             <p class="text-xs text-muted-foreground">
-              {{ imageCountLabel(uploadFileList.length) }} selected. The upload becomes a dataset you can reuse for other tasks.
+              The upload becomes a dataset you can reuse for other tasks.
             </p>
           </div>
         </div>
@@ -440,15 +475,25 @@
           />
         </div>
 
-        <div v-if="uploading" class="rounded-md bg-primary/10 px-4 py-3 text-sm text-primary">
-          {{ uploadProgress }}
-        </div>
+        <UploadProgress
+          :state="uploadTracker.state"
+          :label="inputMode === INPUT_MODES.upload ? `Uploading ${imageCountLabel(uploadFileList.length)}` : 'Creating task'"
+          :cancellable="inputMode === INPUT_MODES.upload"
+          @cancel="cancelUpload"
+        />
       </div>
       <template #footer>
-        <Button variant="ghost" @click="showUpload = false">Cancel</Button>
+        <Button variant="ghost" :disabled="uploading" @click="showUpload = false">Cancel</Button>
         <Button :disabled="!canCreateTask || uploading" :loading="uploading" @click="createTaskFromDialog">Create task</Button>
       </template>
     </Dialog>
+
+    <TaskSettingsDialog
+      v-model:open="showEditTask"
+      :task="editingTask"
+      @saved="onTaskSaved"
+      @started="onTaskStarted"
+    />
 
     <Dialog v-model:open="showRunDialog" :title="`Run ${runPluginDoc?.label || ''}`">
       <div v-if="runPluginDoc?.models?.length" class="mb-3 space-y-1.5">
@@ -494,16 +539,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Box,
   Check,
   CircleX,
   CloudUpload,
+  Copy,
   Info,
   Layers,
+  MapPin,
   Minus,
+  Pencil,
   Play,
   Sparkles,
   Square,
@@ -511,6 +559,12 @@ import {
   Trash2,
   X,
  Cloud } from 'lucide-vue-next'
+import UploadDropzone from '@/components/UploadDropzone.vue'
+import UploadProgress from '@/components/UploadProgress.vue'
+import GcpFileField from '@/components/GcpFileField.vue'
+import TaskSettingsDialog from '@/components/TaskSettingsDialog.vue'
+import { createUploadTracker, isCancelled, totalBytes } from '@/lib/upload'
+import { canEditTask, duplicateTask, editBlockedReason, gcpSummaryText, getTask } from '@/lib/tasks'
 import { Badge, Button, Dialog, Input, Label, Select } from '@/components/ui'
 import { statusVariant } from '@/lib/status'
 import { toast } from '@/lib/toast'
@@ -530,6 +584,7 @@ import {
   createTask,
   defaultDatasetTitle,
   formatBytes,
+  gcpLabel,
   imageCountLabel,
   listDatasets,
   listTasks,
@@ -576,8 +631,15 @@ const tasks = ref([])
 const selectedTask = ref(null)
 const showUpload = ref(false)
 const uploading = ref(false)
-const uploadProgress = ref('')
+// Real upload progress (bytes out of the browser, then a server-side
+// "finishing" phase) and the abort handle behind the Cancel button.
+const uploadTracker = createUploadTracker(undefined, reactive)
+const uploadGcp = ref(null) // ground control file to store with a new upload
 const uploadPresets = ref([])
+// Post-creation task management: edit settings, duplicate.
+const showEditTask = ref(false)
+const editingTask = ref(null)
+const duplicating = ref('')
 const selectedPreset = ref(null)
 const uploadValues = ref({}) // { optionName: value }
 const uploadOdm = useOdmOptions()
@@ -590,6 +652,8 @@ const uploadFileList = ref([])
 const uploadDatasetTitle = ref('')
 const uploadTitlePlaceholder = computed(() =>
   defaultDatasetTitle(project.value?.title, uploadFileList.value.length))
+const selectedDatasetChoice = computed(() =>
+  datasetChoices.value.find(d => d.name === selectedDataset.value) || null)
 const canCreateTask = computed(() => taskInputsValid({
   mode: inputMode.value, dataset: selectedDataset.value, files: uploadFileList.value,
 }))
@@ -648,6 +712,8 @@ function uploadOptionsArray() {
 
 function openUpload() {
   showUpload.value = true
+  uploadGcp.value = null
+  uploadTracker.reset()
   loadUploadForm()
 }
 const sidebarWidth = ref(360)
@@ -1329,33 +1395,99 @@ async function deleteTask(task) {
   }
 }
 
-function onUploadFiles(e) {
-  uploadFileList.value = Array.from(e.target.files || [])
+// A gcp_list.txt dropped together with the photos lands in the GCP slot
+// unless the user already chose one explicitly.
+function onDroppedGcp(file) {
+  if (!uploadGcp.value) {
+    uploadGcp.value = file
+    toast.success(`Ground control file ${file.name} picked up from the drop`)
+  }
+}
+
+function cancelUpload() {
+  uploadTracker.cancel()
 }
 
 async function createTaskFromDialog() {
   if (!canCreateTask.value) return
   const uploadMode = inputMode.value === INPUT_MODES.upload
   uploading.value = true
-  uploadProgress.value = uploadMode
-    ? `Uploading ${imageCountLabel(uploadFileList.value.length)}...`
-    : 'Creating task...'
+  const files = uploadMode ? uploadFileList.value : []
+  const signal = uploadTracker.start(totalBytes(files) + (uploadMode && uploadGcp.value ? uploadGcp.value.size : 0))
   try {
     await createTask({
       projectId: route.params.id,
       dataset: uploadMode ? undefined : selectedDataset.value,
-      files: uploadMode ? uploadFileList.value : undefined,
+      files: uploadMode ? files : undefined,
       datasetTitle: uploadMode ? (uploadDatasetTitle.value || uploadTitlePlaceholder.value) : undefined,
       options: uploadOptionsArray(),
+      gcp: uploadMode ? uploadGcp.value : undefined,
+      onProgress: uploadTracker.update,
+      signal,
     })
+    uploadTracker.finish()
     toast.success(uploadMode ? 'Images uploaded' : 'Task created')
     showUpload.value = false
+    uploadGcp.value = null
     fetchTasks()
   } catch (err) {
-    toast.error(err.message)
+    if (isCancelled(err)) {
+      toast.info('Upload cancelled — nothing was created')
+    } else {
+      uploadTracker.fail()
+      toast.error(err.message)
+    }
   } finally {
     uploading.value = false
-    uploadProgress.value = ''
+    if (!showUpload.value) uploadTracker.reset()
+  }
+}
+
+// -- edit / duplicate ---------------------------------------------------------
+
+async function openEditTask(task) {
+  if (!canEditTask(task)) {
+    toast.error(editBlockedReason(task))
+    return
+  }
+  // The list payload has no decoded options; the task endpoint returns them.
+  let full = task
+  try {
+    full = await getTask(task.name)
+  } catch {}
+  editingTask.value = full
+  showEditTask.value = true
+}
+
+function replaceTaskInList(updated) {
+  const idx = tasks.value.findIndex(t => t.name === updated.name)
+  if (idx !== -1) tasks.value[idx] = { ...tasks.value[idx], ...updated }
+  if (currentTask.value?.name === updated.name) currentTask.value = { ...currentTask.value, ...updated }
+}
+
+function onTaskSaved(saved) {
+  replaceTaskInList(saved)
+}
+
+function onTaskStarted(started) {
+  replaceTaskInList({ ...started, status: 'Queued' })
+}
+
+async function duplicateTaskFromCard(task) {
+  duplicating.value = task.name
+  try {
+    const copy = await duplicateTask(task.name)
+    const idx = tasks.value.findIndex(t => t.name === task.name)
+    tasks.value.splice(idx === -1 ? 0 : idx, 0, copy)
+    toast.success(`Duplicated as "${copy.title}" — same images and settings, nothing processed yet`)
+    await selectTask(copy)
+    // The usual reason to duplicate is to change something: open the settings right away.
+    editingTask.value = copy
+    showEditTask.value = true
+  } catch (err) {
+    toast.error(err.message || 'Could not duplicate the task')
+  } finally {
+    duplicating.value = ''
   }
 }
 

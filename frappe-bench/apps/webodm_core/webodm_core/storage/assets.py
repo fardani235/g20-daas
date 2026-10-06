@@ -58,6 +58,16 @@ DATASET_DOCTYPE = "WebODM Dataset"
 DATASET_IMAGE_DOCTYPE = "WebODM Dataset Image"
 
 
+class InputUnavailable(Exception):
+    """A declared input of the task cannot be read anywhere (cache or object storage).
+
+    Raised for the ground control file only: silently dispatching without the
+    GCP would produce a result the user did not ask for (and could not tell
+    apart until they measured it), so the task fails loudly instead. A missing
+    image is still skipped and logged, as before.
+    """
+
+
 # -- inputs -----------------------------------------------------------------
 
 
@@ -112,8 +122,56 @@ def sync_inputs(dataset, *, raise_on_error: bool = False) -> int:
             frappe.log_error(f"{dataset.name}: input sync failed for {row.image}: {e}", "WebODM Storage")
             if raise_on_error:
                 raise
-            break  # storage is unhappy; let the periodic sync retry the rest
-    return synced
+            return synced  # storage is unhappy; let the periodic sync retry the rest
+    return synced + _sync_gcp(dataset, store, raise_on_error=raise_on_error)
+
+
+def gcp_key(dataset) -> str:
+    """Object key of the dataset's ground control file (next to its images)."""
+    filename = dataset.get("gcp_filename") or "gcp_list.txt"
+    return storage.dataset_key(dataset, "inputs", f"gcp_{storage.safe_segment(filename)}")
+
+
+def _sync_gcp(dataset, store, *, raise_on_error: bool = False) -> int:
+    """Copy the GCP file to S3 once (``gcp_storage_key`` records it). Same rules as images."""
+    url = dataset.get("gcp_file")
+    if not url or dataset.get("gcp_storage_key"):
+        return 0
+    try:
+        path = abs_path_for_attached_file(url, attached_to_doctype=DATASET_DOCTYPE, attached_to_name=dataset.name)
+    except frappe.DoesNotExistError:
+        return 0
+    except frappe.PermissionError as e:
+        frappe.log_error(f"{dataset.name}: skipping GCP {url}: {e}", "WebODM Storage")
+        return 0
+    if not os.path.isfile(path):
+        return 0
+    key = gcp_key(dataset)
+    try:
+        if not store.exists(key):
+            store.put_path(path, key, "text/plain")
+        frappe.db.set_value(DATASET_DOCTYPE, dataset.name, "gcp_storage_key", key, update_modified=False)
+        dataset.gcp_storage_key = key
+        return 1
+    except storage.StorageError as e:
+        frappe.log_error(f"{dataset.name}: GCP sync failed: {e}", "WebODM Storage")
+        if raise_on_error:
+            raise
+        return 0
+
+
+def delete_dataset_gcp_object(dataset) -> int:
+    """Delete the dataset's GCP object by its recorded key (org-checked, best-effort)."""
+    key = dataset.get("gcp_storage_key")
+    if not key or not storage.configured() or not dataset.get("organization"):
+        return 0
+    try:
+        storage.assert_org_key(key, dataset.organization)
+        storage.get().delete(key)
+        return 1
+    except storage.StorageError as e:
+        frappe.log_error(f"{dataset.name}: could not delete GCP object {key}: {e}", "WebODM Storage")
+        return 0
 
 
 def sync_task_inputs(task, *, raise_on_error: bool = False) -> int:
@@ -164,6 +222,13 @@ def input_sources(task) -> list[tuple[str, object]]:
     Every key is checked against the *task's* organization: the dataset must
     belong to the same org (``WebODMTask.validate``), so a row tampered to
     point at another org's namespace is refused here as before.
+
+    When the dataset carries a ground control file it is appended *last*,
+    under the fixed name ``gcp_list.txt`` — NodeODM passes a ``.txt`` found
+    among the uploaded images to ODM as ``--gcp`` (the same contract WebODM
+    itself uses), so no new node API is involved. A GCP that can be read
+    neither from the cache nor from object storage raises
+    :class:`InputUnavailable` rather than being dropped.
     """
     out = []
     dataset = dataset_for_task(task)
@@ -171,6 +236,7 @@ def input_sources(task) -> list[tuple[str, object]]:
         frappe.log_error(f"{task.name}: task has no dataset", "WebODM Processing")
         return out
     store = storage.get() if storage.configured() else None
+    gcp_source = _gcp_input_source(dataset, task, store)
     for row in dataset.images:
         if not row.image:
             continue
@@ -192,7 +258,35 @@ def input_sources(task) -> list[tuple[str, object]]:
         frappe.log_error(
             f"Cannot read {row.image}: missing on disk and not in object storage", "WebODM Processing"
         )
+    if out and gcp_source is not None:
+        from webodm_core.datasets import GCP_UPLOAD_NAME
+
+        out.append((GCP_UPLOAD_NAME, gcp_source))
     return out
+
+
+def _gcp_input_source(dataset, task, store):
+    """Path or stream opener for the dataset's GCP file; ``None`` when it has none."""
+    url = dataset.get("gcp_file")
+    if not url:
+        return None
+    path = None
+    try:
+        path = abs_path_for_attached_file(url, attached_to_doctype=DATASET_DOCTYPE, attached_to_name=dataset.name)
+    except frappe.DoesNotExistError:
+        frappe.log_error(f"No File record for GCP {url}", "WebODM Processing")
+    except frappe.PermissionError:
+        raise InputUnavailable("the ground control file is not attached to the task's dataset")
+    if path and os.path.isfile(path):
+        cache.touch(path)
+        return path
+    key = dataset.get("gcp_storage_key")
+    if store is not None and key:
+        storage.assert_org_key(key, task.organization)
+        return _open_object(store, key)
+    raise InputUnavailable(
+        "the ground control file is missing on disk and not in object storage; re-attach it on the dataset"
+    )
 
 
 # -- outputs ----------------------------------------------------------------
@@ -435,6 +529,7 @@ def delete_dataset_objects(dataset) -> int:
             deleted += 1
         except storage.StorageError as e:
             frappe.log_error(f"{dataset.name}: could not delete {key}: {e}", "WebODM Storage")
+    deleted += delete_dataset_gcp_object(dataset)
     return deleted
 
 
@@ -472,6 +567,16 @@ def sync_pending(limit: int = 20) -> dict:
         for name in parents:
             if not frappe.db.exists(DATASET_DOCTYPE, name):
                 continue
+            stats["inputs"] += sync_inputs(frappe.get_doc(DATASET_DOCTYPE, name), raise_on_error=True)
+
+        # Datasets whose ground control file is still host-only (attached or
+        # replaced while storage was down, or before this field existed).
+        for name in frappe.get_all(
+            DATASET_DOCTYPE, filters={"gcp_file": ["is", "set"], "gcp_storage_key": ["is", "not set"]},
+            pluck="name", limit=limit,
+        ):
+            if name in parents:
+                continue  # already handled above
             stats["inputs"] += sync_inputs(frappe.get_doc(DATASET_DOCTYPE, name), raise_on_error=True)
 
         # Legacy outputs: Attach fields set but no (synced) asset row.

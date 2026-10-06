@@ -25,6 +25,17 @@ DEFAULT_TRANSFER_TIMEOUT = (30, 600)
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 
+def upload_content_type(filename: str) -> str:
+    """MIME type for one part of the ``images`` upload.
+
+    NodeODM decides what a file *is* from its name, not this header (a ``.txt``
+    among the images becomes the ``--gcp`` file); the type is only cosmetic
+    for the node's logs. Images keep the historical ``image/jpeg`` so nothing
+    changes for them; text sidecars are labelled as such.
+    """
+    return "text/plain" if (filename or "").lower().endswith(".txt") else "image/jpeg"
+
+
 class NodeODMClient:
     def __init__(
         self,
@@ -121,7 +132,7 @@ class NodeODMClient:
             with opener as fh:
                 self._post(
                     f"task/new/upload/{uuid}",
-                    files=[("images", (filename, fh, "image/jpeg"))],
+                    files=[("images", (filename, fh, upload_content_type(filename)))],
                     timeout=self.transfer_timeout,
                 )
             uploaded += 1

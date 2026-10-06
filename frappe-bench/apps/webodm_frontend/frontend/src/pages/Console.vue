@@ -17,6 +17,9 @@
           · Dataset:
           <router-link :to="`/datasets/${task.dataset}`" class="text-primary hover:underline">{{ task.dataset_summary?.title || task.dataset }}</router-link>
         </template>
+        <template v-if="task?.dataset_summary?.gcp">
+          · GCP: <span :title="task.dataset_summary.gcp.crs || ''" data-console-gcp>{{ task.dataset_summary.gcp.filename }} ({{ task.dataset_summary.gcp.points }} points)</span>
+        </template>
       </span>
       <Button variant="outline" size="sm" class="ml-auto" @click="refreshLogs">
         <RefreshCw />

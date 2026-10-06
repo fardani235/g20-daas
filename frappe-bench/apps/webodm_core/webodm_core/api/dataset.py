@@ -48,8 +48,7 @@ def list_datasets():
     tenancy.require_org()
     rows = frappe.get_list(
         datasets.DOCTYPE,
-        fields=["name", "title", "description", "image_count", "total_size", "created_by", "owner",
-                "creation", "modified"],
+        fields=list(datasets.SUMMARY_FIELDS),
         order_by="creation desc", limit_page_length=0,
     )
     usage = {}
@@ -73,7 +72,11 @@ def get_dataset(name=None):
 
 @frappe.whitelist(allow_guest=False)
 def create_dataset():
-    """Create a dataset from multipart ``files`` plus ``title`` / ``description``."""
+    """Create a dataset from multipart ``files`` plus ``title`` / ``description``.
+
+    An optional ``gcp`` part attaches the ground control file in the same
+    request, the way an experienced WebODM user drops it in with the photos.
+    """
     from webodm_core import tenancy
     tenancy.require_org()  # deny-by-default: a user with no org cannot upload
 
@@ -83,8 +86,37 @@ def create_dataset():
     if not files:
         frappe.throw("No files provided")
     title = frappe.form_dict.get("title") or f"Dataset {frappe.utils.now_datetime():%Y-%m-%d %H:%M}"
-    dataset = datasets.create_from_uploads(files, title=title, description=frappe.form_dict.get("description"))
+    dataset = datasets.create_from_uploads(files, title=title, description=frappe.form_dict.get("description"),
+                                           gcp_upload=frappe.request.files.get("gcp"))
     frappe.db.commit()
+    return get_dataset(dataset.name)
+
+
+@frappe.whitelist(allow_guest=False)
+def set_gcp(name=None):
+    """Attach or replace the dataset's ground control file (multipart ``gcp`` + ``name``).
+
+    Images are fixed; the GCP sidecar is not — see ``datasets.attach_gcp`` for
+    why. Any member of the organization may do it (write on the dataset, like
+    renaming it). The response is the full dataset payload so the page can
+    show the parsed summary (points, CRS, image names not in the dataset).
+    """
+    name = name or frappe.form_dict.get("name")
+    dataset = _get_dataset_checked(name, "write")
+    upload = frappe.request.files.get("gcp") if frappe.request and frappe.request.files else None
+    if upload is None:
+        frappe.throw("Provide the ground control file as the 'gcp' part")
+    datasets.attach_gcp(dataset, upload)
+    frappe.db.commit()
+    return get_dataset(dataset.name)
+
+
+@frappe.whitelist(allow_guest=False)
+def remove_gcp(name=None):
+    """Detach and delete the dataset's ground control file."""
+    name = name or _payload().get("name")
+    dataset = _get_dataset_checked(name, "write")
+    datasets.remove_gcp(dataset)
     return get_dataset(dataset.name)
 
 

@@ -13,6 +13,11 @@
   "created_by",
   "images_section",
   "images",
+  "gcp_section",
+  "gcp_file",
+  "gcp_filename",
+  "gcp_summary",
+  "gcp_storage_key",
   "organization"
  ],
  "fields": [
@@ -74,6 +79,41 @@
    "description": "Fixed once the dataset exists: rows cannot be added or removed. Create a new dataset to change the inputs."
   },
   {
+   "collapsible": 1,
+   "fieldname": "gcp_section",
+   "fieldtype": "Section Break",
+   "label": "Ground Control",
+   "description": "Optional ground control point file (ODM format) that travels with the images: it is sent to the processing node as gcp_list.txt for every task over this dataset. Unlike the images it may be attached, replaced or removed later; tasks dispatched afterwards use the new file."
+  },
+  {
+   "fieldname": "gcp_file",
+   "fieldtype": "Attach",
+   "label": "GCP File",
+   "description": "/private/files/... URL of the ground control file (ODM gcp_list format)."
+  },
+  {
+   "fieldname": "gcp_filename",
+   "fieldtype": "Data",
+   "label": "GCP Filename",
+   "read_only": 1,
+   "description": "Name the file was uploaded with (the node always receives it as gcp_list.txt)."
+  },
+  {
+   "fieldname": "gcp_summary",
+   "fieldtype": "JSON",
+   "label": "GCP Summary",
+   "read_only": 1,
+   "description": "Parsed at upload: coordinate system, point count, image names referenced and which of them are not in this dataset."
+  },
+  {
+   "fieldname": "gcp_storage_key",
+   "fieldtype": "Data",
+   "label": "GCP Object Storage Key",
+   "length": 1000,
+   "read_only": 1,
+   "description": "Canonical object key of the GCP file in the configured bucket; empty until synced."
+  },
+  {
    "fieldname": "organization",
    "fieldtype": "Link",
    "label": "Organization",
@@ -83,7 +123,7 @@
    "in_standard_filter": 1
   }
  ],
- "modified": "2026-09-30 00:00:00.000000",
+ "modified": "2026-10-06 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "WebODM Core",
  "name": "WebODM Dataset",

@@ -171,6 +171,10 @@ exists; title/description are editable; a dataset with no images is refused.
 - image_count: Int, total_size: Long Int   (derived on save)
 - created_by: Link → User
 - images: Table (WebODM Dataset Image)
+- gcp_file: Attach, gcp_filename: Data, gcp_summary: JSON, gcp_storage_key: Data
+                                           (optional ground control file, ODM gcp_list format; the one
+                                            input that may be attached/replaced/removed after creation;
+                                            sent to the node as gcp_list.txt — docs/tasks/README.md)
 - organization: Link → WebODM Organization (stamped, read-only)
 ```
 
@@ -314,11 +318,13 @@ Same pattern for: `WebODM Task`, `WebODM Processing Node`, `WebODM Preset`, etc.
 | POST | `webodm_core.api.task.list_tasks` | ✅ | Tasks of a project with their `dataset_summary` |
 | POST | `webodm_core.api.dataset.list_datasets` / `get_dataset` / `create_dataset` / `update_dataset` / `delete_dataset` | ✅ | Dataset library (org-scoped; delete refused while a task references it) |
 | GET | `webodm_core.api.dataset.thumbnail` | ✅ | Disk-cached JPEG preview of a dataset image (128/256/512 px) |
-| POST | `webodm_core.api.task.process_task` | ✅ | Trigger processing (enqueue) |
+| POST | `webodm_core.api.dataset.set_gcp` / `remove_gcp` | ✅ | Attach / replace / remove a dataset's ground control file (ODM `gcp_list.txt`; validated; sent to the node with the images) — `create_dataset` and `upload_images` (upload mode) also take a `gcp` part |
+| POST | `webodm_core.api.task.process_task` | ✅ | Trigger processing (enqueue); also the re-run after an edit (wipes previous outputs) |
 | POST | `webodm_core.api.task.cancel_task` | ✅ | Cancel running/pending task |
 | POST | `webodm_core.api.task.get_task_console` | ✅ | Incremental NodeODM console output |
-| POST | `webodm_core.api.task.duplicate` | ⬜ | Duplicate task & assets |
-| POST | `webodm_core.api.task.restart` | ⬜ | Reprocess task |
+| POST | `webodm_core.api.task.update_task` | ✅ | Edit title / processing options (Pending, Completed, Failed, Cancelled; refused in flight) — `docs/tasks/README.md` |
+| POST | `webodm_core.api.task.duplicate_task` | ✅ | Fresh Pending copy over the same dataset with the same options; no outputs copied |
+| POST | `webodm_core.api.task.restart` | ⬜ | (covered by `process_task` on a finished task) |
 | GET | `webodm_core.api.task.download_asset` | ⬜ | Download individual asset |
 | GET | `webodm_core.api.task.download_backup` | ⬜ | Download full task backup |
 | POST | `webodm_core.api.task.import` | ⬜ | Import task from ZIP |
@@ -486,13 +492,13 @@ Spec: `openspec/specs/marketplace/spec.md`; docs: `docs/marketplace/`.
 
 ### 7.2 MapView (`/webodm/project/{id}`)
 - Leaflet map with tile overlays (orthophoto, DSM, DTM)
-- Task list sidebar with status badges
-- Upload images panel (drag-drop, progress bars)
-- Edit task dialog (processing options, presets)
+- Task list sidebar with status badges; Edit (settings) and Duplicate on each task card; GCP mark when the dataset has ground control
+- Add Task dialog: existing dataset or new upload — drop zone (files / folders), ground control field, real upload progress (bytes, speed, ETA, finishing phase) with cancel (`docs/tasks/README.md`)
+- Edit task dialog (title, presets, processing options; Save / Save and re-run)
 - Export asset dialog
 - Share popup (public link, iframe embed)
 - Permissions panel
-- GCP upload popup
+- GCP: attached with the upload or on the dataset page (replaces the WebODM "GCP upload popup")
 - Media gallery
 - Crop polygon editor
 - Layer controls (colormap, hillshade, HSV, opacity)

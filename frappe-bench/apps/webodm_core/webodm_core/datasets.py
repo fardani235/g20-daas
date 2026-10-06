@@ -15,7 +15,10 @@ that is not an HTTP endpoint or a DocType hook:
 * ``referencing_tasks`` — the guard that keeps a dataset alive while a task
   still uses it;
 * on-demand thumbnails, so the map view never has to pull multi-megabyte
-  originals to show a 72 px preview.
+  originals to show a 72 px preview;
+* the ground control sidecar (``attach_gcp`` / ``remove_gcp``): one optional
+  GCP file per dataset, validated against ODM's format, stored and synced
+  like an image and handed to the node with the images (see ``gcp.py``).
 """
 
 from __future__ import annotations
@@ -28,10 +31,18 @@ from frappe.utils import cint
 from PIL import Image, ImageOps
 from PIL.ExifTags import GPSTAGS
 
+from webodm_core import gcp
 from webodm_core.plugins.files import abs_path_for_file_doc, save_private_file_from_stream
 
 DOCTYPE = "WebODM Dataset"
 IMAGE_DOCTYPE = "WebODM Dataset Image"
+
+# The name the processing node receives the ground control file under.
+GCP_UPLOAD_NAME = gcp.UPLOAD_NAME
+
+
+class GCPInvalid(frappe.ValidationError):
+    """The uploaded file is not a GCP file ODM could read."""
 
 # Thumbnail sizes the endpoint will produce (longest edge, px). A fixed set
 # keeps the on-disk cache bounded and the URLs cache-friendly.
@@ -166,7 +177,7 @@ def save_image_file(stream, file_name: str, dataset_name: str):
     )
 
 
-def create_from_uploads(files, *, title: str, description: str | None = None):
+def create_from_uploads(files, *, title: str, description: str | None = None, gcp_upload=None):
     """Create a dataset from werkzeug ``FileStorage`` uploads. Returns the saved doc.
 
     The dataset row is inserted first so the Files can be attached to its real
@@ -176,6 +187,11 @@ def create_from_uploads(files, *, title: str, description: str | None = None):
     so the library never shows a dataset that does not match its files. A
     request with no files is refused before anything is written; an empty
     dataset is meaningless (``WebODMDataset.validate`` guards the same rule).
+
+    ``gcp_upload`` (optional ``FileStorage``) is the ground control file that
+    belongs with these images. It is validated *before* anything is written so
+    a malformed file fails the whole upload up front rather than after
+    gigabytes of photos have landed; it is then stored next to the images.
 
     Once saved the images are copied to object storage in the background when
     a bucket is configured; dispatch syncs anything still missing, so nothing
@@ -187,6 +203,9 @@ def create_from_uploads(files, *, title: str, description: str | None = None):
     title = (title or "").strip()
     if not title:
         frappe.throw("title is required", frappe.ValidationError)
+    gcp_bytes = gcp_info = None
+    if gcp_upload is not None:
+        gcp_bytes, gcp_info = read_gcp_upload(gcp_upload)
 
     dataset = frappe.get_doc({"doctype": DOCTYPE, "title": title, "description": description or None})
     dataset.flags.allow_empty = True  # rows are appended after the insert below
@@ -200,6 +219,8 @@ def create_from_uploads(files, *, title: str, description: str | None = None):
             file_doc = save_image_file(f.stream, file_name, dataset.name)
             meta = extract_photo_meta(abs_path_for_file_doc(file_doc))
             dataset.append("images", image_row_from_meta(file_doc, file_name, meta))
+        if gcp_info is not None:
+            _store_gcp(dataset, gcp_bytes, gcp_info, gcp_upload.filename)
         dataset.flags.allow_empty = False
         dataset.flags.images_fixed = False  # first (and only) time rows are added
         dataset.save()
@@ -209,6 +230,152 @@ def create_from_uploads(files, *, title: str, description: str | None = None):
 
     schedule_input_sync(dataset)
     return dataset
+
+
+# -- ground control -----------------------------------------------------------
+
+
+def read_gcp_upload(upload) -> tuple[bytes, gcp.GCPInfo]:
+    """``(bytes, parsed info)`` of an uploaded GCP file; ``GCPInvalid`` if it is not one.
+
+    ``upload`` is a werkzeug ``FileStorage`` or raw ``bytes``. The whole file
+    is read: a real GCP file is a few kilobytes, and the size cap in ``gcp``
+    refuses anything that is not (a photo dropped into the wrong slot).
+    """
+    if isinstance(upload, (bytes, bytearray)):
+        data = bytes(upload)
+    else:
+        stream = upload.stream if hasattr(upload, "stream") else upload
+        if hasattr(stream, "seek"):
+            try:
+                stream.seek(0)
+            except (OSError, ValueError):
+                pass
+        data = stream.read(gcp.MAX_GCP_BYTES + 1)
+    try:
+        info = gcp.parse(data)
+    except gcp.GCPFormatError as e:
+        frappe.throw(f"Not a valid ground control file: {e}", GCPInvalid)
+    return data, info
+
+
+def _store_gcp(dataset, data: bytes, info: gcp.GCPInfo, original_name: str | None):
+    """Save ``data`` as a private File of ``dataset`` and set the GCP fields on the doc (no save)."""
+    original_name = os.path.basename(original_name or "") or GCP_UPLOAD_NAME
+    stored_name = original_name if original_name.lower().endswith(".txt") else f"{original_name}.txt"
+    # attached_to_field matters: Frappe's on_update hook (attach_files_to_document)
+    # looks for a File on (doc, field) behind every Attach value and registers
+    # a second File for the same URL when it finds none.
+    file_doc = save_private_file_from_stream(
+        io.BytesIO(data), f"{dataset.name}_gcp_{stored_name}",
+        attached_to_doctype=DOCTYPE, attached_to_name=dataset.name, attached_to_field="gcp_file",
+    )
+    known = [r.filename for r in dataset.get("images") or [] if r.filename]
+    dataset.gcp_file = file_doc.file_url
+    dataset.gcp_filename = original_name
+    dataset.gcp_summary = frappe.as_json(info.summary(known))
+    dataset.gcp_storage_key = None  # (re)synced by the input sync
+    return file_doc
+
+
+def _drop_gcp_file(dataset):
+    """Delete the current GCP File, its blob and its object (best-effort, logged)."""
+    from webodm_core.storage import assets as storage_assets
+
+    url = dataset.get("gcp_file")
+    key = dataset.get("gcp_storage_key")
+    if url:
+        blob = storage_assets.blob_path(url)
+        for name in frappe.get_all("File", filters={"file_url": url, "attached_to_doctype": DOCTYPE,
+                                                    "attached_to_name": dataset.name}, pluck="name"):
+            try:
+                frappe.delete_doc("File", name, ignore_permissions=True, force=True, delete_permanently=True)
+            except Exception as e:
+                frappe.log_error(f"{dataset.name}: could not delete GCP file {url}: {e}", "WebODM Storage")
+        storage_assets.remove_blob(blob)
+    if key:
+        storage_assets.delete_dataset_gcp_object(dataset)
+
+
+def attach_gcp(dataset, upload) -> dict:
+    """Attach (or replace) the dataset's ground control file; returns the GCP block.
+
+    The images stay fixed — this is the one input that may change after the
+    dataset exists, because it is a few kilobytes of measurements *about* the
+    images, and re-uploading a survey to add or correct it would be the seam
+    an experienced user feels first. Tasks dispatched after the change use the
+    new file; a task already Running on a node keeps the one it was given.
+    """
+    data, info = read_gcp_upload(upload)
+    previous = (dataset.get("gcp_file"), dataset.get("gcp_storage_key"))
+    new_file = _store_gcp(dataset, data, info, getattr(upload, "filename", None))
+    try:
+        dataset.save()
+    except Exception:
+        frappe.delete_doc("File", new_file.name, ignore_permissions=True, force=True, delete_permanently=True)
+        raise
+    if previous[0]:
+        # The replaced file goes only once the new one is committed on the doc.
+        stale = frappe._dict(name=dataset.name, organization=dataset.organization,
+                             gcp_file=previous[0], gcp_storage_key=previous[1])
+        _drop_gcp_file(stale)
+    schedule_input_sync(dataset)
+    return gcp_block(dataset)
+
+
+def remove_gcp(dataset):
+    """Detach the dataset's ground control file (and delete it)."""
+    if not dataset.get("gcp_file"):
+        return
+    _drop_gcp_file(dataset)
+    dataset.gcp_file = None
+    dataset.gcp_filename = None
+    dataset.gcp_summary = None
+    dataset.gcp_storage_key = None
+    dataset.save()
+
+
+def remove_gcp_blob(dataset):
+    """On dataset delete: unlink the GCP blob (Frappe keeps shared-hash blobs, see ``remove_image_blobs``)."""
+    from webodm_core.plugins.files import abs_path_for_attached_file
+
+    url = dataset.get("gcp_file")
+    if not url:
+        return
+    try:
+        path = abs_path_for_attached_file(url, attached_to_doctype=DOCTYPE, attached_to_name=dataset.name)
+        os.remove(path)
+    except (frappe.DoesNotExistError, frappe.PermissionError, OSError):
+        pass
+
+
+def parsed_gcp_summary(dataset) -> dict:
+    value = dataset.get("gcp_summary")
+    if isinstance(value, str):
+        try:
+            value = frappe.parse_json(value)
+        except Exception:
+            value = None
+    return value if isinstance(value, dict) else {}
+
+
+def gcp_block(dataset) -> dict | None:
+    """The ``gcp`` entry of a dataset summary / task payload, or ``None`` without a file."""
+    url = dataset.get("gcp_file")
+    if not url:
+        return None
+    s = parsed_gcp_summary(dataset)
+    return {
+        "filename": dataset.get("gcp_filename") or os.path.basename(url),
+        "url": url,
+        "upload_name": GCP_UPLOAD_NAME,
+        "crs": s.get("crs"),
+        "points": cint(s.get("points")),
+        "labels": cint(s.get("labels")),
+        "image_count": cint(s.get("image_count")),
+        "unknown_images": list(s.get("unknown_images") or []),
+        "few_points": bool(s.get("few_points")),
+    }
 
 
 def schedule_input_sync(dataset):
@@ -248,7 +415,15 @@ def summary(dataset) -> dict:
         "created_by": dataset.created_by or dataset.owner,
         "creation": str(dataset.creation) if dataset.creation else None,
         "modified": str(dataset.modified) if dataset.modified else None,
+        # Ground control travels with the images: every task over the dataset
+        # (and every duplicate) sends it to the node. None when there is none.
+        "gcp": gcp_block(dataset),
     }
+
+
+# Columns a ``frappe.get_all`` row needs for :func:`summary` (list endpoints).
+SUMMARY_FIELDS = ("name", "title", "description", "image_count", "total_size", "created_by", "owner",
+                  "creation", "modified", "gcp_file", "gcp_filename", "gcp_summary")
 
 
 def image_dict(dataset_name: str, row) -> dict:

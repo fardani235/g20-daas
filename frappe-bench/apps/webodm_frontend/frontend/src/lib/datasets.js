@@ -4,24 +4,9 @@
 // CSRF-carrying client so a state change is never sent without the token.
 
 import { postMethod } from './api'
-import { frappeErrorMessage } from './utils'
+import { uploadForm } from './upload'
 
 const API = 'webodm_core.api.dataset'
-
-function csrfHeaders() {
-  const h = {}
-  if (window.csrf_token) h['X-Frappe-CSRF-Token'] = window.csrf_token
-  return h
-}
-
-async function unwrap(res) {
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(frappeErrorMessage(err))
-  }
-  const data = await res.json().catch(() => ({}))
-  return data.message !== undefined ? data.message : data
-}
 
 export const listDatasets = () => postMethod(`${API}.list_datasets`)
 export const getDataset = name => postMethod(`${API}.get_dataset`, { name })
@@ -30,27 +15,29 @@ export const updateDataset = (name, { title, description }) =>
 export const deleteDataset = name => postMethod(`${API}.delete_dataset`, { name })
 
 /**
- * Upload images as a new dataset. Multipart (not JSON), so it bypasses the
- * JSON client; the CSRF header still travels with it.
+ * Upload images as a new dataset. Multipart (not JSON) through the XHR
+ * uploader so the dialog can show real progress; the CSRF header still
+ * travels with it. `gcp` is the optional ground control file that belongs
+ * with these images; `onProgress` / `signal` drive the progress bar and the
+ * cancel button.
  */
-export function createDataset({ files, title, description }) {
+export function createDataset({ files, title, description, gcp, onProgress, signal }) {
   const form = new FormData()
   for (const f of files || []) form.append('files', f)
   if (title) form.append('title', title)
   if (description) form.append('description', description)
-  return fetch(`/api/method/${API}.create_dataset`, {
-    method: 'POST',
-    headers: csrfHeaders(),
-    body: form,
-  }).then(unwrap)
+  if (gcp) form.append('gcp', gcp, gcp.name)
+  return uploadForm(`/api/method/${API}.create_dataset`, form, { onProgress, signal })
 }
 
 /**
  * Create a task, either over an existing dataset (`dataset`) or from new
  * uploads (`files`, which become a dataset titled `datasetTitle`). Mirrors
- * `api.task.upload_images`, which accepts exactly one of the two.
+ * `api.task.upload_images`, which accepts exactly one of the two. A ground
+ * control file (`gcp`) is only accepted together with new uploads: it
+ * belongs to the dataset, and an existing one is edited on its own page.
  */
-export function createTask({ projectId, dataset, files, datasetTitle, title, options }) {
+export function createTask({ projectId, dataset, files, datasetTitle, title, options, gcp, onProgress, signal }) {
   const form = new FormData()
   form.append('project_id', projectId)
   if (dataset) form.append('dataset', dataset)
@@ -58,12 +45,19 @@ export function createTask({ projectId, dataset, files, datasetTitle, title, opt
   if (datasetTitle) form.append('dataset_title', datasetTitle)
   if (title) form.append('title', title)
   if (options !== undefined) form.append('options', JSON.stringify(options))
-  return fetch('/api/method/webodm_core.api.task.upload_images', {
-    method: 'POST',
-    headers: csrfHeaders(),
-    body: form,
-  }).then(unwrap)
+  if (gcp && !dataset) form.append('gcp', gcp, gcp.name)
+  return uploadForm('/api/method/webodm_core.api.task.upload_images', form, { onProgress, signal })
 }
+
+/** Attach or replace a dataset's ground control file. Resolves with the dataset payload. */
+export function setDatasetGcp(name, file, { onProgress, signal } = {}) {
+  const form = new FormData()
+  form.append('name', name)
+  form.append('gcp', file, file.name)
+  return uploadForm(`/api/method/${API}.set_gcp`, form, { onProgress, signal })
+}
+
+export const removeDatasetGcp = name => postMethod(`${API}.remove_gcp`, { name })
 
 export const listTasks = projectId =>
   postMethod('webodm_core.api.task.list_tasks', { project_id: projectId })
@@ -133,6 +127,28 @@ export function defaultDatasetTitle(projectTitle, fileCount, now = new Date()) {
   const stamp = now.toISOString().slice(0, 10)
   const base = projectTitle ? `${projectTitle} images` : 'Images'
   return `${base} ${stamp} (${imageCountLabel(fileCount)})`
+}
+
+/** Human line for a dataset's ground control block (`summary.gcp`), '' when none. */
+export function gcpLabel(gcp) {
+  if (!gcp) return ''
+  const pts = Number(gcp.points) || 0
+  return `${gcp.filename || 'gcp_list.txt'} · ${pts} point${pts === 1 ? '' : 's'}${gcp.crs ? ` · ${gcp.crs}` : ''}`
+}
+
+/** Warnings worth showing next to a GCP block (names not in the dataset, too few points). */
+export function gcpWarnings(gcp, { recommendedPoints = 3 } = {}) {
+  if (!gcp) return []
+  const out = []
+  const unknown = Array.isArray(gcp.unknown_images) ? gcp.unknown_images : []
+  if (unknown.length) {
+    const shown = unknown.slice(0, 5).join(', ')
+    out.push(`${unknown.length} image name${unknown.length === 1 ? '' : 's'} in the file ${unknown.length === 1 ? 'is' : 'are'} not in this dataset (${shown}${unknown.length > 5 ? ', …' : ''}). ODM matches names exactly.`)
+  }
+  if (gcp.few_points) {
+    out.push(`Fewer than ${recommendedPoints} ground control points; ODM needs at least ${recommendedPoints}, each visible in several images, to georeference with them.`)
+  }
+  return out
 }
 
 /** Newest first; falls back to title when creation is missing. */

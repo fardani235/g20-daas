@@ -45,6 +45,56 @@
 
       <Alert v-if="inUseMessage" variant="warning" data-in-use-alert>{{ inUseMessage }}</Alert>
 
+      <!-- Ground control: the one input that may change after the dataset
+           exists. Sent to the engine as gcp_list.txt with every task. -->
+      <section class="rounded-lg border border-border bg-card" data-gcp-section>
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <h2 class="text-sm font-medium text-card-foreground">Ground control</h2>
+          <div class="flex items-center gap-2">
+            <a
+              v-if="dataset.gcp"
+              :href="dataset.gcp.url"
+              download
+              class="text-xs text-primary hover:underline"
+              data-gcp-download
+            >Download</a>
+            <input ref="gcpInput" type="file" accept=".txt,text/plain" class="sr-only" @change="onGcpPicked" />
+            <Button variant="outline" size="sm" :loading="gcpBusy === 'set'" :disabled="!!gcpBusy" data-gcp-choose @click="gcpInput?.click()">
+              <FileText />
+              {{ dataset.gcp ? 'Replace' : 'Attach GCP file' }}
+            </Button>
+            <Button
+              v-if="dataset.gcp"
+              variant="ghost"
+              size="sm"
+              class="text-destructive hover:text-destructive"
+              :loading="gcpBusy === 'remove'"
+              :disabled="!!gcpBusy"
+              data-gcp-remove
+              @click="onRemoveGcp"
+            >
+              Remove
+            </Button>
+          </div>
+        </div>
+        <div class="space-y-2 px-4 py-3 text-sm">
+          <template v-if="dataset.gcp">
+            <p class="text-card-foreground" data-gcp-label>{{ gcpLabel(dataset.gcp) }}</p>
+            <p class="text-xs text-muted-foreground">
+              Sent to the processing engine as <code>{{ dataset.gcp.upload_name }}</code> with the images of every task over this dataset
+              ({{ dataset.gcp.image_count }} image name{{ dataset.gcp.image_count === 1 ? '' : 's' }} referenced).
+              To run a task without it, enable the <code>use-exif</code> option on that task.
+            </p>
+            <Alert v-for="w in gcpWarnings(dataset.gcp)" :key="w" variant="warning" data-gcp-warning>{{ w }}</Alert>
+          </template>
+          <p v-else class="text-muted-foreground">
+            None. Attach an ODM <code>gcp_list.txt</code> when the images carry no GPS or you need survey-grade
+            georeferencing; tasks started afterwards will use it.
+          </p>
+          <UploadProgress :state="gcpTracker.state" label="Uploading ground control" :cancellable="false" />
+        </div>
+      </section>
+
       <section v-if="dataset.tasks.length" class="rounded-lg border border-border bg-card">
         <h2 class="border-b border-border px-4 py-3 text-sm font-medium text-card-foreground">Tasks using this dataset</h2>
         <ul class="divide-y divide-border text-sm">
@@ -115,12 +165,17 @@
 <script setup>
 import { ref, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Pencil, Trash2 } from 'lucide-vue-next'
+import { FileText, Pencil, Trash2 } from 'lucide-vue-next'
 import { Alert, Badge, Button, Dialog, Input, Label, Textarea } from '@/components/ui'
 import PageHeader from '@/components/PageHeader.vue'
+import UploadProgress from '@/components/UploadProgress.vue'
 import { statusVariant } from '@/lib/status'
 import { toast } from '@/lib/toast'
-import { deleteDataset, formatBytes, getDataset, imageCountLabel, isInUseError, thumbnailUrl, updateDataset } from '@/lib/datasets'
+import { createUploadTracker, isGcpFile } from '@/lib/upload'
+import {
+  deleteDataset, formatBytes, gcpLabel, gcpWarnings, getDataset, imageCountLabel, isInUseError,
+  removeDatasetGcp, setDatasetGcp, thumbnailUrl, updateDataset,
+} from '@/lib/datasets'
 
 const route = useRoute()
 const router = useRouter()
@@ -130,6 +185,42 @@ const inUseMessage = ref('')
 const showEdit = ref(false)
 const saving = ref(false)
 const draft = reactive({ title: '', description: '' })
+const gcpInput = ref(null)
+const gcpBusy = ref('') // '' | 'set' | 'remove'
+const gcpTracker = createUploadTracker(undefined, reactive)
+
+async function onGcpPicked(e) {
+  const file = (e.target.files || [])[0]
+  e.target.value = ''
+  if (!file) return
+  if (!isGcpFile(file)) { toast.error('A ground control file is a plain-text .txt (ODM gcp_list format).'); return }
+  gcpBusy.value = 'set'
+  gcpTracker.start(file.size)
+  try {
+    dataset.value = await setDatasetGcp(dataset.value.name, file, { onProgress: gcpTracker.update })
+    gcpTracker.finish()
+    toast.success(`Ground control "${file.name}" attached: ${gcpLabel(dataset.value.gcp)}`)
+  } catch (err) {
+    gcpTracker.fail()
+    toast.error(err.message || 'Could not attach the ground control file')
+  } finally {
+    gcpBusy.value = ''
+    setTimeout(() => gcpTracker.reset(), 1500)
+  }
+}
+
+async function onRemoveGcp() {
+  if (!confirm('Remove the ground control file from this dataset? Tasks started afterwards will georeference from the images alone.')) return
+  gcpBusy.value = 'remove'
+  try {
+    dataset.value = await removeDatasetGcp(dataset.value.name)
+    toast.success('Ground control removed')
+  } catch (err) {
+    toast.error(err.message || 'Could not remove the ground control file')
+  } finally {
+    gcpBusy.value = ''
+  }
+}
 
 function formatDate(value) {
   if (!value) return '—'
