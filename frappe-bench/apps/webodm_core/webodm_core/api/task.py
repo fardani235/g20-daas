@@ -121,6 +121,35 @@ def _maybe_autostart(task_name: str):
         frappe.log_error(f"Auto-start failed for {task_name}", "WebODM Processing")
 
 
+def _request_data():
+    """The request payload: a JSON body when there is one, else the form dict."""
+    raw = frappe.request.data if frappe.request else None
+    if isinstance(raw, bytes):
+        raw = raw.decode()
+    return frappe.parse_json(raw) if raw else frappe.form_dict
+
+
+def _decode_processing_options(value):
+    """The ``[{name, value}]`` list (or legacy dict) behind a stored ``processing_options``.
+
+    The column holds a JSON *string scalar* (see ``_encode_processing_options``).
+    Depending on the backend the loaded value is that scalar (MariaDB) or
+    already one level unwrapped (PostgreSQL parses JSON columns), so parse
+    until a list/dict appears — the same dance ``presets._decode_options`` and
+    ``compute._options_map`` do. Anything else decodes to an empty list.
+    """
+    for _ in range(3):
+        if not isinstance(value, str):
+            break
+        try:
+            value = frappe.parse_json(value)
+        except Exception:
+            return []
+    if isinstance(value, dict):
+        return [{"name": k, "value": v} for k, v in value.items()]
+    return value if isinstance(value, list) else []
+
+
 def _encode_processing_options(options_raw):
     """Encode the upload dialog's ``options`` payload for Task.processing_options.
 
@@ -159,6 +188,10 @@ def _task_payload(task) -> dict:
         datasets.DOCTYPE, task.dataset) else None
     out["dataset_summary"] = datasets.summary(dataset) if dataset else None
     out["images"] = datasets.image_dicts(dataset) if dataset else []
+    # The options as a plain ``[{name, value}]`` list, whatever the column
+    # encoding: what the edit dialog pre-fills and what a duplicate copies.
+    out["options"] = _decode_processing_options(task.processing_options)
+    out["can_edit"] = task.status in EDITABLE_STATUSES
     return out
 
 
@@ -180,11 +213,11 @@ def list_tasks(project_id=None):
     summaries = {}
     if names:
         for row in frappe.get_all(datasets.DOCTYPE, filters={"name": ["in", list(names)]},
-                                  fields=["name", "title", "description", "image_count", "total_size",
-                                          "created_by", "owner", "creation", "modified"]):
+                                  fields=list(datasets.SUMMARY_FIELDS)):
             summaries[row.name] = datasets.summary(frappe._dict(row))
     for t in tasks:
         t["dataset_summary"] = summaries.get(t.dataset)
+        t["can_edit"] = t.status in EDITABLE_STATUSES
     return tasks
 
 
@@ -213,6 +246,7 @@ def upload_images():
     frappe.request.max_content_length = 10 * 1024 * 1024 * 1024  # 10 GB
 
     files = frappe.request.files.getlist("files")
+    gcp_upload = frappe.request.files.get("gcp")
     project_id = frappe.form_dict.get("project_id")
     options_raw = frappe.form_dict.get("options")
     dataset_name = frappe.form_dict.get("dataset")
@@ -223,6 +257,10 @@ def upload_images():
         frappe.throw("Choose a dataset or provide files to upload")
     if files and dataset_name:
         frappe.throw("Provide either a dataset or files, not both")
+    if gcp_upload is not None and dataset_name:
+        # Ground control belongs to the dataset, which other tasks may share;
+        # changing it from a task dialog would silently affect them.
+        frappe.throw("Ground control belongs to the dataset: attach it on the dataset page")
 
     # Gate write access: without this, any user could upload images into another
     # user's project by supplying its id (get_doc alone enforces nothing).
@@ -239,7 +277,8 @@ def upload_images():
     else:
         dataset_title = (frappe.form_dict.get("dataset_title") or "").strip() or title
         dataset = datasets.create_from_uploads(files, title=dataset_title,
-                                               description=frappe.form_dict.get("dataset_description"))
+                                               description=frappe.form_dict.get("dataset_description"),
+                                               gcp_upload=gcp_upload)
 
     task = frappe.get_doc({
         "doctype": "WebODM Task",
@@ -266,6 +305,118 @@ def upload_images():
     _maybe_autostart(task.name)
 
     return _task_payload(task)
+
+
+# Statuses in which a task's settings may change. The excluded ones — Queued,
+# Provisioning, Running — are the window in which the node has, or is about
+# to be handed, the current options; editing then would either race the
+# dispatch sweep or describe a run that is already happening with other
+# settings. Cancel first, then edit.
+EDITABLE_STATUSES = ("Pending", "Completed", "Failed", "Cancelled")
+
+
+class TaskBusy(frappe.ValidationError):
+    """The task is queued or running; its settings cannot change right now."""
+
+
+@frappe.whitelist(allow_guest=False)
+def update_task():
+    """Change a task's title and/or processing options after creation.
+
+    JSON body ``{task_name, title?, options?}``; ``options`` is the NodeODM
+    ``[{name, value}]`` list (an empty list means "engine defaults"). Only
+    the keys present are changed. Allowed in ``EDITABLE_STATUSES``; a task in
+    flight is refused with ``TaskBusy``.
+
+    Saving never starts anything: a Completed task keeps serving the outputs
+    of its last run until the user re-runs it (``process_task`` wipes them
+    then). That matches WebODM's own edit-then-restart flow and keeps "what
+    produced these outputs" unambiguous — the payload says ``can_edit`` and
+    the UI offers "Save and re-run" for the common case.
+    """
+    data = _request_data()
+    task_name = data.get("task_name")
+    if not task_name:
+        frappe.throw("task_name is required")
+    task = _get_task_checked(task_name, "write")
+    if task.status not in EDITABLE_STATUSES:
+        frappe.throw(
+            f"Task \"{task.title or task.name}\" is {task.status}; cancel it before changing its settings",
+            TaskBusy,
+        )
+
+    changed = {}
+    if "title" in data:
+        title = (data.get("title") or "").strip()
+        if not title:
+            frappe.throw("Title cannot be empty")
+        changed["title"] = title
+    if "options" in data:
+        changed["processing_options"] = _encode_processing_options(data.get("options"))
+    if changed:
+        # db_set, not save(): a full save writes every column back, and on
+        # PostgreSQL the loaded ``processing_options`` is the once-unwrapped
+        # JSON text — written verbatim it becomes a top-level array, which the
+        # next load returns as a list and the delete snapshot refuses. Every
+        # other post-insert write to a task goes through db_set for the same
+        # reason (single-writer poll_task included).
+        task.db_set(changed)
+    return _task_payload(task)
+
+
+def duplicate_title(title: str, existing: list[str] | set[str]) -> str:
+    """``"<title> (copy)"``, then ``(copy 2)``, ``(copy 3)``… until it is unused in ``existing``."""
+    base = (title or "Task").strip()
+    taken = set(existing or ())
+    candidate = f"{base} (copy)"
+    n = 2
+    while candidate in taken:
+        candidate = f"{base} (copy {n})"
+        n += 1
+    return candidate
+
+
+@frappe.whitelist(allow_guest=False)
+def duplicate_task():
+    """Create a fresh Pending task with the same inputs and settings as ``task_name``.
+
+    Copied: project, dataset (so the images *and* their ground control file
+    come along without any upload), processing options, and the title with a
+    "(copy)" suffix (or ``title`` from the body). Not copied: anything a run
+    produced or tracked — status, progress, outputs, asset rows, extents,
+    CRS, raster metadata, viewer octree state, node task id, compute
+    instance, retry counters, errors, plugin runs. That is deliberate: the
+    point of a duplicate is to run the same images under other settings, and
+    copying gigabytes of results that the next run would wipe anyway buys
+    nothing (self-hosted WebODM does copy them; here outputs live in object
+    storage and a copy costs real money).
+    """
+    data = _request_data()
+    task_name = data.get("task_name")
+    if not task_name:
+        frappe.throw("task_name is required")
+    source = _get_task_checked(task_name, "read")
+    # Creating a task is a write on its project, exactly like upload_images.
+    frappe.get_doc("WebODM Project", source.project).check_permission("write")
+
+    title = (data.get("title") or "").strip()
+    if not title:
+        existing = frappe.get_all("WebODM Task", filters={"project": source.project}, pluck="title")
+        title = duplicate_title(source.title, existing)
+
+    copy = frappe.get_doc({
+        "doctype": "WebODM Task",
+        "project": source.project,
+        "dataset": source.dataset,
+        "title": title,
+        "status": "Pending",
+        # Re-encode rather than copy the raw column value: on PostgreSQL the
+        # loaded value is already one level unwrapped and writing it back
+        # verbatim would store a top-level array (see _encode_processing_options).
+        "processing_options": _encode_processing_options(_decode_processing_options(source.processing_options)),
+    })
+    copy.insert()
+    return _task_payload(copy)
 
 
 @frappe.whitelist(allow_guest=False)

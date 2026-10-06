@@ -220,3 +220,42 @@ class TestDownloadAssetStreamsToDisk(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestUploadContentType(unittest.TestCase):
+    """The ground control file rides the images upload as ``gcp_list.txt``;
+    NodeODM keys off the name, the content type only labels the part."""
+
+    def test_txt_sidecar_is_text_plain_and_images_stay_jpeg(self):
+        from webodm_core.webodm_core.processing.node_client import upload_content_type
+
+        self.assertEqual(upload_content_type("gcp_list.txt"), "text/plain")
+        self.assertEqual(upload_content_type("GCP_LIST.TXT"), "text/plain")
+        self.assertEqual(upload_content_type("DJI_0001.JPG"), "image/jpeg")
+        self.assertEqual(upload_content_type("scan.tif"), "image/jpeg")
+        self.assertEqual(upload_content_type(""), "image/jpeg")
+
+    def test_create_task_posts_the_gcp_as_one_more_images_part(self):
+        c = NodeODMClient("localhost", 3000)
+        with tempfile.TemporaryDirectory() as d:
+            img = os.path.join(d, "a.jpg"); open(img, "wb").write(b"\xff\xd8img")
+            gcp = os.path.join(d, "gcp_list.txt"); open(gcp, "wb").write(b"EPSG:32633\n1 2 3 4 5 a.jpg\n")
+            calls = []
+
+            def fake_post(path, data=None, files=None, timeout=None):
+                if isinstance(files, list):  # the per-image upload parts (init sends a dict of fields)
+                    name, (filename, fh, ctype) = files[0]
+                    calls.append((path, name, filename, fh.read(), ctype))
+                if path == "task/new/init":
+                    return {"uuid": "u1"}
+                if path.startswith("task/new/commit/"):
+                    return {"uuid": "u1"}
+                return {"success": True}
+
+            with patch.object(c, "_post", side_effect=fake_post):
+                out = c.create_task([("a.jpg", img), ("gcp_list.txt", gcp)], [{"name": "dsm", "value": True}])
+        self.assertEqual(out, {"uuid": "u1"})
+        uploads = [x for x in calls if x[0].startswith("task/new/upload/")]
+        self.assertEqual([(u[1], u[2], u[4]) for u in uploads],
+                         [("images", "a.jpg", "image/jpeg"), ("images", "gcp_list.txt", "text/plain")])
+        self.assertEqual(uploads[1][3], b"EPSG:32633\n1 2 3 4 5 a.jpg\n")

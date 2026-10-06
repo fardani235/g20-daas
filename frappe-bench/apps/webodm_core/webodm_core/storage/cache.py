@@ -89,6 +89,13 @@ def storage_key_for_file_url(file_url: str):
     )
     if row and row.storage_key:
         return row.storage_key, row.organization
+    # A dataset's ground control file (one per dataset, synced like an image).
+    row = frappe.db.get_value(
+        "WebODM Dataset", {"gcp_file": file_url, "gcp_storage_key": ["!=", ""]},
+        ["gcp_storage_key", "organization"], as_dict=True,
+    )
+    if row and row.gcp_storage_key:
+        return row.gcp_storage_key, row.organization
     return None
 
 

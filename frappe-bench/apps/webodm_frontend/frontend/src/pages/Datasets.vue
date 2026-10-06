@@ -37,7 +37,12 @@
               </router-link>
               <p v-if="d.description" class="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{{ d.description }}</p>
             </td>
-            <td class="px-4 py-3 text-muted-foreground">{{ imageCountLabel(d.image_count) }}</td>
+            <td class="px-4 py-3 text-muted-foreground">
+              {{ imageCountLabel(d.image_count) }}
+              <span v-if="d.gcp" class="ml-1 inline-flex items-center gap-0.5 text-xs" :title="gcpLabel(d.gcp)" data-dataset-gcp>
+                <MapPin class="size-3" /> GCP
+              </span>
+            </td>
             <td class="px-4 py-3 text-muted-foreground">{{ formatBytes(d.total_size) }}</td>
             <td class="px-4 py-3">
               <Badge :variant="d.task_count ? 'default' : 'secondary'">
@@ -86,23 +91,19 @@
           <Textarea id="dataset-description" v-model="draft.description" :rows="2" />
         </div>
         <div class="space-y-1.5">
-          <Label for="dataset-files">Images</Label>
-          <input
-            id="dataset-files"
-            type="file"
-            multiple
-            accept="image/*"
-            class="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
-            @change="onFiles"
-          />
-          <p class="text-xs text-muted-foreground">{{ imageCountLabel(draft.files.length) }} selected. Images are fixed once the dataset exists.</p>
+          <Label>Images</Label>
+          <UploadDropzone v-model="draft.files" :disabled="uploading" @gcp="onDroppedGcp" />
+          <p class="text-xs text-muted-foreground">Images are fixed once the dataset exists; ground control can be changed later.</p>
         </div>
-        <div v-if="uploading" class="rounded-md bg-primary/10 px-4 py-3 text-sm text-primary">
-          Uploading {{ imageCountLabel(draft.files.length) }}…
-        </div>
+        <GcpFileField v-model="draft.gcp" :disabled="uploading" input-id="dataset-gcp" />
+        <UploadProgress
+          :state="uploadTracker.state"
+          :label="`Uploading ${imageCountLabel(draft.files.length)}`"
+          @cancel="uploadTracker.cancel()"
+        />
       </div>
       <template #footer>
-        <Button variant="ghost" @click="showCreate = false">Cancel</Button>
+        <Button variant="ghost" :disabled="uploading" @click="showCreate = false">Cancel</Button>
         <Button :disabled="!draft.files.length || uploading" :loading="uploading" @click="onCreate">Create dataset</Button>
       </template>
     </Dialog>
@@ -112,14 +113,19 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { CloudUpload, Images, Trash2 } from 'lucide-vue-next'
+import { CloudUpload, Images, MapPin, Trash2 } from 'lucide-vue-next'
 import { Alert, Badge, Button, Dialog, Input, Label, Textarea } from '@/components/ui'
 import PageHeader from '@/components/PageHeader.vue'
+import UploadDropzone from '@/components/UploadDropzone.vue'
+import UploadProgress from '@/components/UploadProgress.vue'
+import GcpFileField from '@/components/GcpFileField.vue'
 import { toast } from '@/lib/toast'
+import { createUploadTracker, isCancelled, totalBytes } from '@/lib/upload'
 import {
   createDataset,
   deleteDataset,
   formatBytes,
+  gcpLabel,
   imageCountLabel,
   isInUseError,
   listDatasets,
@@ -131,8 +137,9 @@ const datasets = ref([])
 const loading = ref(true)
 const showCreate = ref(false)
 const uploading = ref(false)
+const uploadTracker = createUploadTracker(undefined, reactive)
 const inUseMessage = ref('')
-const draft = reactive({ title: '', description: '', files: [] })
+const draft = reactive({ title: '', description: '', files: [], gcp: null })
 
 function formatDate(value) {
   if (!value) return '—'
@@ -157,29 +164,42 @@ function openCreate() {
   draft.title = ''
   draft.description = ''
   draft.files = []
+  draft.gcp = null
+  uploadTracker.reset()
   showCreate.value = true
 }
 
-function onFiles(e) {
-  draft.files = Array.from(e.target.files || [])
+function onDroppedGcp(file) {
+  if (!draft.gcp) draft.gcp = file
 }
 
 async function onCreate() {
   if (!draft.files.length) { toast.error('Choose at least one image'); return }
   uploading.value = true
+  const signal = uploadTracker.start(totalBytes(draft.files) + (draft.gcp ? draft.gcp.size : 0))
   try {
     const created = await createDataset({
       files: draft.files,
       title: draft.title || undefined,
       description: draft.description || undefined,
+      gcp: draft.gcp || undefined,
+      onProgress: uploadTracker.update,
+      signal,
     })
+    uploadTracker.finish()
     toast.success(`Dataset "${created.title}" created`)
     showCreate.value = false
     await refresh()
   } catch (e) {
-    toast.error(e.message || 'Upload failed')
+    if (isCancelled(e)) {
+      toast.info('Upload cancelled — nothing was created')
+    } else {
+      uploadTracker.fail()
+      toast.error(e.message || 'Upload failed')
+    }
   } finally {
     uploading.value = false
+    if (!showCreate.value) uploadTracker.reset()
   }
 }
 
