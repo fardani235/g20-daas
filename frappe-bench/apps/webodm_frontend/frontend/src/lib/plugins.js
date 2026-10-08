@@ -118,17 +118,77 @@ export function schemaDefaults(schema) {
   return out
 }
 
-// Newest run per plugin. Input is usually newest-first (list_runs orders by
-// creation desc); creation is compared so ordering bugs can't show an old run.
+// What makes two runs "the same result": the plugin and, for a comparison
+// run, the survey it was compared with (mirrors the backend's one-run-per-slot
+// rule, so October-vs-September and October-vs-August both keep a row/layer).
+export function runSlotKey(run) {
+  return run?.reference_task ? `${run.plugin}|${run.reference_task}` : `${run?.plugin}`
+}
+
+// Newest run per plugin (per plugin + comparison survey for comparison runs).
+// Input is usually newest-first (list_runs orders by creation desc); creation
+// is compared so ordering bugs can't show an old run.
 export function latestRunPerPlugin(runs) {
-  const byPlugin = new Map()
+  const bySlot = new Map()
   for (const run of runs || []) {
-    const current = byPlugin.get(run.plugin)
+    const key = runSlotKey(run)
+    const current = bySlot.get(key)
     if (!current || String(run.creation || '') > String(current.creation || '')) {
-      byPlugin.set(run.plugin, run)
+      bySlot.set(key, run)
     }
   }
-  return [...byPlugin.values()]
+  return [...bySlot.values()]
+}
+
+// --- comparison plugins: a run that also reads a second survey -------------
+
+// An input the plugin reads from the comparison ("reference") survey.
+export const isReferenceInput = spec => spec?.survey === 'reference'
+
+// A plugin compares two surveys when any of its inputs comes from the second one.
+export function needsReferenceSurvey(plugin) {
+  return (plugin?.inputs || []).some(isReferenceInput)
+}
+
+// "Site A (2 Oct 2026)": a task as an option in the comparison picker.
+export function surveyLabel(task) {
+  if (!task) return ''
+  const title = task.title || task.name
+  const day = String(task.creation || '').slice(0, 10)
+  return day ? `${title} (${day})` : title
+}
+
+// The surveys a task can be compared with: the other completed tasks of the
+// same project (`tasks` is the project's task list). The backend enforces the
+// same rule plus the organization; this only decides what is offered.
+export function referenceChoices(tasks, currentTask) {
+  return (tasks || [])
+    .filter(t => t && t.name !== currentTask?.name && t.status === 'Completed')
+    .map(t => ({ value: t.name, label: surveyLabel(t) }))
+}
+
+// Row/layer label of a run: the plugin, plus what it was compared with.
+export function runLabel(pluginLabel, run, tasks) {
+  if (!run?.reference_task) return pluginLabel
+  const other = (tasks || []).find(t => t.name === run.reference_task)
+  return `${pluginLabel} vs ${other?.title || run.reference_task}`
+}
+
+// Numbers a plugin reports for people: `metadata.summary` is a list of
+// {label, value} rows and `metadata.warnings` a list of sentences. Any plugin
+// may write them; the run row shows them as they are. Tolerates the metadata
+// arriving as a JSON string (list_runs) or an object (get_run).
+export function runSummary(run) {
+  let meta = run?.output_metadata
+  if (typeof meta === 'string') {
+    try { meta = JSON.parse(meta) } catch { meta = null }
+  }
+  const rows = (Array.isArray(meta?.summary) ? meta.summary : [])
+    .filter(r => r && r.label != null && r.value != null)
+    .map(r => ({ label: String(r.label), value: String(r.value) }))
+  const warnings = (Array.isArray(meta?.warnings) ? meta.warnings : [])
+    .filter(w => typeof w === 'string' && w.trim())
+  return { rows, warnings }
 }
 // Human labels for the task datasets a plugin input can draw from.
 export const DATASET_LABELS = {
@@ -140,13 +200,17 @@ export const DATASET_LABELS = {
 }
 
 // One row per plugin input for the run dialog: which of the input's accepted
-// datasets the task actually has, and which one is picked by default (the
+// datasets its survey actually has, and which one is picked by default (the
 // first available, mirroring the server). Optional inputs get a "None" option;
 // a required input with nothing available is flagged so the dialog can say so.
-export function inputChoices(inputs, task) {
+// Inputs of a comparison plugin marked `survey: "reference"` are resolved
+// against `referenceTask` (the survey picked to compare with) instead of `task`.
+export function inputChoices(inputs, task, referenceTask = null) {
   return (inputs || []).map(spec => {
     const datasets = Array.isArray(spec.datasets) ? spec.datasets : []
-    const available = datasets.filter(d => !!task?.[d])
+    const reference = isReferenceInput(spec)
+    const source = reference ? referenceTask : task
+    const available = datasets.filter(d => !!source?.[d])
     const optional = !!spec.optional
     const options = available.map(d => ({ value: d, label: DATASET_LABELS[d] || d }))
     if (optional) options.push({ value: '', label: 'None' })
@@ -154,6 +218,7 @@ export function inputChoices(inputs, task) {
       name: spec.name,
       label: spec.label || spec.name,
       optional,
+      reference,
       options,
       value: available[0] || '',
       missing: !optional && !available.length,

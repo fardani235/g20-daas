@@ -1,0 +1,151 @@
+{
+  "id": "change-detection",
+  "label": "Change Detection",
+  "version": "1.0.0",
+  "description": "Compare two surveys of the same site: what changed between the two dates, and how much. Brings both elevation surfaces onto one grid, removes the height offset between independent processing runs, measures the noise on ground that did not move and reports only change that stands out from it — cut and fill regions with area, volume and uncertainty, plus the share of the site that changed. Orthophotos keep vegetation out of the volumes and flag places that only look different. Classical raster analysis, no machine learning.",
+  "entrypoint": "main.py",
+  "inputs": [
+    {
+      "name": "surface",
+      "label": "Elevation surface — this survey",
+      "datasets": [
+        "dsm",
+        "dtm"
+      ],
+      "optional": true
+    },
+    {
+      "name": "reference_surface",
+      "label": "Elevation surface — comparison survey",
+      "datasets": [
+        "dsm",
+        "dtm"
+      ],
+      "survey": "reference",
+      "optional": true
+    },
+    {
+      "name": "orthophoto",
+      "label": "Orthophoto — this survey",
+      "datasets": [
+        "orthophoto"
+      ],
+      "optional": true
+    },
+    {
+      "name": "reference_orthophoto",
+      "label": "Orthophoto — comparison survey",
+      "datasets": [
+        "orthophoto"
+      ],
+      "survey": "reference",
+      "optional": true
+    }
+  ],
+  "params_schema": {
+    "type": "object",
+    "properties": {
+      "reference_role": {
+        "type": "string",
+        "title": "The comparison survey is the…",
+        "enum": [
+          "before",
+          "after"
+        ],
+        "default": "before",
+        "description": "before: the comparison survey is the earlier flight and this survey shows the site afterwards (the usual case when you run this on the newest survey). after: the other way round. Fill means the ground is higher in the later survey, cut means lower."
+      },
+      "vertical_alignment": {
+        "type": "string",
+        "title": "Height alignment",
+        "enum": [
+          "auto",
+          "tilt",
+          "none"
+        ],
+        "default": "auto",
+        "description": "Independent surveys can sit at different heights although the ground never moved. auto: measure that offset on unchanged ground and remove it. tilt: also remove a tilt across the site (surveys without ground control). none: trust both surveys' heights as they are (both tied to ground control points or RTK); the offset is still measured and reported."
+      },
+      "horizontal_alignment": {
+        "type": "string",
+        "title": "Horizontal alignment",
+        "enum": [
+          "auto",
+          "off"
+        ],
+        "default": "auto",
+        "description": "auto: if sliding the comparison survey sideways makes the two surfaces agree clearly better, apply that shift before comparing. off: compare in place."
+      },
+      "max_shift_m": {
+        "type": "number",
+        "title": "Largest horizontal shift to search (m)",
+        "minimum": 0,
+        "maximum": 20,
+        "default": 3,
+        "description": "How far apart the two surveys may sit horizontally. A larger shift is reported but not corrected."
+      },
+      "confidence": {
+        "type": "string",
+        "title": "Confidence (%)",
+        "enum": [
+          "80",
+          "95",
+          "99"
+        ],
+        "default": "95",
+        "description": "How sure a height change must be before it counts, given the noise measured on unchanged ground. 95 is the surveying convention; 80 finds smaller changes and more false ones, 99 fewer of both."
+      },
+      "min_height_change_m": {
+        "type": "number",
+        "title": "Smallest height change to count (m)",
+        "minimum": 0,
+        "default": 0,
+        "description": "0 = automatic: derived from the measured noise and the confidence, never below 0.05 m. A value raises the bar (it cannot go below what the noise allows)."
+      },
+      "min_area_m2": {
+        "type": "number",
+        "title": "Smallest region to keep (m²)",
+        "minimum": 0,
+        "default": 4,
+        "description": "Connected patches of change smaller than this are treated as noise and dropped."
+      },
+      "registration_tolerance_m": {
+        "type": "number",
+        "title": "Registration tolerance (m)",
+        "minimum": -1,
+        "default": -1,
+        "description": "A cell only counts as changed if it differs from everything within this distance in the other survey, so edges that moved by a pixel are not reported. -1 = one grid cell (wider when a shift was found but not corrected); 0 = off."
+      },
+      "edge_buffer_m": {
+        "type": "number",
+        "title": "Edge strip to ignore (m)",
+        "minimum": 0,
+        "default": 2,
+        "description": "The outer rim of a reconstruction is unreliable; this much is trimmed from the border of the area both surveys cover."
+      },
+      "resolution_m": {
+        "type": "number",
+        "title": "Comparison resolution (m)",
+        "minimum": 0,
+        "default": 0,
+        "description": "0 = the coarser of the two surveys' own resolutions, coarsened automatically if the site is too large for the sandbox. Cells are averaged, so volumes do not depend on it."
+      },
+      "vegetation_filter": {
+        "type": "boolean",
+        "title": "Keep vegetation out of cut and fill",
+        "default": true,
+        "description": "Uses the orthophotos to find green vegetation; height change there is reported as its own class and not counted as earthwork. Needs at least one orthophoto."
+      },
+      "appearance_change": {
+        "type": "boolean",
+        "title": "Also flag places that only look different",
+        "default": true,
+        "description": "Compares the two orthophotos where the height did not change (new paving, markings, materials). Secondary and sensitive to light and season; never affects volumes. Needs both orthophotos."
+      }
+    },
+    "required": []
+  },
+  "output_kind": "vector",
+  "render_kind": "change",
+  "timeout_seconds": 1800
+}

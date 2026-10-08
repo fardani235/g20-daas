@@ -54,13 +54,14 @@ submodule).
 | `docs/on-demand-processing/` | User guide, deployment, runbook, troubleshooting, configuration reference, architecture for on-demand compute + object storage |
 | `infra/aws/` | IAM policies per identity, bucket policy, security group notes, NodeODM AMI bake script |
 | `infra/helm/webodm/` | Helm chart for Kubernetes (one chart; `values.dev.yaml` for minikube, `values.prod.yaml` for a real cluster). Guide: `docs/deployment/kubernetes.md` |
-| `docs/plugins/` | User plugin guide, example plugin, Semantic Segmentation, Object Detection, 3D Reconstruction and Building Footprints plugin docs |
+| `docs/plugins/` | User plugin guide, example plugin, Semantic Segmentation, Object Detection, 3D Reconstruction, Building Footprints and Change Detection plugin docs |
 | `docs/marketplace/` | Marketplace concepts (publishers, products, releases, licenses, entitlements) and the publishing runbook |
 | `docs/datasets/` | Dataset library (reusable input image sets a task references) and the staged migration runbook |
 | `docs/tasks/` | Ground control, upload feedback, editing a task's settings, duplicating a task: decisions and guide |
 | `plugins/semantic-segmentation/` | Semantic Segmentation **user** plugin (orthophoto / DSM / DTM, pluggable ONNX + rule models) |
 | `plugins/3d-reconstruction/` | 3D Reconstruction **user** plugin (DSM/DTM/LAZ/orthophoto/ODM mesh → web-ready georeferenced GLB for the 3D viewer) |
 | `plugins/building-footprints/` | Building Footprints **user** plugin (orthophoto → one polygon per building; HOT DINOv3 mask + distance heads, watershed separation of touching buildings) |
+| `plugins/change-detection/` | Change Detection **user** plugin (two surveys of one project → cut / fill regions with volumes and uncertainty, share of the site changed; classical DEM differencing with measured co-registration, no ML). First *comparison* plugin: reads a second survey via `"survey": "reference"` inputs |
 | `infra/` | Caddy, backup, Frappe entrypoint/config, AWS artefacts |
 
 ## Tech Stack
@@ -290,6 +291,7 @@ docs/plugins/
 ├── semantic-segmentation.md      # Running segmentation on orthophoto / DSM / DTM / all three
 ├── 3d-reconstruction.md          # Building web-ready 3D models from a task's ODM outputs
 ├── building-footprints.md        # One polygon per building from the orthophoto (HOT DINOv3 + watershed)
+├── change-detection.md           # What changed between two surveys, and how much (method, numbers, limits)
 └── examples/elevation-mask/      # Starter plugin (manifest, entrypoint, tests)
 
 docs/marketplace/

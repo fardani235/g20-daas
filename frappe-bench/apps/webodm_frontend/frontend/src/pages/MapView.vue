@@ -152,19 +152,27 @@
                 No analysis plugins enabled for your organization.
               </p>
               <div v-if="displayRuns.length" class="space-y-1">
-                <div
-                  v-for="run in displayRuns"
-                  :key="run.name"
-                  class="flex items-center justify-between gap-2 text-xs"
-                >
-                  <span class="min-w-0 flex-1 truncate text-foreground">
-                    {{ pluginLabel(run.plugin) }}
+                <div v-for="run in displayRuns" :key="run.name" class="text-xs" :data-run="run.name">
+                <div class="flex items-center justify-between gap-2">
+                  <span
+                    class="min-w-0 flex-1 truncate text-foreground"
+                    :title="runLabel(pluginLabel(run.plugin), run, tasks)"
+                  >
+                    {{ runLabel(pluginLabel(run.plugin), run, tasks) }}
                     <span v-if="runProgressText(run)" class="text-muted-foreground" :title="run.progress_message">
                       · {{ runProgressText(run) }}
                     </span>
                   </span>
                   <Badge :variant="statusVariant(run.status)">{{ run.status }}</Badge>
                   <span class="flex items-center gap-2">
+                    <button
+                      v-if="run.status === 'Completed' && runSummary(run).rows.length"
+                      type="button"
+                      class="text-primary hover:underline"
+                      :aria-expanded="!!runSummaryOpen[run.name]"
+                      data-run-summary-toggle
+                      @click.stop="toggleRunSummary(run)"
+                    >{{ runSummaryOpen[run.name] ? 'Hide results' : 'Results' }}</button>
                     <router-link
                       v-if="isModelRun(run)"
                       :to="runModelRoute(route.params.id, run.task || task.name, run.name)"
@@ -186,6 +194,26 @@
                       @click.stop="cancelPluginRun(run)"
                     >Cancel</Button>
                   </span>
+                </div>
+                <!-- What the plugin reports in plain words: summary rows and warnings. -->
+                <div
+                  v-if="runSummaryOpen[run.name] && run.status === 'Completed'"
+                  class="mt-1 rounded border border-border bg-muted/40 p-2"
+                  data-run-summary
+                  @click.stop
+                >
+                  <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+                    <template v-for="row in runSummary(run).rows" :key="row.label">
+                      <dt class="text-muted-foreground">{{ row.label }}</dt>
+                      <dd class="break-words text-foreground">{{ row.value }}</dd>
+                    </template>
+                  </dl>
+                  <p
+                    v-for="warning in runSummary(run).warnings"
+                    :key="warning"
+                    class="mt-1 text-amber-700 dark:text-amber-400"
+                  >⚠ {{ warning }}</p>
+                </div>
                 </div>
               </div>
             </div>
@@ -503,6 +531,26 @@
           <option value="">Custom (type a model below)</option>
         </Select>
       </div>
+      <div v-if="runNeedsReference" class="mb-3 space-y-1.5" data-testid="run-reference">
+        <Label for="run-reference">
+          Compare with
+          <span class="text-destructive">*</span>
+        </Label>
+        <Select
+          v-if="runReferenceOptions.length"
+          id="run-reference"
+          :model-value="runReference"
+          @update:model-value="chooseReference"
+        >
+          <option v-for="opt in runReferenceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </Select>
+        <p v-else class="text-sm text-destructive">
+          This project has no other completed survey to compare with.
+        </p>
+        <p class="text-xs text-muted-foreground">
+          Another survey of this project. The result is shown on the survey you are running this from.
+        </p>
+      </div>
       <div v-if="runInputs.length" class="mb-3 space-y-3" data-testid="run-inputs">
         <div v-for="choice in runInputs" :key="choice.name" class="space-y-1.5">
           <Label :for="`run-input-${choice.name}`">
@@ -518,7 +566,7 @@
             <option v-for="opt in choice.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </Select>
           <p v-else-if="choice.missing" class="text-sm text-destructive">
-            This task has no {{ choice.accepts }}.
+            {{ choice.reference ? 'The survey to compare with' : 'This task' }} has no {{ choice.accepts }}.
           </p>
           <p v-else class="text-sm text-muted-foreground">
             {{ choice.options[0]?.label || 'None' }}
@@ -611,9 +659,15 @@ import {
   isModelRun,
   runModelRoute,
   runProgressText,
+  needsReferenceSurvey,
+  referenceChoices,
+  runLabel,
+  runSlotKey,
+  runSummary,
 } from '@/lib/plugins'
 import { detectionStyle, detectionLegend } from '@/lib/detections'
 import { segmentationStyle, segmentationLegend } from '@/lib/segmentation'
+import { changeStyle, changeLegend, changePopupHtml } from '@/lib/change'
 import { applyModelChoice, matchingModel } from '@/lib/knownModels'
 import { pointCloudRoute } from '@/lib/potree'
 import {
@@ -796,10 +850,22 @@ const runPluginDoc = ref(null)
 const runParams = ref({})
 const runInputs = ref([])
 const runStarting = ref(false)
+// Comparison plugins also read a second survey of the project, picked here.
+const runReference = ref('')
+const runNeedsReference = computed(() => needsReferenceSurvey(runPluginDoc.value))
+const runReferenceOptions = computed(() => referenceChoices(tasks.value, currentTask.value))
+// Run rows whose result summary (the plugin's numbers) is expanded.
+const runSummaryOpen = ref({})
 
-// Every input either has a dataset chosen or is optional and left out.
+function toggleRunSummary(run) {
+  runSummaryOpen.value = { ...runSummaryOpen.value, [run.name]: !runSummaryOpen.value[run.name] }
+}
+
+// Every input either has a dataset chosen or is optional and left out, and a
+// comparison has its second survey.
 const runInputsInvalid = computed(() =>
-  runInputs.value.some(c => c.missing || (!c.optional && !c.value)))
+  (runNeedsReference.value && !runReference.value)
+  || runInputs.value.some(c => c.missing || (!c.optional && !c.value)))
 
 const runnablePlugins = computed(() => availablePlugins.value.filter(p => p.runnable))
 
@@ -835,10 +901,23 @@ function openRunDialog(plugin) {
   // Start from the operation's schema defaults, then the organization's saved
   // settings, so the dialog never opens blank and users don't invent values.
   runParams.value = { ...schemaDefaults(plugin.params_schema), ...(plugin.settings || {}) }
-  // Which task datasets feed each plugin input; multi-source plugins let the
-  // user pick (or drop) datasets here.
-  runInputs.value = inputChoices(plugin.inputs, currentTask.value)
+  // A comparison starts out against the most recent other survey.
+  runReference.value = needsReferenceSurvey(plugin) ? (runReferenceOptions.value[0]?.value || '') : ''
+  resolveRunInputs()
   showRunDialog.value = true
+}
+
+// Which datasets feed each plugin input; multi-source plugins let the user
+// pick (or drop) datasets here. Inputs of the comparison survey are resolved
+// against the survey currently picked.
+function resolveRunInputs() {
+  const reference = tasks.value.find(t => t.name === runReference.value) || null
+  runInputs.value = inputChoices(runPluginDoc.value?.inputs, currentTask.value, reference)
+}
+
+function chooseReference(name) {
+  runReference.value = name
+  resolveRunInputs()
 }
 
 const selectedModelId = computed(() => {
@@ -860,6 +939,7 @@ async function startPluginRun() {
       task: selectedTask.value,
       params: runParams.value,
       inputs: inputsPayload(runInputs.value),
+      ...(runNeedsReference.value ? { reference_task: runReference.value } : {}),
     })
     showRunDialog.value = false
     toast.success('Analysis started')
@@ -1022,15 +1102,16 @@ async function loadRunOverlays(taskName) {
   }
   taskRuns.value = runs
 
-  // Only the newest run per plugin gets a layer, keyed by plugin so a new run
-  // supersedes the previous one instead of stacking another layer.
+  // Only the newest run per plugin (and comparison survey) gets a layer, keyed
+  // by that slot so a new run supersedes the previous one instead of stacking
+  // another layer.
   for (const run of latestRunPerPlugin(runs)) {
     if (run.status !== 'Completed' || !run.output_file) continue
     // 3D models are not map layers; the run row links to the viewer instead.
     if (run.output_kind === 'model') continue
-    const key = `plugin:${run.plugin}`
+    const key = `plugin:${runSlotKey(run)}`
     if (overlayLayers[key]) continue
-    const label = pluginLabel(run.plugin)
+    const label = runLabel(pluginLabel(run.plugin), run, tasks.value)
 
     if (run.output_kind === 'raster') {
       const bounds = parseExtentBounds(run.output_extent)
@@ -1065,16 +1146,24 @@ async function loadRunOverlays(taskName) {
           ? detectionStyle
           : run.render_kind === 'segmentation'
             ? segmentationStyle
-            : { color: '#2563eb', weight: 1.5 }
+            : run.render_kind === 'change'
+              ? changeStyle
+              : { color: '#2563eb', weight: 1.5 }
         const legend = run.render_kind === 'detections'
           ? detectionLegend(geojson.features)
           : run.render_kind === 'segmentation'
             ? segmentationLegend(geojson.features)
-            : null
+            : run.render_kind === 'change'
+              ? changeLegend(geojson.features)
+              : null
         const layer = L.geoJSON(geojson, {
           renderer: L.canvas(),  // canvas avoids per-feature DOM/SVG overhead
           smoothFactor: 2,
           style,
+          // Change regions carry their own numbers: show them on click.
+          ...(run.render_kind === 'change'
+            ? { onEachFeature: (feature, l) => l.bindPopup(() => changePopupHtml(feature)) }
+            : {}),
         })
         overlayLayers[key] = layer
         overlays.value.push({

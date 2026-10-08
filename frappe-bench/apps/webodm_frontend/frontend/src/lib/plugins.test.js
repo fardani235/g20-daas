@@ -198,3 +198,91 @@ describe('inputChoices', () => {
     expect(plugins.inputChoices(inputs, null)[1].options).toEqual([])
   })
 })
+
+describe('comparison plugins', () => {
+  const compare = {
+    inputs: [
+      { name: 'surface', label: 'This survey', datasets: ['dsm', 'dtm'] },
+      { name: 'reference_surface', label: 'Comparison survey', datasets: ['dsm', 'dtm'], survey: 'reference' },
+      { name: 'reference_orthophoto', datasets: ['orthophoto'], survey: 'reference', optional: true },
+    ],
+  }
+  const tasks = [
+    { name: 'T3', title: 'October', status: 'Completed', creation: '2026-10-01 08:00:00', dsm: '/f/a.tif' },
+    { name: 'T2', title: 'September', status: 'Completed', creation: '2026-09-01 08:00:00', dtm: '/f/b.tif', orthophoto: '/f/o.tif' },
+    { name: 'T1', title: 'Still processing', status: 'Running', creation: '2026-08-01 08:00:00' },
+  ]
+
+  it('knows which plugins need a second survey', () => {
+    expect(plugins.needsReferenceSurvey(compare)).toBe(true)
+    expect(plugins.needsReferenceSurvey({ inputs: [{ name: 'raster', datasets: ['dsm'] }] })).toBe(false)
+    expect(plugins.needsReferenceSurvey(null)).toBe(false)
+    expect(plugins.isReferenceInput(compare.inputs[1])).toBe(true)
+    expect(plugins.isReferenceInput(compare.inputs[0])).toBe(false)
+  })
+
+  it('offers the other completed surveys of the project', () => {
+    expect(plugins.referenceChoices(tasks, tasks[0])).toEqual([
+      { value: 'T2', label: 'September (2026-09-01)' },
+    ])
+    expect(plugins.referenceChoices(tasks, tasks[1])).toEqual([
+      { value: 'T3', label: 'October (2026-10-01)' },
+    ])
+    expect(plugins.referenceChoices([], tasks[0])).toEqual([])
+    expect(plugins.referenceChoices(null, null)).toEqual([])
+    expect(plugins.surveyLabel({ name: 'T9' })).toBe('T9')
+  })
+
+  it('resolves each input against its own survey', () => {
+    const choices = plugins.inputChoices(compare.inputs, tasks[0], tasks[1])
+    expect(choices.map(c => [c.name, c.reference, c.value, c.missing])).toEqual([
+      ['surface', false, 'dsm', false],
+      ['reference_surface', true, 'dtm', false],
+      ['reference_orthophoto', true, 'orthophoto', false],
+    ])
+    // No comparison survey picked yet: its required input is missing, the optional one is just empty.
+    const none = plugins.inputChoices(compare.inputs, tasks[0], null)
+    expect(none.map(c => [c.name, c.value, c.missing])).toEqual([
+      ['surface', 'dsm', false],
+      ['reference_surface', '', true],
+      ['reference_orthophoto', '', false],
+    ])
+    expect(plugins.inputsPayload(choices)).toEqual({
+      surface: 'dsm', reference_surface: 'dtm', reference_orthophoto: 'orthophoto',
+    })
+  })
+
+  it('keeps one run per plugin and comparison survey', () => {
+    const runs = [
+      { name: 'R4', plugin: 'change', reference_task: 'T2', creation: '2026-10-04' },
+      { name: 'R3', plugin: 'change', reference_task: 'T1', creation: '2026-10-03' },
+      { name: 'R2', plugin: 'change', reference_task: 'T2', creation: '2026-10-02' },
+      { name: 'R1', plugin: 'contours', creation: '2026-10-01' },
+    ]
+    expect(plugins.latestRunPerPlugin(runs).map(r => r.name)).toEqual(['R4', 'R3', 'R1'])
+    expect(plugins.runSlotKey(runs[0])).toBe('change|T2')
+    expect(plugins.runSlotKey(runs[3])).toBe('contours')
+  })
+
+  it('labels a comparison run with the survey it was compared with', () => {
+    expect(plugins.runLabel('Change Detection', { reference_task: 'T2' }, tasks)).toBe('Change Detection vs September')
+    expect(plugins.runLabel('Change Detection', { reference_task: 'gone' }, tasks)).toBe('Change Detection vs gone')
+    expect(plugins.runLabel('Contours', { plugin: 'contours' }, tasks)).toBe('Contours')
+  })
+
+  it('reads the summary rows and warnings a plugin reports', () => {
+    const meta = {
+      summary: [{ label: 'Fill', value: '604 m³ ± 12' }, { label: 'Broken' }, null, { label: 'Changed', value: 4 }],
+      warnings: ['Check the offset', '', 7],
+    }
+    const expected = {
+      rows: [{ label: 'Fill', value: '604 m³ ± 12' }, { label: 'Changed', value: '4' }],
+      warnings: ['Check the offset'],
+    }
+    expect(plugins.runSummary({ output_metadata: meta })).toEqual(expected)
+    expect(plugins.runSummary({ output_metadata: JSON.stringify(meta) })).toEqual(expected)
+    for (const empty of [null, {}, { output_metadata: '{not json' }, { output_metadata: { summary: 'x' } }]) {
+      expect(plugins.runSummary(empty)).toEqual({ rows: [], warnings: [] })
+    }
+  })
+})
