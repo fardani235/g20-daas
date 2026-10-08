@@ -34,7 +34,10 @@ Frappe. See `docs/plugins/user-plugin-guide.md` for the plugin contract.
 Every path must be absolute and inside `SANDBOX_DIR` (400 otherwise).
 `output_kind` is `raster` (GeoTIFF), `vector` (GeoJSON) or `model` (GLB; the
 georeference is read from `asset.extras.webodm_georef`). `context` is passed
-to the plugin verbatim. Responses: `200 {output_path, metadata, log}`; `422`
+to the plugin verbatim; besides `task` Frappe sends `inputs` (which dataset
+and survey feed each input) and, for a comparison run, `reference_task`. A
+comparison run looks no different from here: the files of both surveys are
+staged as ordinary named inputs. Responses: `200 {output_path, metadata, log}`; `422`
 when the plugin is malformed, exits non-zero, times out or writes no/invalid
 output (`detail` carries the stderr tail); `400` for a bad request; `500` for
 a runner fault.

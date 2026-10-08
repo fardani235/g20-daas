@@ -140,6 +140,9 @@ jobs:
       - name: Building footprints plugin tests
         working-directory: plugins/building-footprints
         run: python -m pytest -q
+      - name: Change detection plugin tests
+        working-directory: plugins/change-detection
+        run: python -m pytest -q
 
   test-provisioner:
     name: provisioner (pytest)

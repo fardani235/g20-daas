@@ -9,7 +9,7 @@ layer that can also be downloaded. There are two kinds:
 | Who provides them | The platform (`services/geospatial/app/analysis/ops`) | Your organization, as an uploaded package |
 | Who can see them | Every organization | Only the organization that uploaded them |
 | Where they run | Inside the geospatial service | In an isolated sandbox (`services/plugin-runner`) |
-| Examples | Hillshade, Contours, Segmentation | Anything you write in Python — e.g. the [Semantic Segmentation](semantic-segmentation.md), [Object Detection](object-detection.md) and [Building Footprints](building-footprints.md) plugins |
+| Examples | Hillshade, Contours, Segmentation | Anything you write in Python — e.g. the [Semantic Segmentation](semantic-segmentation.md), [Object Detection](object-detection.md), [Building Footprints](building-footprints.md) and [Change Detection](change-detection.md) plugins |
 
 Both kinds appear in the same **Plugins** page and run from the same task
 panel; the core processing pipeline knows nothing about individual plugins.
@@ -101,9 +101,9 @@ script runs.
 |---|---|
 | `inputs` | One absolute path per input declared in the manifest, keyed by the input's `name`. Optional inputs the user left out (or the task lacks) are absent. These are private copies; you may read them freely. |
 | `params` | The parameters, already validated against your `params_schema`, with the organization's saved defaults applied. |
-| `context` | Read-only facts about the task: `name`, `title`, `epsg`/`wkt` (its CRS, when known), `resolution`, the ODM `processing_options` it was run with (a list of `{name, value}`) and `rasters` — the normalized header metadata of each raster the task has (`orthophoto` / `dsm` / `dtm`: size, `band_count`, `dtype`, `crs`, `georeference`, `pixel_size`, `geotransform` (GDAL order), `bounds` / `bounds_4326`, `nodata` (`null` when unset, `"nan"` for NaN), `is_tiled` / `block_size`, `compression`, `overviews`, `is_cog`, `color_interpretation`, `file_size`; `status` is `Failed` with an `error` if it could not be read). Lets you pick a tile size, an overview level or a target resolution before opening the file. Use it to adapt defaults; never required. |
+| `context` | Read-only facts about the run. `context.inputs` says, per input you received, which dataset feeds it and which survey it comes from (`{"raster": {"dataset": "dsm", "survey": "primary"}}`) — the file name alone does not tell a DSM from a DTM. `context.task` describes the task: `name`, `title`, `epsg`/`wkt` (its CRS, when known), `resolution`, the ODM `processing_options` it was run with (a list of `{name, value}`) and `rasters` — the normalized header metadata of each raster the task has (`orthophoto` / `dsm` / `dtm`: size, `band_count`, `dtype`, `crs`, `georeference`, `pixel_size`, `geotransform` (GDAL order), `bounds` / `bounds_4326`, `nodata` (`null` when unset, `"nan"` for NaN), `is_tiled` / `block_size`, `compression`, `overviews`, `is_cog`, `color_interpretation`, `file_size`; `status` is `Failed` with an `error` if it could not be read). Lets you pick a tile size, an overview level or a target resolution before opening the file. A [comparison plugin](#comparison-plugins-two-surveys) also gets `context.reference_task`, the same facts about the second survey. Use it to adapt defaults; never required. |
 | `output_path` | Where you **must** write your result. The extension is `.tif` for `raster` plugins, `.geojson` for `vector` plugins and `.glb` for `model` plugins. |
-| `result_path` | Optional. Write `{"metadata": {...}}` here to report numbers/strings alongside the output. |
+| `result_path` | Optional. Write `{"metadata": {...}}` here to report numbers/strings alongside the output (at most 64 KB). Two keys are shown to the user on the run row under *Results*: `summary`, a list of `{"label": "Fill", "value": "604 m³ ± 12"}` rows, and `warnings`, a list of sentences. Everything else is kept for API clients. |
 | `progress_path` | Optional. Write `{"percent": 0-100, "message": "short status"}` here whenever your progress changes (write to a temp file and `os.replace` it so readers never see a half-written file). The platform polls it every couple of seconds and shows it on the run while it is running. |
 | `work_dir` | Scratch space you may use for temporary files. Everything in it is deleted after the run. |
 
@@ -212,7 +212,7 @@ memory limit on real datasets.
 | `version` | yes | Dotted version, e.g. `1.2.0`. Shown in the UI; bump it on every upload. |
 | `description` | no | One or two sentences, shown under the label. |
 | `entrypoint` | no | Relative path to the script to run. Default `main.py`. |
-| `inputs` | yes | List of `{name, datasets, optional?, label?}`. `name` is a slug (lowercase letters, digits, `-`, `_`). `datasets` are task fields: `orthophoto`, `dsm`, `dtm`, `point_cloud`, `model`. The run dialog lets the user pick which of them feeds the input (first available by default). A required input blocks the run when the task has none of its datasets; an input with `"optional": true` is simply left out of `request.json` instead — check `"name" in request["inputs"]`. API clients pass `inputs: {name: dataset}` to `run_plugin`; that selection is complete (optional inputs it does not name are left out), while omitting `inputs` altogether takes the first available dataset for every input. At least one input must resolve. `label` is shown in the run dialog. |
+| `inputs` | yes | List of `{name, datasets, optional?, label?, survey?}`. `name` is a slug (lowercase letters, digits, `-`, `_`). `datasets` are task fields: `orthophoto`, `dsm`, `dtm`, `point_cloud`, `model`. `survey` is `"primary"` (default: the task the run is started on) or `"reference"` (a second task the user picks — see [Comparison plugins](#comparison-plugins-two-surveys)). The run dialog lets the user pick which of them feeds the input (first available by default). A required input blocks the run when the task has none of its datasets; an input with `"optional": true` is simply left out of `request.json` instead — check `"name" in request["inputs"]`. API clients pass `inputs: {name: dataset}` to `run_plugin`; that selection is complete (optional inputs it does not name are left out), while omitting `inputs` altogether takes the first available dataset for every input. At least one input must resolve. `label` is shown in the run dialog. |
 | `params_schema` | no | JSON Schema describing a flat object of scalars. Supported: `type` (`number`, `integer`, `string`, `boolean`), `enum`, `default`, `minimum`/`maximum`, `exclusiveMinimum`/`exclusiveMaximum`, `minLength`/`maxLength`, `title`, `description`, `required`. The form and server-side validation are both generated from it. |
 | `output_kind` | no | `raster` (default), `vector` or `model`. |
 | `render_kind` | no | Raster: `dem` (default) or `orthophoto`. Vector: any short string, default `vector`. Model: `model`. |
@@ -238,6 +238,43 @@ The inputs need not share a grid: reproject/resample them onto one reference
 grid yourself (rasterio's `WarpedVRT` does this lazily). The Semantic
 Segmentation plugin (`plugins/semantic-segmentation/`) is a complete example
 of this pattern, including model selection by available inputs.
+
+### Comparison plugins (two surveys)
+
+A plugin can read a **second survey of the same project** — a "before" next
+to an "after", say — by marking some of its inputs with
+`"survey": "reference"`:
+
+```json
+"inputs": [
+  { "name": "surface",           "label": "Surface — this survey",       "datasets": ["dsm", "dtm"] },
+  { "name": "reference_surface", "label": "Surface — comparison survey", "datasets": ["dsm", "dtm"], "survey": "reference" }
+]
+```
+
+That is all it takes. The run dialog then shows a **Compare with** picker
+listing the other completed surveys of the project, and each input offers
+the datasets of *its* survey. Your script receives the files exactly as
+before (`request["inputs"]["reference_surface"]`), plus
+`context.reference_task` and, per input, `context.inputs[name].survey`.
+
+- The run belongs to the task it was started on: its result is shown and
+  downloaded there, labelled *&lt;plugin&gt; vs &lt;other survey&gt;*.
+- The platform does not know which survey is earlier. If the order matters,
+  ask with a parameter (the Change Detection plugin's `reference_role`:
+  `before` / `after`).
+- The second survey must be a completed task of the **same project and
+  organization** that the user can read; anything else is refused, and a
+  survey of another organization is indistinguishable from one that does not
+  exist. API clients pass it as `reference_task` to `run_plugin`.
+- One result is kept per pair of surveys; running the same pair again
+  replaces it. Deleting either survey deletes the comparison.
+- Mark reference inputs `optional` like any other; a comparison plugin must
+  still be given a reference survey.
+
+The two surveys will not share a grid, a footprint or necessarily a CRS.
+[`plugins/change-detection/`](../../plugins/change-detection/) is a complete
+example of bringing them onto common ground.
 
 ---
 
@@ -361,6 +398,8 @@ Platform admins additionally have a kill switch (`Platform Enabled` on the
 | Upload rejected: *Invalid plugin package: package has no plugin.json at its root* | You zipped the folder instead of its contents. Run `zip` from inside the plugin directory. |
 | Upload rejected: *entrypoint 'main.py' not found* | The file named in `entrypoint` is not in the zip. |
 | Run refused: *Task is missing the required input 'raster'* | The task has none of the `datasets` your input lists. Add `orthophoto`/`dsm`/… as appropriate. |
+| Run refused: *… compares two surveys: choose the survey to compare with* | The plugin has `"survey": "reference"` inputs and the request has no `reference_task`. |
+| Run refused: *Comparison survey not found* / *must belong to the same project* | The reference survey is not a readable task of your organization, or is in another project. |
 | Run `Failed`: *plugin exited with status 1: …* | Your script raised; the traceback tail is in the error. Reproduce with `python -m app.cli`. |
 | Run `Failed`: *plugin timed out after 300s* | Raise `timeout_seconds` (max 3600) or process in blocks. |
 | Run `Failed`: *plugin exited successfully but wrote no output* | You did not write to `request["output_path"]`. |

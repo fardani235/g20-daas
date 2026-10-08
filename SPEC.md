@@ -464,6 +464,17 @@ catalog, told apart by `plugin_type`:
 | System | Synced from the geospatial service's operation catalog | `services/geospatial` | Every organization |
 | User | A zip package (`plugin.json` + entrypoint) installed for one organization — uploaded on the Plugins page or installed from the marketplace | `services/plugin-runner` sandbox (no network, resource limits) | That organization only |
 
+A plugin normally reads one task. A **comparison plugin** — one whose
+manifest marks an input `"survey": "reference"` — also reads a second task
+that the user picks when starting the run (`run_plugin` `reference_task`,
+stored as `WebODM Plugin Run.reference_task`). The second task must be a
+completed task of the same project and organization that the caller can
+read; the rule is enforced in the run API, on the run document and in the
+worker. The run still belongs to the task it was started on; one result is
+kept per (plugin, task, reference task). The Change Detection plugin
+(`plugins/change-detection/`, `docs/plugins/change-detection.md`) is the
+first user of this.
+
 Specs: `openspec/specs/{plugin-catalog,plugin-execution,plugin-outputs,user-plugins}/spec.md`;
 guide: `docs/plugins/user-plugin-guide.md`.
 

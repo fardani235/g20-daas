@@ -40,6 +40,13 @@ MODEL_RENDER_KINDS = ("model",)
 
 MIN_TIMEOUT, MAX_TIMEOUT, DEFAULT_TIMEOUT = 10, 3600, 300
 
+# Which survey (task) an input is read from. ``primary`` is the task the run
+# belongs to; ``reference`` is a second task of the same project that the user
+# picks when starting the run. A plugin with at least one ``reference`` input
+# is a comparison plugin; nothing else about it is special.
+PRIMARY_SURVEY, REFERENCE_SURVEY = "primary", "reference"
+INPUT_SURVEYS = (PRIMARY_SURVEY, REFERENCE_SURVEY)
+
 
 class PackageError(ValueError):
     """The package or its manifest is invalid."""
@@ -114,6 +121,9 @@ def validate_manifest(manifest, members: set[str]) -> dict:
             _require(ds in DATASET_FIELDS,
                      f"input '{name}': unknown dataset '{ds}' (one of {', '.join(DATASET_FIELDS)})")
         _require(isinstance(optional, bool), f"input '{name}': 'optional' must be true or false")
+        survey = spec.get("survey", PRIMARY_SURVEY)
+        _require(survey in INPUT_SURVEYS,
+                 f"input '{name}': 'survey' must be one of {', '.join(INPUT_SURVEYS)}")
         # An optional input is skipped when the task lacks it (or the user
         # leaves it out); a required one blocks the run. Only these keys are
         # kept so the stored spec is exactly what the run API interprets.
@@ -122,6 +132,8 @@ def validate_manifest(manifest, members: set[str]) -> dict:
             normalized["optional"] = True
         if isinstance(spec.get("label"), str) and 0 < len(spec["label"]) <= 140:
             normalized["label"] = spec["label"]
+        if survey == REFERENCE_SURVEY:
+            normalized["survey"] = REFERENCE_SURVEY
         inputs.append(normalized)
 
     schema = manifest.get("params_schema") or {"type": "object", "properties": {}}
@@ -198,6 +210,12 @@ def inspect_package(path: str) -> dict:
             raise PackageError(f"{MANIFEST_NAME} is not valid JSON: {e}") from e
 
     return validate_manifest(manifest, members)
+
+
+def reference_input_names(inputs_spec) -> list[str]:
+    """Names of the inputs a plugin reads from the reference (second) survey."""
+    return [spec.get("name") for spec in inputs_spec or []
+            if isinstance(spec, dict) and spec.get("survey") == REFERENCE_SURVEY]
 
 
 def sha256_of(path: str) -> str:

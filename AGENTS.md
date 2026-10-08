@@ -1079,3 +1079,63 @@ Design record with every decision and trade-off: `docs/tasks/README.md`; change
   build` OK. No browser smoke this round.
 - Not done (by design): chunked/resumable uploads, node picker, per-task record of the GCP used,
   two GCPs per dataset, duplicate-with-results, a GCP editor.
+
+## Phase 25: Change Detection plugin + comparison inputs (2026-10-08)
+
+Full record (method, why, measured accuracy, limits, platform rule): `docs/plugins/change-detection.md`;
+change `openspec/changes/archive/2026-10-08-add-change-detection-plugin/` (design.md = the decisions);
+spec `openspec/specs/change-detection/` + added requirements in `plugin-execution` (Comparison runs),
+`user-plugins` (Reference-survey inputs), `plugin-outputs` (Result summary on the run row).
+
+- **Platform (generic, small)**: a manifest input may say `"survey": "reference"` (`plugins/package.py`:
+  `INPUT_SURVEYS`, `reference_input_names`; kept in the stored spec only when `reference`). `run_plugin`
+  takes `reference_task` → `api/plugins.py: _reference_task_for` (exists + same org + `has_permission("read")`
+  → else one identical *Comparison survey not found*; same project; Completed; not itself; refused for plugins
+  without reference inputs), `_resolve_inputs(..., reference_task)` resolves each input on its own survey,
+  `_run_slot` = plugin + task + reference (`["is", "not set"]` for plain plugins) for the active/replace
+  rules, `parameters.reference_inputs` fixed at queue time. `WebODM Plugin Run.reference_task` (Link, indexed,
+  read-only; **run `migrate`**) + `validate()` re-enforcing same org / same project on the record (Desk and
+  `/api/resource` do not pass the API; `organization` is stamped before validate). `plugins/runner.py`:
+  `_reference_task` re-check in the worker (no session there), inputs staged from their own task,
+  `task_context(task, reference, inputs, reference_inputs)` → `context.reference_task` + `context.inputs`
+  `{name: {dataset, survey}}`. `WebODMTask.delete_plugin_runs` also deletes runs that *reference* the task.
+  Sandbox service untouched. The platform knows primary/reference, **not** before/after (a plugin param).
+- **Frontend**: `lib/plugins.js` `needsReferenceSurvey`, `referenceChoices` (other Completed tasks of the
+  project), `inputChoices(inputs, task, referenceTask)`, `runSlotKey`/`latestRunPerPlugin` per slot, `runLabel`
+  ("… vs <title>"), `runSummary` (any plugin's `metadata.summary` `[{label,value}]` + `metadata.warnings`);
+  `lib/change.js` (fixed colours, legend, escaped popup) for `render_kind: change`; `MapView.vue` "Compare
+  with" picker, *Results* toggle per run row, overlay key = slot.
+- **Plugin** `plugins/change-detection/` (`cdplugin/`; two manifests like semantic-segmentation: `plugin.json`
+  vector/`change`, `plugin-raster.json` raster/`dem`; no models). Inputs `surface`, `reference_surface`,
+  `orthophoto`, `reference_orthophoto`. Pipeline: `grid.py` (CRS of the primary, overlap, coarser resolution,
+  **8 Mpx budget coarsened automatically** — average resampling conserves volume; shifted reads via the VRT
+  transform) → `align.estimate_horizontal_shift` (whole-cell search, cost = mean |d − median| truncated at
+  10 σ after removing the planar trend; applied only if gain ≥ 1.05 **and** two interleaved halves agree
+  within a cell) → `align.fit_stable_peak` (half-sample mode → histogram half-width → clipped median/NMAD;
+  stable fraction + second-peak ratio) → `align.analyse_tiles` (6×6 per-tile modes; consensus = constant
+  unless a plane through 3 tiles explains > 1/0.8× as many; `sigma_sys` = NMAD about 0 of the consensus
+  tiles; tiles outside = wholesale change) → `detect.tolerant_difference` (min/max envelope both ways) vs
+  `level_of_detection` (k·hypot(noise, sys), floor 0.05 m) → `established` (min area) → `restore_rim`
+  (radius+1 only) → `label_regions` → `regions.py` (volume = Σ plain dz; σ = random with measured
+  cells-per-sample ⊕ area·sys ⊕ sub-threshold ring sum) → reliability grade + `summary`. `visual.py`: ExG
+  vegetation mask (dilated), appearance change (chromaticity + local structure, thresholds calibrated on
+  elevation-stable cells, dropped above 35 %); photos never fail an elevation run.
+- **Gotchas learned**: `rasterio.Env(GDAL_CACHEMAX=128)` is **128 bytes** (rasterio passes it to
+  `GDALSetCacheMax64` verbatim) → warps 4–10× slower; this plugin passes bytes, **the same line in
+  semantic-segmentation / object-detection / building-footprints still disables their cache**. NMAD as a
+  shift cost ignores misplaced edges (a 1.8 m shift gained 18 %). A tilt reads as a shift on sloping ground
+  unless detrended. Spread of *all* tiles as systematic σ hid a platform covering 42 % of the site. Growing
+  regions through the plain difference without a bound overshot volumes by 6–13 % on real terrain.
+  Hysteresis at LoD/2 percolates through correlated noise. `affine` `*` between transforms is deprecated
+  (build the shifted transform by hand).
+- **Validation**: 130 pytest (synthetic site surveyed twice; `/tmp/oak-venv`: numpy, scipy, rasterio,
+  shapely), CI step in `test-plugin-runner`. Real terrain through `app.cli` under RLIMIT_AS 2 GB:
+  `~/Downloads/if7iq9jhap_{dsm,orthophoto}.tif` (43 ha) vs a second survey **derived from it** (8 cm,
+  cropped, shifted 0.43 m, +1.37 m, noise, 2500 m³ pit, 1206 m³ Gaussian mound): 0.22 m grid, 23 s, peak
+  0.77 GB; offset 1.374, shift 0.37 m applied, cut 2461 ± 15 (−1.6 %), fill 1123 ± 59 (−6.9 %, the mound's
+  toe is below detection). Backend `api/test_plugin_comparison.py` (22) + full suite (270) on the throwaway
+  site (`/tmp/elm-tools/frappe-test.sh up|migrate|test|down`); removing the three isolation checks fails 4
+  tests. Frontend 378 vitest, `vite build` OK. Both zips pass `package.inspect_package` in the Frappe image.
+- **Not done**: two independent real flights with surveyed volumes; browser smoke on a running stack;
+  dome correction; rotation/scale; user-drawn stable areas (needs geometry params); design-surface progress;
+  marketplace listing of the two packages.

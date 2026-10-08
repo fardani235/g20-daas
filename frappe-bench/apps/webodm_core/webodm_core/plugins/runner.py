@@ -6,6 +6,10 @@ Completed (or Failed). A cancellation that lands while the operation is running
 is honored by discarding the output. User plugins may publish intermediate
 progress, which is written to the run row as it arrives.
 
+A comparison run (``run.reference_task`` set) reads some of its inputs from a
+second task of the same project; which ones is recorded on the run when it is
+queued. Nothing else differs: the backend still receives named input files.
+
 The backend depends on the plugin type: System plugins run in the geospatial
 service (``geospatial.run_operation``), User plugins in the sandboxed plugin
 runner (``sandbox.run_user_plugin``). Both return the same result shape, so
@@ -55,8 +59,8 @@ def _remove(path: str):
         pass
 
 
-def task_context(task) -> dict:
-    """Read-only facts about the task a user plugin may want (CRS, ODM options)."""
+def _task_facts(task) -> dict:
+    """Read-only facts about one task a user plugin may want (CRS, ODM options)."""
     options = task.get("processing_options")
     for _ in range(3):
         if isinstance(options, str):
@@ -71,19 +75,57 @@ def task_context(task) -> dict:
     except Exception:
         rasters = {}
     return {
-        "task": {
-            "name": task.name,
-            "title": task.get("title"),
-            "epsg": task.get("epsg"),
-            "wkt": task.get("wkt"),
-            "resolution": task.get("resolution"),
-            "processing_options": options if isinstance(options, (list, dict)) else [],
-            # Normalized header metadata per raster the task has (orthophoto /
-            # dsm / dtm): size, bands, dtype, CRS, pixel size, bounds, nodata,
-            # tiling, overviews. Same shape as api.task.get_raster_metadata.
-            "rasters": rasters,
-        }
+        "name": task.name,
+        "title": task.get("title"),
+        "epsg": task.get("epsg"),
+        "wkt": task.get("wkt"),
+        "resolution": task.get("resolution"),
+        "processing_options": options if isinstance(options, (list, dict)) else [],
+        # Normalized header metadata per raster the task has (orthophoto /
+        # dsm / dtm): size, bands, dtype, CRS, pixel size, bounds, nodata,
+        # tiling, overviews. Same shape as api.task.get_raster_metadata.
+        "rasters": rasters,
     }
+
+
+def task_context(task, reference_task=None, inputs: dict | None = None,
+                 reference_inputs=()) -> dict:
+    """What a user plugin is told about its run besides the input files.
+
+    ``task`` is the task the run belongs to; ``reference_task`` (same shape)
+    is present only for a comparison run. ``inputs`` says, per staged input,
+    which dataset feeds it and which of the two surveys it comes from — an
+    input file alone does not reveal whether it is the DSM or the DTM.
+    """
+    context = {"task": _task_facts(task)}
+    if reference_task is not None:
+        context["reference_task"] = _task_facts(reference_task)
+    if inputs:
+        context["inputs"] = {
+            name: {"dataset": dataset,
+                   "survey": "reference" if name in reference_inputs else "primary"}
+            for name, dataset in inputs.items()
+        }
+    return context
+
+
+def _reference_task(run, task):
+    """The run's second survey, re-checked against the run's own task.
+
+    ``api.plugins.run_plugin`` validated the pair when the run was queued;
+    the worker runs without a session, so the two rules that keep another
+    organization's data out are enforced again here on the stored records.
+    """
+    if not run.get("reference_task"):
+        return None
+    if not frappe.db.exists("WebODM Task", run.reference_task):
+        raise GeospatialError("The comparison survey no longer exists")
+    reference = frappe.get_doc("WebODM Task", run.reference_task)
+    if reference.organization != run.organization or reference.organization != task.organization:
+        raise GeospatialError("The comparison survey belongs to another organization")
+    if reference.project != task.project:
+        raise GeospatialError("The comparison survey is no longer in the same project")
+    return reference
 
 
 def _progress_writer(run):
@@ -110,6 +152,8 @@ def execute_run(run_name: str):
         payload = _parameters(run)
         params = payload.get("params", {})
         datasets = payload.get("inputs", {})
+        reference = _reference_task(run, task)
+        reference_inputs = set(payload.get("reference_inputs") or []) if reference else set()
 
         # Inputs are staged from the serving cache, re-materialised from object
         # storage when evicted: both the geospatial service (system plugins,
@@ -117,13 +161,15 @@ def execute_run(run_name: str):
         # network egress of its own) need a real local file.
         inputs = {}
         for name, dataset in datasets.items():
-            file_url = task.get(dataset)
+            source = reference if name in reference_inputs else task
+            owner = "The comparison survey" if source is reference else "Task"
+            file_url = source.get(dataset)
             if not file_url:
                 raise GeospatialError(
-                    f"Task no longer has '{dataset}' for input '{name}'"
+                    f"{owner} no longer has '{dataset}' for input '{name}'"
                 )
             try:
-                inputs[name] = storage_assets.ensure_asset_local(task, dataset)
+                inputs[name] = storage_assets.ensure_asset_local(source, dataset)
             except cache.CacheMiss as e:
                 raise GeospatialError(f"Input '{name}' ({dataset}) is not available: {e}") from e
 
@@ -136,7 +182,7 @@ def execute_run(run_name: str):
             result = run_user_plugin(
                 plugin, inputs, params, tmp_path,
                 timeout=int(plugin.timeout_seconds or 300),
-                context=task_context(task),
+                context=task_context(task, reference, datasets, reference_inputs),
                 on_progress=_progress_writer(run),
             )
         else:

@@ -56,8 +56,16 @@ class WebODMTask(Document):
         assets.delete_task_objects(self)
 
     def delete_plugin_runs(self) -> list[str]:
-        """Delete every plugin run of this task; returns the deleted run names."""
+        """Delete every plugin run of this task; returns the deleted run names.
+
+        That includes comparison runs of *other* tasks that used this task as
+        their reference survey: the link would block the delete just the
+        same, and a comparison whose second survey is gone can neither be
+        explained nor reproduced.
+        """
         names = frappe.get_all("WebODM Plugin Run", filters={"task": self.name}, pluck="name")
+        names += [n for n in frappe.get_all("WebODM Plugin Run", filters={"reference_task": self.name},
+                                            pluck="name") if n not in names]
         for name in names:
             # Permission was checked on the task; the runs belong to it.
             frappe.delete_doc("WebODM Plugin Run", name, force=True, ignore_permissions=True)

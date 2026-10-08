@@ -386,16 +386,57 @@ def remove_plugin(plugin: str):
     return {"plugin": doc.name, "removed": True}
 
 
-def _resolve_inputs(task, inputs_spec: list, selection: dict | None = None) -> dict:
-    """Map each declared input to the task dataset that supplies it.
+def _reference_task_for(plugin: str, inputs_spec: list, task, reference_name, org: str):
+    """The second survey of a comparison run, or None for an ordinary plugin.
 
-    ``selection`` (``{input name: dataset}``, from the run request) lets the
-    user pick among the datasets an input accepts, or leave an *optional*
-    input out with ``None``/``""``. When a selection is given it is complete:
-    optional inputs it does not name are left out too. Without a selection
-    (older clients) every input takes the first dataset the task has. A
-    required input that resolves to nothing is an error. At least one input
-    must resolve.
+    A plugin compares two surveys when its manifest has an input with
+    ``"survey": "reference"``. The reference survey is chosen by the caller
+    and must be one the caller could have opened on the same page: readable,
+    in the caller's organization, in the **same project** as the run's task,
+    completed, and not the task itself. A survey that does not exist and one
+    that belongs to another organization get the same answer, so a task id
+    cannot be probed through this endpoint.
+    """
+    wants = bool(package_mod.reference_input_names(inputs_spec))
+    if not wants:
+        if reference_name:
+            frappe.throw(f"Plugin '{plugin}' does not compare surveys; remove reference_task")
+        return None
+    if not reference_name:
+        frappe.throw(f"Plugin '{plugin}' compares two surveys: choose the survey to compare with "
+                     "(reference_task)")
+    if not isinstance(reference_name, str):
+        frappe.throw("reference_task must be a task name")
+    if reference_name == task.name:
+        frappe.throw("Choose a different survey to compare with; a survey cannot be compared with itself")
+
+    def not_found():
+        frappe.throw("Comparison survey not found", frappe.PermissionError)
+
+    if not frappe.db.exists("WebODM Task", reference_name):
+        not_found()
+    reference = frappe.get_doc("WebODM Task", reference_name)
+    if reference.organization != org or not reference.has_permission("read"):
+        not_found()
+    if reference.project != task.project:
+        frappe.throw("The comparison survey must belong to the same project")
+    if reference.status != "Completed":
+        frappe.throw("The comparison survey has not finished processing")
+    return reference
+
+
+def _resolve_inputs(task, inputs_spec: list, selection: dict | None = None, reference_task=None) -> dict:
+    """Map each declared input to the dataset that supplies it.
+
+    An input is read from the run's task, or — when its spec says
+    ``"survey": "reference"`` — from ``reference_task`` (see
+    ``_reference_task_for``). ``selection`` (``{input name: dataset}``, from
+    the run request) lets the user pick among the datasets an input accepts,
+    or leave an *optional* input out with ``None``/``""``. When a selection
+    is given it is complete: optional inputs it does not name are left out
+    too. Without a selection (older clients) every input takes the first
+    dataset its survey has. A required input that resolves to nothing is an
+    error. At least one input must resolve.
     """
     from webodm_core.plugins.runner import DATASET_FIELDS
 
@@ -411,6 +452,9 @@ def _resolve_inputs(task, inputs_spec: list, selection: dict | None = None) -> d
         name = spec.get("name")
         datasets = [d for d in (spec.get("datasets") or []) if d in DATASET_FIELDS]
         optional = bool(spec.get("optional"))
+        from_reference = spec.get("survey") == package_mod.REFERENCE_SURVEY
+        source = reference_task if from_reference else task
+        owner = "The comparison survey" if from_reference else "Task"
 
         if name in selection:
             chosen = selection[name]
@@ -422,17 +466,17 @@ def _resolve_inputs(task, inputs_spec: list, selection: dict | None = None) -> d
                 frappe.throw(
                     f"Input '{name}' cannot use '{chosen}' (one of: {', '.join(datasets)})"
                 )
-            if not task.get(chosen):
-                frappe.throw(f"Task has no '{chosen}' for input '{name}'")
+            if source is None or not source.get(chosen):
+                frappe.throw(f"{owner} has no '{chosen}' for input '{name}'")
         else:
             if optional and explicit:
                 continue
-            chosen = next((d for d in datasets if task.get(d)), None)
+            chosen = next((d for d in datasets if source is not None and source.get(d)), None)
             if not chosen:
                 if optional:
                     continue
                 frappe.throw(
-                    f"Task is missing the required input '{name}' "
+                    f"{owner} is missing the required input '{name}' "
                     f"(needs one of: {', '.join(datasets)})"
                 )
         resolved[name] = chosen
@@ -442,11 +486,19 @@ def _resolve_inputs(task, inputs_spec: list, selection: dict | None = None) -> d
     return resolved
 
 
-def _reject_if_active(plugin: str, task_name: str):
-    """Refuse a new run while one for the same plugin+task is in flight."""
+def _run_slot(plugin: str, task_name: str, reference_name: str | None) -> dict:
+    """Filters identifying "the same run": plugin + task, and for a comparison
+    the survey it is compared with — so comparing October with September does
+    not replace the comparison of October with August."""
+    return {"plugin": plugin, "task": task_name,
+            "reference_task": reference_name or ["is", "not set"]}
+
+
+def _reject_if_active(plugin: str, task_name: str, reference_name: str | None = None):
+    """Refuse a new run while one for the same plugin+task(+reference) is in flight."""
     active = frappe.get_all(
         "WebODM Plugin Run",
-        filters={"plugin": plugin, "task": task_name,
+        filters={**_run_slot(plugin, task_name, reference_name),
                  "status": ["in", ("Queued", "Running")]},
         pluck="name",
     )
@@ -470,14 +522,19 @@ def _delete_runs(filters: dict):
         frappe.delete_doc("WebODM Plugin Run", name, force=True, ignore_permissions=True)
 
 
-def _delete_previous_runs(plugin: str, task_name: str):
-    """Delete prior runs for the same plugin+task, including their output files."""
-    _delete_runs({"plugin": plugin, "task": task_name})
+def _delete_previous_runs(plugin: str, task_name: str, reference_name: str | None = None):
+    """Delete prior runs for the same plugin+task(+reference), including their output files."""
+    _delete_runs(_run_slot(plugin, task_name, reference_name))
 
 
 @frappe.whitelist(allow_guest=False)
 def run_plugin(**kwargs):
-    """Validate eligibility and queue an analysis run for a completed task."""
+    """Validate eligibility and queue an analysis run for a completed task.
+
+    ``reference_task`` names the second survey for a comparison plugin (one
+    whose manifest has ``"survey": "reference"`` inputs); see
+    ``_reference_task_for`` for who may compare what.
+    """
     payload = _load_payload(kwargs)
     plugin = payload.get("plugin")
     task_name = payload.get("task")
@@ -511,9 +568,10 @@ def run_plugin(**kwargs):
     if task.status != "Completed":
         frappe.throw("Plugin can only run on a completed task")
 
-    resolved_inputs = _resolve_inputs(
-        task, _parse_json(plugin_doc.inputs, []), payload.get("inputs")
-    )
+    inputs_spec = _parse_json(plugin_doc.inputs, [])
+    # A comparison plugin also reads a second survey of the same project.
+    reference = _reference_task_for(plugin, inputs_spec, task, payload.get("reference_task"), org)
+    resolved_inputs = _resolve_inputs(task, inputs_spec, payload.get("inputs"), reference)
     defaults = _parse_json(setting.settings, {}) or {}
     effective = {**defaults, **(overrides if isinstance(overrides, dict) else {})}
     try:
@@ -529,18 +587,28 @@ def run_plugin(**kwargs):
         except (GeospatialError, GeospatialUnavailable) as e:
             frappe.throw(str(e))
 
-    # One run per (plugin, task): refuse while one is active, otherwise replace
-    # the previous result (and its output) so the panel/layers never accumulate.
-    _reject_if_active(plugin, task.name)
-    _delete_previous_runs(plugin, task.name)
+    # One run per (plugin, task) — per (plugin, task, reference) for a
+    # comparison: refuse while one is active, otherwise replace the previous
+    # result (and its output) so the panel/layers never accumulate.
+    reference_name = reference.name if reference else None
+    _reject_if_active(plugin, task.name, reference_name)
+    _delete_previous_runs(plugin, task.name, reference_name)
 
+    stored = {"params": effective, "inputs": resolved_inputs}
+    if reference:
+        # Which of the resolved inputs are read from the reference survey,
+        # fixed at queue time so a plugin upgrade cannot re-route them.
+        stored["reference_inputs"] = [
+            n for n in package_mod.reference_input_names(inputs_spec) if n in resolved_inputs
+        ]
     run = frappe.get_doc({
         "doctype": "WebODM Plugin Run",
         "plugin": plugin,
         "task": task.name,
+        "reference_task": reference_name,
         "status": "Queued",
         "progress": 0,
-        "parameters": json.dumps({"params": effective, "inputs": resolved_inputs}),
+        "parameters": json.dumps(stored),
         "output_kind": plugin_doc.output_kind,
         "render_kind": plugin_doc.render_kind,
     })
@@ -566,7 +634,7 @@ def list_runs(task: str | None = None):
         "WebODM Plugin Run",
         filters=filters,
         fields=[
-            "name", "plugin", "task", "status", "progress", "progress_message",
+            "name", "plugin", "task", "reference_task", "status", "progress", "progress_message",
             "output_kind", "render_kind", "output_file", "output_extent",
             "output_metadata", "error", "creation", "started_at", "completed_at",
         ],
@@ -580,6 +648,7 @@ def _serialize_run(doc) -> dict:
         "name": doc.name,
         "plugin": doc.plugin,
         "task": doc.task,
+        "reference_task": doc.get("reference_task"),
         "status": doc.status,
         "progress": doc.progress,
         "progress_message": doc.get("progress_message"),
