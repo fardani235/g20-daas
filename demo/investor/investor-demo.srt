@@ -1,0 +1,115 @@
+1
+00:00:00,400 --> 00:00:03,191
+G20 Tech turns drone imagery into decisions.
+
+2
+00:00:03,241 --> 00:00:05,450
+Follow one survey, start to finish.
+
+3
+00:00:05,800 --> 00:00:10,357
+Each organization gets its own workspace: projects, tasks and their status.
+
+4
+00:00:10,407 --> 00:00:15,333
+Flights are stored as reusable datasets: upload once, process as often as needed.
+
+5
+00:00:15,683 --> 00:00:22,387
+This dataset is a single flight: sixty-eight photos, each carrying its GPS position and capture time.
+
+6
+00:00:24,550 --> 00:00:28,956
+Processing runs on the OpenDroneMap engine, managed from the browser.
+
+7
+00:00:29,006 --> 00:00:36,188
+This task turned those photos into a five-centimetre orthophoto, elevation models, a point cloud and a 3D model.
+
+8
+00:00:36,238 --> 00:00:38,900
+A new task needs only images and a preset.
+
+9
+00:00:39,250 --> 00:00:46,120
+Open the task and the orthophoto is on the map, with each camera position and the flight path.
+
+10
+00:00:46,170 --> 00:00:53,262
+Switch the basemap for context, then zoom from the whole site down to five centimetres per pixel.
+
+11
+00:00:55,333 --> 00:00:56,621
+Elevation comes too.
+
+12
+00:00:56,671 --> 00:01:03,576
+The surface model shows buildings and trees; blend it over the imagery, or switch to bare-earth terrain.
+
+13
+00:01:06,383 --> 00:01:08,384
+Measurement happens on the map.
+
+14
+00:01:08,434 --> 00:01:15,395
+Outline a building and the platform returns its footprint and its volume, computed from the surface model.
+
+15
+00:01:17,433 --> 00:01:20,453
+The same survey as a textured 3D model.
+
+16
+00:01:20,503 --> 00:01:26,829
+Rotate it, zoom in, pan across it, right in the browser, with nothing to install.
+
+17
+00:01:31,850 --> 00:01:37,606
+For full detail there is the point cloud: ten million points, streamed as you move.
+
+18
+00:01:37,656 --> 00:01:42,293
+Colour it by elevation, or by class: ground, vegetation, buildings.
+
+19
+00:01:42,343 --> 00:01:46,631
+Draw a line across the site and read off an elevation profile.
+
+20
+00:01:53,683 --> 00:01:56,560
+Analysis plugins bring AI to every survey.
+
+21
+00:01:56,610 --> 00:01:59,417
+Here, a detector for vehicles and people.
+
+22
+00:01:59,767 --> 00:02:10,317
+The result comes back as map data: one hundred and eighty-four objects on this site, each with a class and a confidence score, ready to download.
+
+23
+00:02:12,217 --> 00:02:19,644
+Change detection compares two surveys of one site and reports cut and fill volumes with their uncertainty.
+
+24
+00:02:19,694 --> 00:02:27,333
+In this demo both inputs are runs of the same flight, so it finds almost nothing: half a percent of the site.
+
+25
+00:02:27,683 --> 00:02:34,772
+Results leave the platform in standard formats: cloud-optimized GeoTIFFs, a LAZ point cloud and a GLB model.
+
+26
+00:02:35,333 --> 00:02:36,901
+The analysis layer is open.
+
+27
+00:02:36,951 --> 00:02:45,050
+Plugins are enabled per organization and distributed through a built-in marketplace, so new models arrive without changing the platform.
+
+28
+00:02:45,400 --> 00:02:48,656
+Drone data, processing, visualization, AI analysis, insight.
+
+29
+00:02:48,706 --> 00:02:50,750
+One platform, from flight to decision.

@@ -1,0 +1,27 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": {
+      "headless": true,
+      "args": [
+        "--ignore-gpu-blocklist",
+        "--enable-gpu-rasterization",
+        "--use-angle=gl",
+        "--enable-unsafe-swiftshader",
+        "--force-device-scale-factor=1",
+        "--hide-scrollbars"
+      ],
+      "channel": "chrome"
+    },
+    "contextOptions": {
+      "ignoreHTTPSErrors": true,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "deviceScaleFactor": 1,
+      "locale": "en-US",
+      "colorScheme": "light"
+    }
+  }
+}
