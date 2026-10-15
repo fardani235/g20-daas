@@ -1,0 +1,6 @@
+# scratch space, browser logs and credentials: never commit
+.work/
+.playwright-cli/
+.env.local
+# intermediate renders, rebuilt by build_video.py
+build/
