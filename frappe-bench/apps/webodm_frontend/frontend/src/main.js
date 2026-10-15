@@ -68,6 +68,19 @@ const routes = [
     meta: { requiresAuth: true, title: 'Dataset' },
   },
   {
+    // Every flight plan of the organization; a plan itself lives in a project.
+    path: '/flight-plans',
+    name: 'FlightPlans',
+    component: () => import('./pages/FlightPlans.vue'),
+    meta: { requiresAuth: true, title: 'Flight Plans' },
+  },
+  {
+    path: '/flight-plans/equipment',
+    name: 'Equipment',
+    component: () => import('./pages/Equipment.vue'),
+    meta: { requiresAuth: true, title: 'Drones and Cameras' },
+  },
+  {
     path: '/presets',
     name: 'Presets',
     component: () => import('./pages/Presets.vue'),
@@ -96,6 +109,19 @@ const routes = [
     name: 'MapView',
     component: () => import('./pages/MapView.vue'),
     meta: { requiresAuth: true, title: 'Project', fullBleed: true },
+  },
+  {
+    path: '/project/:id/plans',
+    name: 'ProjectFlightPlans',
+    component: () => import('./pages/FlightPlans.vue'),
+    meta: { requiresAuth: true, title: 'Flight Plans' },
+  },
+  {
+    // planId is "new" for a plan that has not been saved yet.
+    path: '/project/:id/plans/:planId',
+    name: 'FlightPlanner',
+    component: () => import('./pages/FlightPlanner.vue'),
+    meta: { requiresAuth: true, title: 'Flight Plan', fullBleed: true },
   },
   {
     path: '/project/:id/task/:taskId/model',

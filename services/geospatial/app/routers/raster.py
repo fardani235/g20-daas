@@ -10,9 +10,10 @@ import os
 import warnings
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from app.utils import objectstore, raster
+from app.utils import elevation, objectstore, raster
 
 log = logging.getLogger("webodm.geospatial.raster")
 
@@ -56,3 +57,43 @@ async def raster_metadata(path: str = Query(..., description="Absolute path of t
     except Exception as e:  # pragma: no cover - defensive
         log.exception("unexpected metadata failure for %s", path)
         raise HTTPException(status_code=422, detail=f"metadata failed: {e}")
+
+
+class SampleRequest(BaseModel):
+    path: str
+    # [lng, lat] pairs in EPSG:4326.
+    points: list[list[float]]
+    # Size of the ground cell each value summarises (the caller's grid spacing).
+    spacing_m: float = 30.0
+    # "max" for a surface model (clear the highest thing in the cell),
+    # "mean" for a terrain model, "min" for completeness.
+    statistic: str = "max"
+
+
+@router.post("/sample")
+async def raster_sample(req: SampleRequest):
+    """Elevation of a DSM / DTM at a list of points (see ``elevation.sample_points``).
+
+    400 for a relative path or a disallowed bucket, 404 if the file is
+    missing, 422 for bad points / an un-georeferenced or unreadable raster.
+    Points outside the raster or on nodata come back as ``null``; that is an
+    answer, not an error.
+    """
+    if objectstore.is_object_uri(req.path):
+        try:
+            objectstore.parse_uri(req.path)
+        except objectstore.ObjectStoreError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    else:
+        if not os.path.isabs(req.path):
+            raise HTTPException(status_code=400, detail="path must be absolute or an s3:// URI")
+        if not os.path.isfile(req.path):
+            raise HTTPException(status_code=404, detail=f"raster not found: {req.path}")
+    try:
+        return await run_in_threadpool(
+            elevation.sample_points, req.path, req.points, req.spacing_m, req.statistic)
+    except elevation.ElevationSampleError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        log.warning("elevation sampling failed for %s: %s", req.path, e)
+        raise HTTPException(status_code=422, detail=f"sampling failed: {e}")

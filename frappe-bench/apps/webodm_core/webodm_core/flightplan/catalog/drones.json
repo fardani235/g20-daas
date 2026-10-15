@@ -1,0 +1,758 @@
+{
+  "as_of": "2026-10",
+  "about": "Nominal, manufacturer-published aircraft specifications used for planning estimates and capability checks. They are not a substitute for the aircraft manual: firmware, payload, propellers, temperature and wind all change what an aircraft can do. null means the figure is not published or not known here. `mission.formats[].level`: official = the named app documents importing this file for this aircraft; community = works through a procedure the vendor does not document; boundary = the vendor app imports only the survey boundary and plans its own flight lines.",
+  "drones": [
+    {
+      "id": "dji-mavic-3e",
+      "manufacturer": "DJI",
+      "model": "Mavic 3 Enterprise (M3E)",
+      "airframe": "multirotor",
+      "max_flight_time_min": 45,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 21,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 10,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 6,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 915,
+      "rtk": "optional",
+      "cameras": ["dji-mavic-3e-wide"],
+      "default_camera": "dji-mavic-3e-wide",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 77, "drone_sub_enum": 0, "source": "dji-docs"},
+        "formats": [
+          {"id": "dji-wpml", "level": "official", "app": "DJI Pilot 2 / FlightHub 2", "trigger": "distance"},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI Pilot 2"}
+        ]
+      }
+    },
+    {
+      "id": "dji-mavic-3t",
+      "manufacturer": "DJI",
+      "model": "Mavic 3 Thermal (M3T)",
+      "airframe": "multirotor",
+      "max_flight_time_min": 45,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 21,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 8,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 6,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 920,
+      "rtk": "optional",
+      "cameras": ["dji-mavic-3t-wide"],
+      "default_camera": "dji-mavic-3t-wide",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 77, "drone_sub_enum": 1, "source": "dji-docs"},
+        "formats": [
+          {"id": "dji-wpml", "level": "official", "app": "DJI Pilot 2 / FlightHub 2", "trigger": "distance"},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI Pilot 2"}
+        ]
+      },
+      "notes": "The wide camera has an electronic shutter: fly slower than a Mavic 3E for the same sharpness."
+    },
+    {
+      "id": "dji-mavic-3m",
+      "manufacturer": "DJI",
+      "model": "Mavic 3 Multispectral (M3M)",
+      "airframe": "multirotor",
+      "max_flight_time_min": 43,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 21,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 10,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 6,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 951,
+      "rtk": "standard",
+      "cameras": ["dji-mavic-3m-rgb"],
+      "default_camera": "dji-mavic-3m-rgb",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 77, "drone_sub_enum": 2, "source": "dji-docs"},
+        "formats": [
+          {"id": "dji-wpml", "level": "official", "app": "DJI Pilot 2 / FlightHub 2", "trigger": "distance"},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI Pilot 2"}
+        ]
+      }
+    },
+    {
+      "id": "dji-matrice-4e",
+      "manufacturer": "DJI",
+      "model": "Matrice 4E",
+      "airframe": "multirotor",
+      "max_flight_time_min": 49,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 21,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 12,
+      "max_ascent_ms": 10,
+      "max_descent_ms": 8,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 1219,
+      "rtk": "standard",
+      "cameras": ["dji-matrice-4e-wide"],
+      "default_camera": "dji-matrice-4e-wide",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 99, "drone_sub_enum": 0, "source": "community"},
+        "formats": [
+          {"id": "dji-wpml", "level": "official", "app": "DJI Pilot 2 / FlightHub 2", "trigger": "distance",
+           "note": "The aircraft and payload ids written into the file are not in DJI's public WPML tables yet; if Pilot 2 rejects the route, re-create it from the boundary KML."},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI Pilot 2"}
+        ]
+      }
+    },
+    {
+      "id": "dji-matrice-4t",
+      "manufacturer": "DJI",
+      "model": "Matrice 4T",
+      "airframe": "multirotor",
+      "max_flight_time_min": 49,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 21,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 8,
+      "max_ascent_ms": 10,
+      "max_descent_ms": 8,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 1219,
+      "rtk": "standard",
+      "cameras": ["dji-matrice-4t-wide"],
+      "default_camera": "dji-matrice-4t-wide",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 99, "drone_sub_enum": 1, "source": "community"},
+        "formats": [
+          {"id": "dji-wpml", "level": "official", "app": "DJI Pilot 2 / FlightHub 2", "trigger": "distance",
+           "note": "The aircraft and payload ids written into the file are not in DJI's public WPML tables yet; if Pilot 2 rejects the route, re-create it from the boundary KML."},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI Pilot 2"}
+        ]
+      }
+    },
+    {
+      "id": "dji-matrice-350-rtk",
+      "manufacturer": "DJI",
+      "model": "Matrice 350 RTK",
+      "airframe": "multirotor",
+      "max_flight_time_min": 55,
+      "endurance_factor": 0.7,
+      "max_speed_ms": 23,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 12,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 5,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 5000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 6470,
+      "rtk": "standard",
+      "cameras": ["dji-zenmuse-p1-35mm", "dji-zenmuse-p1-24mm", "dji-zenmuse-p1-50mm", "dji-zenmuse-h20-wide", "dji-zenmuse-h20t-wide"],
+      "default_camera": "dji-zenmuse-p1-35mm",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 89, "drone_sub_enum": 0, "source": "dji-docs"},
+        "formats": [
+          {"id": "dji-wpml", "level": "official", "app": "DJI Pilot 2 / FlightHub 2", "trigger": "distance"},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI Pilot 2"}
+        ]
+      },
+      "notes": "The 55 min endurance is without a payload; the endurance factor allows for a Zenmuse P1-class payload. Service ceiling 5000 m with standard propellers."
+    },
+    {
+      "id": "dji-matrice-300-rtk",
+      "manufacturer": "DJI",
+      "model": "Matrice 300 RTK",
+      "airframe": "multirotor",
+      "max_flight_time_min": 55,
+      "endurance_factor": 0.7,
+      "max_speed_ms": 23,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 12,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 5,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 5000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 6300,
+      "rtk": "standard",
+      "cameras": ["dji-zenmuse-p1-35mm", "dji-zenmuse-p1-24mm", "dji-zenmuse-p1-50mm", "dji-zenmuse-h20-wide", "dji-zenmuse-h20t-wide"],
+      "default_camera": "dji-zenmuse-p1-35mm",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 60, "drone_sub_enum": 0, "source": "dji-docs"},
+        "formats": [
+          {"id": "dji-wpml", "level": "official", "app": "DJI Pilot 2 / FlightHub 2", "trigger": "distance"},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI Pilot 2"}
+        ]
+      },
+      "notes": "The 55 min endurance is without a payload; the endurance factor allows for a Zenmuse P1-class payload."
+    },
+    {
+      "id": "dji-matrice-30t",
+      "manufacturer": "DJI",
+      "model": "Matrice 30T",
+      "airframe": "multirotor",
+      "max_flight_time_min": 41,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 23,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 8,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 5,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 5000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 3770,
+      "rtk": "standard",
+      "cameras": ["dji-m30t-wide"],
+      "default_camera": "dji-m30t-wide",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 67, "drone_sub_enum": 1, "source": "dji-docs"},
+        "formats": [
+          {"id": "dji-wpml", "level": "official", "app": "DJI Pilot 2 / FlightHub 2", "trigger": "distance"},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI Pilot 2"}
+        ]
+      },
+      "notes": "An inspection aircraft: the 12 MP wide camera maps, but at a coarse ground resolution."
+    },
+    {
+      "id": "dji-matrice-3d",
+      "manufacturer": "DJI",
+      "model": "Matrice 3D (Dock 2)",
+      "airframe": "multirotor",
+      "max_flight_time_min": 50,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 21,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 10,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 6,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 4000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 1410,
+      "rtk": "standard",
+      "cameras": ["dji-matrice-3d-wide"],
+      "default_camera": "dji-matrice-3d-wide",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 91, "drone_sub_enum": 0, "source": "dji-docs"},
+        "formats": [
+          {"id": "dji-wpml", "level": "official", "app": "DJI FlightHub 2", "trigger": "distance"}
+        ]
+      },
+      "notes": "Flown from DJI Dock 2 through FlightHub 2; the takeoff point is the dock."
+    },
+    {
+      "id": "dji-mavic-3-classic",
+      "manufacturer": "DJI",
+      "model": "Mavic 3 Classic",
+      "airframe": "multirotor",
+      "max_flight_time_min": 46,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 21,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 7,
+      "max_ascent_ms": 8,
+      "max_descent_ms": 6,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": 500,
+      "takeoff_mass_g": 895,
+      "rtk": "none",
+      "cameras": ["dji-mavic-3-hasselblad"],
+      "default_camera": "dji-mavic-3-hasselblad",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 68, "drone_sub_enum": 0, "source": "community"},
+        "formats": [
+          {"id": "dji-wpml", "level": "community", "app": "DJI Fly (Waypoint Flight)", "trigger": "manual", "max_waypoints": 200,
+           "note": "DJI Fly has no import button: the file replaces a placeholder mission saved on the controller. DJI Fly does not run interval triggers from the file, so either start interval shooting on the camera before the mission or export with a photo at every waypoint."}
+        ]
+      }
+    },
+    {
+      "id": "dji-air-3",
+      "manufacturer": "DJI",
+      "model": "Air 3",
+      "airframe": "multirotor",
+      "max_flight_time_min": 46,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 21,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 6,
+      "max_ascent_ms": 10,
+      "max_descent_ms": 10,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": 500,
+      "takeoff_mass_g": 720,
+      "rtk": "none",
+      "cameras": ["dji-air-3-wide-12mp", "dji-air-3-wide-48mp"],
+      "default_camera": "dji-air-3-wide-12mp",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 68, "drone_sub_enum": 0, "source": "community"},
+        "formats": [
+          {"id": "dji-wpml", "level": "community", "app": "DJI Fly (Waypoint Flight)", "trigger": "manual", "max_waypoints": 200,
+           "note": "DJI Fly has no import button: the file replaces a placeholder mission saved on the controller. DJI Fly does not run interval triggers from the file, so either start interval shooting on the camera before the mission or export with a photo at every waypoint."}
+        ]
+      }
+    },
+    {
+      "id": "dji-mini-4-pro",
+      "manufacturer": "DJI",
+      "model": "Mini 4 Pro",
+      "airframe": "multirotor",
+      "max_flight_time_min": 34,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 16,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 6,
+      "max_ascent_ms": 5,
+      "max_descent_ms": 5,
+      "max_wind_ms": 10.7,
+      "service_ceiling_m": 4000,
+      "max_height_above_takeoff_m": 500,
+      "takeoff_mass_g": 249,
+      "rtk": "none",
+      "cameras": ["dji-mini-4-pro-12mp", "dji-mini-4-pro-48mp"],
+      "default_camera": "dji-mini-4-pro-12mp",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "wpml": {"drone_enum": 68, "drone_sub_enum": 0, "source": "community"},
+        "formats": [
+          {"id": "dji-wpml", "level": "community", "app": "DJI Fly (Waypoint Flight)", "trigger": "manual", "max_waypoints": 200,
+           "note": "DJI Fly has no import button: the file replaces a placeholder mission saved on the controller. DJI Fly does not run interval triggers from the file, so either start interval shooting on the camera before the mission or export with a photo at every waypoint."}
+        ]
+      },
+      "notes": "A sub-250 g aircraft: wind tolerance and endurance in cold weather are well below the rated figures."
+    },
+    {
+      "id": "dji-mini-3",
+      "manufacturer": "DJI",
+      "model": "Mini 3",
+      "airframe": "multirotor",
+      "max_flight_time_min": 38,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 16,
+      "max_mission_speed_ms": null,
+      "cruise_speed_ms": 5,
+      "max_ascent_ms": 5,
+      "max_descent_ms": 3.5,
+      "max_wind_ms": 10.7,
+      "service_ceiling_m": 4000,
+      "max_height_above_takeoff_m": 500,
+      "takeoff_mass_g": 248,
+      "rtk": "none",
+      "cameras": ["dji-mini-3-pro-12mp"],
+      "default_camera": "dji-mini-3-pro-12mp",
+      "mission": {
+        "waypoints": false,
+        "per_waypoint_altitude": false,
+        "formats": []
+      },
+      "notes": "DJI Fly offers no waypoint flight on this model. The plan can still be used as a reference for a manually flown grid."
+    },
+    {
+      "id": "dji-air-2s",
+      "manufacturer": "DJI",
+      "model": "Air 2S",
+      "airframe": "multirotor",
+      "max_flight_time_min": 31,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 19,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 7,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 6,
+      "max_wind_ms": 10.7,
+      "service_ceiling_m": 5000,
+      "max_height_above_takeoff_m": 500,
+      "takeoff_mass_g": 595,
+      "rtk": "none",
+      "cameras": ["dji-air-2s"],
+      "default_camera": "dji-air-2s",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "formats": [
+          {"id": "litchi-csv", "level": "official", "app": "Litchi (third-party app, Mission Hub import)"}
+        ]
+      },
+      "notes": "DJI Fly has no waypoint flight on this model; missions are flown with a third-party app."
+    },
+    {
+      "id": "dji-mini-2",
+      "manufacturer": "DJI",
+      "model": "Mini 2",
+      "airframe": "multirotor",
+      "max_flight_time_min": 31,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 16,
+      "max_mission_speed_ms": 10,
+      "cruise_speed_ms": 5,
+      "max_ascent_ms": 5,
+      "max_descent_ms": 3.5,
+      "max_wind_ms": 8.5,
+      "service_ceiling_m": 4000,
+      "max_height_above_takeoff_m": 500,
+      "takeoff_mass_g": 249,
+      "rtk": "none",
+      "cameras": ["dji-mini-2"],
+      "default_camera": "dji-mini-2",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "formats": [
+          {"id": "litchi-csv", "level": "official", "app": "Litchi (third-party app, Mission Hub import)",
+           "note": "Litchi flies this model by remote control from the mobile device: the mission stops if the control link is lost."}
+        ]
+      }
+    },
+    {
+      "id": "dji-mavic-2-pro",
+      "manufacturer": "DJI",
+      "model": "Mavic 2 Pro",
+      "airframe": "multirotor",
+      "max_flight_time_min": 31,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 20,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 7,
+      "max_ascent_ms": 5,
+      "max_descent_ms": 3,
+      "max_wind_ms": 10.7,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": 500,
+      "takeoff_mass_g": 907,
+      "rtk": "none",
+      "cameras": ["dji-mavic-2-pro"],
+      "default_camera": "dji-mavic-2-pro",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "formats": [
+          {"id": "litchi-csv", "level": "official", "app": "Litchi (third-party app, Mission Hub import)"},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI GS Pro"}
+        ]
+      }
+    },
+    {
+      "id": "dji-phantom-4-pro-v2",
+      "manufacturer": "DJI",
+      "model": "Phantom 4 Pro V2.0",
+      "airframe": "multirotor",
+      "max_flight_time_min": 30,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 20,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 8,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 4,
+      "max_wind_ms": 10,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": 500,
+      "takeoff_mass_g": 1375,
+      "rtk": "none",
+      "cameras": ["dji-phantom-4-pro"],
+      "default_camera": "dji-phantom-4-pro",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "formats": [
+          {"id": "litchi-csv", "level": "official", "app": "Litchi (third-party app, Mission Hub import)"},
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI GS Pro"}
+        ]
+      }
+    },
+    {
+      "id": "dji-phantom-4-rtk",
+      "manufacturer": "DJI",
+      "model": "Phantom 4 RTK",
+      "airframe": "multirotor",
+      "max_flight_time_min": 30,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 16,
+      "max_mission_speed_ms": 13.9,
+      "cruise_speed_ms": 8,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 3,
+      "max_wind_ms": 10,
+      "service_ceiling_m": 6000,
+      "max_height_above_takeoff_m": 500,
+      "takeoff_mass_g": 1391,
+      "rtk": "standard",
+      "cameras": ["dji-phantom-4-pro"],
+      "default_camera": "dji-phantom-4-pro",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": false,
+        "formats": [
+          {"id": "kml-boundary", "level": "boundary", "app": "DJI GS RTK"}
+        ]
+      },
+      "notes": "GS RTK plans its own photogrammetry route from an imported area; it does not load waypoint files from other tools."
+    },
+    {
+      "id": "autel-evo-ii-pro-v3",
+      "manufacturer": "Autel Robotics",
+      "model": "EVO II Pro V3",
+      "airframe": "multirotor",
+      "max_flight_time_min": 40,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 20,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 7,
+      "max_ascent_ms": 8,
+      "max_descent_ms": 4,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 7000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 1191,
+      "rtk": "none",
+      "cameras": ["autel-evo-ii-pro"],
+      "default_camera": "autel-evo-ii-pro",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": false,
+        "formats": [
+          {"id": "kml-boundary", "level": "boundary", "app": "Autel Explorer",
+           "note": "KML import depends on the Autel Explorer version and controller; if it is not offered, redraw the area in the app from the plan's coordinates."}
+        ]
+      }
+    },
+    {
+      "id": "autel-evo-max-4t",
+      "manufacturer": "Autel Robotics",
+      "model": "EVO Max 4T",
+      "airframe": "multirotor",
+      "max_flight_time_min": 42,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 23,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 8,
+      "max_ascent_ms": 8,
+      "max_descent_ms": 6,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 7000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 1600,
+      "rtk": "optional",
+      "cameras": ["autel-evo-max-4t-wide"],
+      "default_camera": "autel-evo-max-4t-wide",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": false,
+        "formats": [
+          {"id": "kml-boundary", "level": "boundary", "app": "Autel Enterprise"}
+        ]
+      }
+    },
+    {
+      "id": "parrot-anafi-ai",
+      "manufacturer": "Parrot",
+      "model": "ANAFI Ai",
+      "airframe": "multirotor",
+      "max_flight_time_min": 32,
+      "endurance_factor": 0.75,
+      "max_speed_ms": 16,
+      "max_mission_speed_ms": 12,
+      "cruise_speed_ms": 6,
+      "max_ascent_ms": 4,
+      "max_descent_ms": 3,
+      "max_wind_ms": 12.7,
+      "service_ceiling_m": 5000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 898,
+      "rtk": "none",
+      "cameras": ["parrot-anafi-ai"],
+      "default_camera": "parrot-anafi-ai",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "formats": [
+          {"id": "mavlink-wpl", "level": "community", "app": "Parrot Ground SDK / OpenFlight (MAVLink flight plan)",
+           "note": "ANAFI Ai executes MAVLink flight-plan files through Parrot's SDK; FreeFlight 7 itself plans photogrammetry on the device and has no file import."}
+        ]
+      }
+    },
+    {
+      "id": "freefly-astro",
+      "manufacturer": "Freefly Systems",
+      "model": "Astro (mapping payload)",
+      "airframe": "multirotor",
+      "max_flight_time_min": 25,
+      "endurance_factor": 0.85,
+      "max_speed_ms": 15,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 10,
+      "max_ascent_ms": 4,
+      "max_descent_ms": 2.5,
+      "max_wind_ms": null,
+      "service_ceiling_m": null,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": null,
+      "rtk": "standard",
+      "cameras": ["sony-a7r-iv-35mm"],
+      "default_camera": "sony-a7r-iv-35mm",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "formats": [
+          {"id": "qgc-plan", "level": "official", "app": "Auterion Mission Control / QGroundControl"}
+        ]
+      },
+      "notes": "PX4-based. The 25 min endurance is with the mapping payload fitted."
+    },
+    {
+      "id": "generic-mavlink-multirotor",
+      "manufacturer": "Generic",
+      "model": "PX4 / ArduPilot multirotor",
+      "airframe": "multirotor",
+      "max_flight_time_min": 25,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 15,
+      "max_mission_speed_ms": 15,
+      "cruise_speed_ms": 8,
+      "max_ascent_ms": 3,
+      "max_descent_ms": 1.5,
+      "max_wind_ms": null,
+      "service_ceiling_m": null,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": null,
+      "rtk": "optional",
+      "cameras": ["*"],
+      "default_camera": "sony-a6000-20mm",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "formats": [
+          {"id": "qgc-plan", "level": "official", "app": "QGroundControl"},
+          {"id": "mavlink-wpl", "level": "official", "app": "Mission Planner / QGroundControl"}
+        ]
+      },
+      "notes": "A starting point, not a real aircraft: copy it to a custom profile and enter your airframe's measured endurance and speeds."
+    },
+    {
+      "id": "generic-mavlink-fixed-wing",
+      "manufacturer": "Generic",
+      "model": "ArduPilot / PX4 fixed-wing",
+      "airframe": "fixed-wing",
+      "max_flight_time_min": 45,
+      "endurance_factor": 0.8,
+      "max_speed_ms": 22,
+      "max_mission_speed_ms": 22,
+      "min_speed_ms": 12,
+      "cruise_speed_ms": 16,
+      "max_ascent_ms": 3,
+      "max_descent_ms": 3,
+      "max_wind_ms": null,
+      "service_ceiling_m": null,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": null,
+      "min_turn_radius_m": 60,
+      "rtk": "optional",
+      "cameras": ["*"],
+      "default_camera": "sony-a6000-20mm",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": true,
+        "formats": [
+          {"id": "qgc-plan", "level": "official", "app": "QGroundControl"},
+          {"id": "mavlink-wpl", "level": "official", "app": "Mission Planner / QGroundControl"}
+        ]
+      },
+      "notes": "A starting point, not a real aircraft. A fixed-wing cannot stop or turn on the spot: flight lines are extended past the boundary so the turn happens outside the survey area."
+    },
+    {
+      "id": "wingtra-wingtraone-gen2",
+      "manufacturer": "Wingtra",
+      "model": "WingtraOne GEN II",
+      "airframe": "vtol",
+      "max_flight_time_min": 59,
+      "endurance_factor": 0.85,
+      "max_speed_ms": 16,
+      "max_mission_speed_ms": 16,
+      "min_speed_ms": 16,
+      "cruise_speed_ms": 16,
+      "max_ascent_ms": 6,
+      "max_descent_ms": 3,
+      "max_wind_ms": 12,
+      "service_ceiling_m": 5000,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 4500,
+      "min_turn_radius_m": 60,
+      "rtk": "optional",
+      "cameras": ["sony-rx1r-ii-35mm", "sony-a6100-20mm"],
+      "default_camera": "sony-rx1r-ii-35mm",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": false,
+        "formats": [
+          {"id": "kml-boundary", "level": "boundary", "app": "WingtraPilot"}
+        ]
+      },
+      "notes": "WingtraPilot plans the flight lines itself from an imported area. The 5000 m ceiling needs high-altitude propellers; ground wind limit for takeoff and landing is lower than the cruise limit."
+    },
+    {
+      "id": "ageagle-ebee-x",
+      "manufacturer": "AgEagle (senseFly)",
+      "model": "eBee X",
+      "airframe": "fixed-wing",
+      "max_flight_time_min": 59,
+      "endurance_factor": 0.85,
+      "max_speed_ms": 30,
+      "max_mission_speed_ms": 30,
+      "min_speed_ms": 11,
+      "cruise_speed_ms": 13,
+      "max_ascent_ms": 3,
+      "max_descent_ms": 3,
+      "max_wind_ms": 12.8,
+      "service_ceiling_m": null,
+      "max_height_above_takeoff_m": null,
+      "takeoff_mass_g": 1400,
+      "min_turn_radius_m": 50,
+      "rtk": "optional",
+      "cameras": ["sensefly-soda-3d", "sensefly-aeria-x"],
+      "default_camera": "sensefly-soda-3d",
+      "mission": {
+        "waypoints": true,
+        "per_waypoint_altitude": false,
+        "formats": [
+          {"id": "kml-boundary", "level": "boundary", "app": "eMotion"}
+        ]
+      },
+      "notes": "eMotion plans the flight lines itself from an imported area. Endurance is with the standard battery."
+    }
+  ]
+}

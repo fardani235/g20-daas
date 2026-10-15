@@ -280,6 +280,47 @@ Organization-scoped.
 - is_default: Check
 ```
 
+#### WebODM Flight Plan / Drone Profile / Camera Profile (flight planning)
+
+Organization-scoped, stamped and filtered like projects and datasets.
+Details: `docs/flight-planning/`, spec `openspec/specs/flight-planning/spec.md`.
+
+```
+WebODM Flight Plan
+- title: Data
+- project: Link → WebODM Project          (deleted with the project)
+- description: Small Text
+- plan_type: Select [area, corridor]
+- drone / camera: Data                    (profile id: catalog id or custom:<name>)
+- corridor_width_m: Float
+- elevation_source: Data                  (auto | none | task:<task>:<dsm|dtm>)
+- takeoff, geometry, parameters: JSON text (the definition: what the user specified)
+- mission: JSON text, read-only           (computed by the server on every save)
+- drone_label, camera_label, gsd_cm, area_m2, distance_m, duration_s, photo_count,
+  batteries, waypoint_count, issue_errors, issue_warnings, computed_at: read-only summary
+- created_by: Link → User
+- organization: Link → WebODM Organization
+
+WebODM Drone Profile                      (an organization's own aircraft)
+- model, manufacturer, airframe, rtk
+- max_flight_time_min, endurance_factor, takeoff_mass_g, max_wind_ms
+- max_speed_ms, max_mission_speed_ms, cruise_speed_ms, min_speed_ms, max_ascent_ms,
+  max_descent_ms, min_turn_radius_m, service_ceiling_m, max_height_above_takeoff_m
+- cameras, default_camera
+- ecosystem, waypoints, per_waypoint_altitude, wpml_drone_enum, wpml_drone_sub_enum,
+  mission_formats (JSON text)
+- organization
+
+WebODM Camera Profile                     (an organization's own camera)
+- profile_name, manufacturer
+- sensor_width_mm, sensor_height_mm, image_width_px, image_height_px, focal_length_mm
+- min_interval_s, shutter, wpml_payload_enum
+- organization
+```
+
+The built-in aircraft and cameras are not documents: they are data files in
+`webodm_core/flightplan/catalog/`.
+
 ### 3.2 webodm_geospatial DocTypes
 
 #### Dataset Config
@@ -347,6 +388,22 @@ cookie and the geospatial service needs no Frappe auth/storage knowledge.
 | GET | `webodm_core.api.tiles.info` | ✅ | Proxy raster info (bounds, zoom, bands) |
 | GET | `webodm_core.api.tiles.tilejson` | ⬜ | Proxy TileJSON requests |
 
+#### Flight Planning
+All under `webodm_core.api.flightplan`; an organization is required. The
+planner itself is the Frappe-free package `webodm_core.flightplan`
+(`docs/flight-planning/architecture.md`).
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `catalog` | Drones, cameras, export formats, parameter specs, rule presets, what is configured |
+| POST | `geocode` | Coordinates parsed locally; an address goes to the configured geocoder |
+| POST | `elevation_sources` | Global model, the project's completed surveys (DSM / DTM), none |
+| POST | `preview` | Compute a mission without saving (`terrain`: `cached` \| `fetch`) |
+| POST | `list_plans` / `get_plan` / `save_plan` / `duplicate_plan` / `delete_plan` | Plans in projects; the mission is always recomputed on the server |
+| POST | `export_options` | Per format: support for the plan's aircraft, file count, findings, verdict |
+| POST | `export_plan` | Download a mission, boundary or reference file (blocked by error findings; warnings need `acknowledged`) |
+| POST | `save_camera` / `delete_camera` / `save_drone` / `delete_drone` | The organization's own equipment profiles |
+
 #### Auth Operations
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -365,6 +422,7 @@ GDAL `/vsis3/` range reads), not a dataset id. See `services/geospatial/README.m
 | GET | `/tiles/info?path=` | ✅ | Bounds (4326), zoom range, band stats |
 | GET | `/tiles/tile/{z}/{x}/{y}.png?path=&kind=` | ✅ | Raster tile (`kind`=orthophoto\|dsm\|dtm) |
 | POST | `/export/cogify` | ✅ | Convert raster → COG (in place, or `s3://` → `s3://` with `output_path`), return epsg/wkt/extent + metadata of the output |
+| POST | `/raster/sample` | ✅ | Elevation of a DSM / DTM at a list of points (max for a surface, mean for terrain), for flight planning |
 | POST | `/export/raster` | 🚧 | Export raster as GeoTIFF/PNG/KMZ |
 | POST | `/export/hillshade` | 🚧 | Generate hillshade from DEM |
 | POST | `/export/colormap` | 🚧 | Apply custom colormap |
@@ -528,6 +586,14 @@ Spec: `openspec/specs/marketplace/spec.md`; docs: `docs/marketplace/`.
 - Real-time task log streaming via SocketIO
 - Scrollable ANSI-colored output
 - Search/filter log lines
+
+### 7.5 Flight planning (`/flight-plans`, `/project/{id}/plans`, `/project/{id}/plans/{planId}`)
+- Plan list (all plans, or one project's) with aircraft, estimates and check status; duplicate into another project; export
+- Planner: address / coordinate search, draw and edit an area polygon or a corridor line on the map, takeoff point, aircraft and camera, linked height / ground resolution, overlap, speed, direction, constant altitude or terrain following, elevation source, limits
+- Live estimates (resolution, area, photos, time, distance, batteries), terrain profile, findings with their basis, and a per-topic "what was and was not checked" table
+- Export dialog: formats per aircraft with support level, photo trigger, blocking findings, acknowledgement of warnings
+- Drones and cameras (`/flight-plans/equipment`): built-in catalog and the organization's own profiles
+- See `docs/flight-planning/`
 
 ## 8. Authentication & Permissions
 

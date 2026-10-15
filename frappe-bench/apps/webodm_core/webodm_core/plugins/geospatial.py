@@ -244,3 +244,37 @@ def pointcloud_profile(files: dict, line: list, *, width: float = 1.0, step: flo
     if not isinstance(data, dict) or "distance" not in data:
         raise GeospatialError("profile failed: unexpected response")
     return data
+
+
+def raster_sample(path: str, points: list, *, spacing_m: float = 30.0, statistic: str = "max",
+                  timeout: int = 120) -> dict:
+    """Elevations of a DSM / DTM at ``[lng, lat]`` points via ``POST /raster/sample``.
+
+    ``path`` is an absolute path on the shared volume or an ``s3://`` URI.
+    Each value summarises the ground around its point (``statistic``: ``max``
+    for a surface model, ``mean`` for a terrain model); points off the raster
+    or on nodata come back as ``None``. Returns the service's dict
+    (``values``, ``resolution_m``, ``cell_m``, ``statistic``, ``covered``).
+    Raises ``GeospatialError`` on a 4xx and ``GeospatialUnavailable`` when the
+    service cannot be reached or errors.
+    """
+    url = f"{geospatial_url().rstrip('/')}/raster/sample"
+    body = {"path": path, "points": points, "spacing_m": spacing_m, "statistic": statistic}
+    try:
+        resp = requests.post(url, json=body, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            detail = e.response.text if e.response is not None else ""
+        if e.response is not None and e.response.status_code >= 500:
+            raise GeospatialUnavailable(f"elevation sampling failed: {detail or e}") from e
+        raise GeospatialError(f"elevation sampling failed: {detail or e}") from e
+    except Exception as e:
+        raise GeospatialUnavailable(f"geospatial service unreachable: {e}") from e
+    if not isinstance(data, dict) or not isinstance(data.get("values"), list):
+        raise GeospatialError("elevation sampling failed: unexpected response")
+    return data

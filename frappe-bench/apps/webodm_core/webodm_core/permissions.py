@@ -78,6 +78,42 @@ def has_dataset_permission(doc, ptype, user=None):
     return _org_has_permission(doc, user or frappe.session.user)
 
 
+# Flight planning. Plans and the organization's own drone / camera profiles
+# are org-scoped exactly like projects and datasets: every member may read,
+# create, edit and delete them. The controllers enforce the rest (a plan's
+# project must be in the same organization; profiles must be valid).
+
+
+def get_flight_plan_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Flight Plan", user or frappe.session.user)
+
+
+def has_flight_plan_permission(doc, ptype, user=None):
+    if _is_create(ptype):
+        return True
+    return _org_has_permission(doc, user or frappe.session.user)
+
+
+def get_drone_profile_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Drone Profile", user or frappe.session.user)
+
+
+def has_drone_profile_permission(doc, ptype, user=None):
+    if _is_create(ptype):
+        return True
+    return _org_has_permission(doc, user or frappe.session.user)
+
+
+def get_camera_profile_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Camera Profile", user or frappe.session.user)
+
+
+def has_camera_profile_permission(doc, ptype, user=None):
+    if _is_create(ptype):
+        return True
+    return _org_has_permission(doc, user or frappe.session.user)
+
+
 def has_preset_permission(doc, ptype, user=None):
     user = user or frappe.session.user
     if is_platform_admin(user):

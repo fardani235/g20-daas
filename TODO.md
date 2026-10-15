@@ -293,6 +293,22 @@
       partner self-serve publishing, update notifications on the Plugins page
 - [ ] Original WebODM plugin hooks/signals/JS injection — not planned (superseded)
 
+## Flight Planning ✅ (2026-10-16) — see `docs/flight-planning/`
+
+- [x] Planner package `webodm_core/flightplan/` (no Frappe): area and corridor layout,
+      GSD / overlap arithmetic, terrain following, estimates, per-battery flights, checks
+- [x] Equipment catalog as data (26 aircraft, 33 cameras) + organization drone / camera profiles
+- [x] Elevation: pluggable global providers (cached grid) and a project survey's DSM / DTM
+      (`POST /raster/sample`)
+- [x] Findings with severity and basis; per-topic "what was checked" table; advisory zone file
+- [x] Plans saved in projects (`WebODM Flight Plan`), duplicate / reuse, server-side recompute
+- [x] Export: DJI WPML, QGroundControl plan, MAVLink waypoints, Litchi CSV, boundary KML,
+      overview KML, GeoJSON; per-aircraft compatibility, gate, splitting
+- [x] Planner, plan list and equipment pages; e2e script
+- [ ] Follow-ups: import a boundary (KML / GeoJSON) into the planner; oblique and multi-polygon
+      missions; flyable fixed-wing turns; wind in the endurance estimate; an airspace data
+      provider; imperial units; verification of each export in its vendor app
+
 ## Phase 7: Core Plugins ⬜
 
 - [ ] **tasknotification** — email/Slack notifications on task events

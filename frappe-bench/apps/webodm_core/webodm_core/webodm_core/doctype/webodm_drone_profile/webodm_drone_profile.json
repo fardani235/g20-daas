@@ -1,0 +1,309 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-16 00:00:00.000000",
+ "description": "An aircraft an organization flies that is not in the built-in catalog. Flight planning reads its limits for estimates, capability checks and the mission formats it is offered.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "model",
+  "manufacturer",
+  "airframe",
+  "rtk",
+  "endurance_section",
+  "max_flight_time_min",
+  "endurance_factor",
+  "endurance_column",
+  "takeoff_mass_g",
+  "max_wind_ms",
+  "performance_section",
+  "max_speed_ms",
+  "max_mission_speed_ms",
+  "cruise_speed_ms",
+  "min_speed_ms",
+  "performance_column",
+  "max_ascent_ms",
+  "max_descent_ms",
+  "min_turn_radius_m",
+  "service_ceiling_m",
+  "max_height_above_takeoff_m",
+  "camera_section",
+  "cameras",
+  "default_camera",
+  "mission_section",
+  "ecosystem",
+  "waypoints",
+  "per_waypoint_altitude",
+  "mission_column",
+  "wpml_drone_enum",
+  "wpml_drone_sub_enum",
+  "formats_section",
+  "mission_formats",
+  "notes_section",
+  "notes",
+  "organization"
+ ],
+ "fields": [
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "manufacturer",
+   "fieldtype": "Data",
+   "label": "Manufacturer",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "airframe",
+   "fieldtype": "Select",
+   "label": "Airframe",
+   "options": "multirotor\nfixed-wing\nvtol",
+   "default": "multirotor",
+   "in_list_view": 1,
+   "description": "A fixed-wing or VTOL cannot stop at a waypoint: lines are extended by the turn radius."
+  },
+  {
+   "fieldname": "rtk",
+   "fieldtype": "Select",
+   "label": "RTK",
+   "options": "none\noptional\nstandard",
+   "default": "none"
+  },
+  {
+   "fieldname": "endurance_section",
+   "fieldtype": "Section Break",
+   "label": "Endurance"
+  },
+  {
+   "fieldname": "max_flight_time_min",
+   "fieldtype": "Float",
+   "label": "Rated Flight Time (min)",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "The manufacturer's figure, or better, your own measurement."
+  },
+  {
+   "fieldname": "endurance_factor",
+   "fieldtype": "Float",
+   "label": "Endurance Factor",
+   "default": "0.8",
+   "description": "Share of the rated time you actually get with your payload and conditions (0.1-1). Usable time per battery = rated time x this factor x (1 - reserve)."
+  },
+  {
+   "fieldname": "endurance_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "takeoff_mass_g",
+   "fieldtype": "Float",
+   "label": "Takeoff Mass (g)",
+   "description": "0 = unknown."
+  },
+  {
+   "fieldname": "max_wind_ms",
+   "fieldtype": "Float",
+   "label": "Wind Limit (m/s)",
+   "description": "Shown as context only; wind is not modelled. 0 = unknown."
+  },
+  {
+   "fieldname": "performance_section",
+   "fieldtype": "Section Break",
+   "label": "Performance",
+   "description": "0 means unknown for every optional figure here; the planner then skips the check that needs it rather than guessing."
+  },
+  {
+   "fieldname": "max_speed_ms",
+   "fieldtype": "Float",
+   "label": "Top Speed (m/s)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "max_mission_speed_ms",
+   "fieldtype": "Float",
+   "label": "Automated Flight Speed Limit (m/s)",
+   "description": "Speed limit of waypoint flight, if lower than the top speed."
+  },
+  {
+   "fieldname": "cruise_speed_ms",
+   "fieldtype": "Float",
+   "label": "Suggested Mapping Speed (m/s)",
+   "description": "Default flight speed for new plans."
+  },
+  {
+   "fieldname": "min_speed_ms",
+   "fieldtype": "Float",
+   "label": "Minimum Airspeed (m/s)",
+   "description": "Fixed-wing and VTOL only."
+  },
+  {
+   "fieldname": "performance_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "max_ascent_ms",
+   "fieldtype": "Float",
+   "label": "Climb Rate (m/s)"
+  },
+  {
+   "fieldname": "max_descent_ms",
+   "fieldtype": "Float",
+   "label": "Descent Rate (m/s)"
+  },
+  {
+   "fieldname": "min_turn_radius_m",
+   "fieldtype": "Float",
+   "label": "Turn Radius (m)",
+   "description": "Fixed-wing and VTOL only."
+  },
+  {
+   "fieldname": "service_ceiling_m",
+   "fieldtype": "Float",
+   "label": "Service Ceiling (m above sea level)"
+  },
+  {
+   "fieldname": "max_height_above_takeoff_m",
+   "fieldtype": "Float",
+   "label": "Height Limit Above Takeoff (m)",
+   "description": "Firmware limit, if any."
+  },
+  {
+   "fieldname": "camera_section",
+   "fieldtype": "Section Break",
+   "label": "Cameras"
+  },
+  {
+   "fieldname": "cameras",
+   "fieldtype": "Small Text",
+   "label": "Cameras",
+   "description": "Comma-separated camera profile ids this aircraft can carry (built-in ids such as dji-zenmuse-p1-35mm, or custom:<name>). * = any camera."
+  },
+  {
+   "fieldname": "default_camera",
+   "fieldtype": "Data",
+   "label": "Default Camera"
+  },
+  {
+   "fieldname": "mission_section",
+   "fieldtype": "Section Break",
+   "label": "Mission capability",
+   "description": "What the aircraft's flight app can be given. Do not tick or list a capability the aircraft does not have: exports are offered on the strength of this."
+  },
+  {
+   "fieldname": "ecosystem",
+   "fieldtype": "Data",
+   "label": "Flight App Family",
+   "description": "How missions reach this aircraft (dji-enterprise, dji-fly, mavlink, litchi, vendor, manual). Set from the planner; it pre-fills the capability fields below."
+  },
+  {
+   "fieldname": "waypoints",
+   "fieldtype": "Check",
+   "label": "Autonomous Waypoint Flight",
+   "default": "1"
+  },
+  {
+   "fieldname": "per_waypoint_altitude",
+   "fieldtype": "Check",
+   "label": "Waypoints Carry Their Own Height",
+   "default": "1",
+   "description": "Needed for terrain following planned here. Untick if the flight app plans altitudes itself."
+  },
+  {
+   "fieldname": "mission_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "wpml_drone_enum",
+   "fieldtype": "Int",
+   "label": "DJI WPML Aircraft Id",
+   "description": "Only for DJI aircraft exported as WPML routes. 0 = none."
+  },
+  {
+   "fieldname": "wpml_drone_sub_enum",
+   "fieldtype": "Int",
+   "label": "DJI WPML Aircraft Sub-Id"
+  },
+  {
+   "fieldname": "formats_section",
+   "fieldtype": "Section Break",
+   "label": "Mission file formats"
+  },
+  {
+   "fieldname": "mission_formats",
+   "fieldtype": "Long Text",
+   "label": "Mission Formats",
+   "description": "JSON list of {id, level, app, note, trigger, max_waypoints}. id is one of the platform's export formats; level is official, community or boundary."
+  },
+  {
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "WebODM Organization",
+   "reqd": 1,
+   "read_only": 1,
+   "in_standard_filter": 1
+  }
+ ],
+ "modified": "2026-10-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Drone Profile",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WebODM User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "model,manufacturer",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "model"
+}

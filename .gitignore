@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+demo/**
 secrets/
 secrets/*.txt
 docs/plugins/examples/*.zip

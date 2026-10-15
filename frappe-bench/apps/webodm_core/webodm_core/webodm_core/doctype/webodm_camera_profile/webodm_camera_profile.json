@@ -1,0 +1,184 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-16 00:00:00.000000",
+ "description": "A camera an organization flies that is not in the built-in catalog. Used by flight planning for GSD, footprint, overlap and photo interval.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "profile_name",
+  "manufacturer",
+  "sensor_section",
+  "sensor_width_mm",
+  "sensor_height_mm",
+  "focal_length_mm",
+  "sensor_column",
+  "image_width_px",
+  "image_height_px",
+  "capture_section",
+  "min_interval_s",
+  "shutter",
+  "capture_column",
+  "wpml_payload_enum",
+  "notes_section",
+  "notes",
+  "organization"
+ ],
+ "fields": [
+  {
+   "fieldname": "profile_name",
+   "fieldtype": "Data",
+   "label": "Name",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Camera or lens configuration, e.g. \"Sony RX0 II\" or \"A7R IV 24 mm\"."
+  },
+  {
+   "fieldname": "manufacturer",
+   "fieldtype": "Data",
+   "label": "Manufacturer",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sensor_section",
+   "fieldtype": "Section Break",
+   "label": "Sensor and lens",
+   "description": "These five numbers determine the ground resolution, the footprint of a photo and so the spacing of flight lines and exposures."
+  },
+  {
+   "fieldname": "sensor_width_mm",
+   "fieldtype": "Float",
+   "label": "Sensor Width (mm)",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Width of the active image area."
+  },
+  {
+   "fieldname": "sensor_height_mm",
+   "fieldtype": "Float",
+   "label": "Sensor Height (mm)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "focal_length_mm",
+   "fieldtype": "Float",
+   "label": "Focal Length (mm)",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "The real focal length of the lens, not the 35 mm equivalent."
+  },
+  {
+   "fieldname": "sensor_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "image_width_px",
+   "fieldtype": "Int",
+   "label": "Image Width (px)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "image_height_px",
+   "fieldtype": "Int",
+   "label": "Image Height (px)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "capture_section",
+   "fieldtype": "Section Break",
+   "label": "Capture"
+  },
+  {
+   "fieldname": "min_interval_s",
+   "fieldtype": "Float",
+   "label": "Minimum Photo Interval (s)",
+   "description": "Shortest reliable time between two stills. 0 = unknown: the planner assumes a cautious 2 s."
+  },
+  {
+   "fieldname": "shutter",
+   "fieldtype": "Select",
+   "label": "Shutter",
+   "options": "electronic\nmechanical\nglobal",
+   "default": "electronic",
+   "description": "An electronic (rolling) shutter skews photos taken on the move."
+  },
+  {
+   "fieldname": "capture_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "wpml_payload_enum",
+   "fieldtype": "Int",
+   "label": "DJI WPML Payload Id",
+   "description": "Only for DJI payloads exported as WPML routes. 0 = none."
+  },
+  {
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "WebODM Organization",
+   "reqd": 1,
+   "read_only": 1,
+   "in_standard_filter": 1
+  }
+ ],
+ "modified": "2026-10-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Camera Profile",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WebODM User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "profile_name,manufacturer",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "profile_name"
+}

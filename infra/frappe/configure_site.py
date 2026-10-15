@@ -122,6 +122,22 @@ def common_site_config(site):
         "storage_presign_ttl": _int_env("WEBODM_S3_PRESIGN_TTL", 900),
         "storage_cache_max_bytes": _int_env("WEBODM_CACHE_MAX_BYTES", 50 * 1024 * 1024 * 1024),
         "storage_cache_idle_seconds": _int_env("WEBODM_CACHE_IDLE_SECONDS", 7 * 24 * 3600),
+        # Flight planning (webodm_core.api.flightplan). Everything is optional:
+        # an empty value means the built-in default (public Nominatim for
+        # address search, public Open Topo Data for elevation), "none" turns
+        # that lookup off. Both send survey coordinates to the named service,
+        # so point them at self-hosted instances where that matters.
+        "flightplan_geocoder": _env("WEBODM_FLIGHTPLAN_GEOCODER", ""),
+        "flightplan_geocoder_url": _env("WEBODM_FLIGHTPLAN_GEOCODER_URL", ""),
+        "flightplan_elevation_provider": _env("WEBODM_FLIGHTPLAN_ELEVATION_PROVIDER", ""),
+        "flightplan_elevation_url": _env("WEBODM_FLIGHTPLAN_ELEVATION_URL", ""),
+        "flightplan_elevation_dataset": _env("WEBODM_FLIGHTPLAN_ELEVATION_DATASET", ""),
+        "flightplan_elevation_resolution_m": _env("WEBODM_FLIGHTPLAN_ELEVATION_RESOLUTION_M", ""),
+        "flightplan_elevation_accuracy_m": _env("WEBODM_FLIGHTPLAN_ELEVATION_ACCURACY_M", ""),
+        "flightplan_elevation_max_points": _int_env("WEBODM_FLIGHTPLAN_ELEVATION_MAX_POINTS", 400),
+        "flightplan_contact": _env("WEBODM_FLIGHTPLAN_CONTACT", ""),
+        "flightplan_airspace_file": _env("WEBODM_FLIGHTPLAN_AIRSPACE_FILE", ""),
+        "flightplan_airspace_label": _env("WEBODM_FLIGHTPLAN_AIRSPACE_LABEL", ""),
         "root_login": _env("FRAPPE_ROOT_USER", "frappe_admin"),
         "root_password": _env("FRAPPE_ROOT_PASSWORD", required=True),
         "use_redis_auth": bool(_env("REDIS_CACHE_PASSWORD") or _env("REDIS_QUEUE_PASSWORD")),

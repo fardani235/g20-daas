@@ -7,15 +7,18 @@ import {
 } from './nav'
 
 describe('PRIMARY_TABS', () => {
-  it('lists the six app sections in order', () => {
+  it('lists the seven app sections in order', () => {
     // Settings and Billing (/invoices) moved into the Account dropdown in
     // Phase 5 (AppLayout.vue); they are deliberately not primary tabs.
     // Datasets sits next to Projects: it is the input library tasks draw from.
+    // Flight Plans follows Datasets: planning the flight comes before the
+    // images it produces are processed.
     // Marketplace is last: it is a public catalog that doubles as a tab.
     expect(PRIMARY_TABS.map(t => t.to)).toEqual([
       '/dashboard',
       '/projects',
       '/datasets',
+      '/flight-plans',
       '/presets',
       '/plugins',
       '/marketplace',
@@ -48,6 +51,8 @@ describe('activePrimaryTab', () => {
     expect(activePrimaryTab('/datasets/abc123')).toBe('/datasets')
     // A product page keeps the Marketplace tab active.
     expect(activePrimaryTab('/marketplace/object-detection')).toBe('/marketplace')
+    // The equipment page belongs to flight planning.
+    expect(activePrimaryTab('/flight-plans/equipment')).toBe('/flight-plans')
   })
 
   it('keeps Projects active on project-detail routes', () => {
@@ -57,6 +62,9 @@ describe('activePrimaryTab', () => {
     expect(activePrimaryTab('/project/abc123')).toBe('/projects')
     expect(activePrimaryTab('/project/abc123/task/t1/model')).toBe('/projects')
     expect(activePrimaryTab('/project/abc123/task/t1/console')).toBe('/projects')
+    // A plan is opened inside its project, so Projects stays active there too.
+    expect(activePrimaryTab('/project/abc123/plans')).toBe('/projects')
+    expect(activePrimaryTab('/project/abc123/plans/new')).toBe('/projects')
   })
 
   it('does not treat a longer sibling segment as nested', () => {
@@ -90,17 +98,29 @@ describe('secondaryTabs', () => {
     expect(secondaryTabs(null)).toEqual([])
   })
 
-  it('offers only Map on a project route with no task selected', () => {
+  it('offers Map and Flight plans on a project route with no task selected', () => {
     // 3D Model and Console are task-scoped; without a task id in the path
-    // there is nothing to link them to.
+    // there is nothing to link them to. Flight plans are project-scoped.
     expect(secondaryTabs('/project/p1')).toEqual([
       { to: '/project/p1', label: 'Map' },
+      { to: '/project/p1/plans', label: 'Flight plans' },
     ])
+  })
+
+  it('keeps the same row on the flight plan routes', () => {
+    const row = [
+      { to: '/project/p1', label: 'Map' },
+      { to: '/project/p1/plans', label: 'Flight plans' },
+    ]
+    expect(secondaryTabs('/project/p1/plans')).toEqual(row)
+    expect(secondaryTabs('/project/p1/plans/new')).toEqual(row)
+    expect(secondaryTabs('/project/p1/plans/abc123')).toEqual(row)
   })
 
   it('offers Map, 3D Model, and Console when a task is in the path', () => {
     expect(secondaryTabs('/project/p1/task/t9/model')).toEqual([
       { to: '/project/p1', label: 'Map' },
+      { to: '/project/p1/plans', label: 'Flight plans' },
       { to: '/project/p1/task/t9/model', label: '3D Model' },
       { to: '/project/p1/task/t9/console', label: 'Console' },
     ])
@@ -109,6 +129,7 @@ describe('secondaryTabs', () => {
   it('builds the same row from the console route', () => {
     expect(secondaryTabs('/project/p1/task/t9/console')).toEqual([
       { to: '/project/p1', label: 'Map' },
+      { to: '/project/p1/plans', label: 'Flight plans' },
       { to: '/project/p1/task/t9/model', label: '3D Model' },
       { to: '/project/p1/task/t9/console', label: 'Console' },
     ])
@@ -119,13 +140,22 @@ describe('secondaryTabs', () => {
     // round-tripping them through the tab links must not corrupt them.
     const tabs = secondaryTabs('/project/My%20Site/task/t1/model')
     expect(tabs[0].to).toBe('/project/My%20Site')
-    expect(tabs[1].to).toBe('/project/My%20Site/task/t1/model')
+    expect(tabs[1].to).toBe('/project/My%20Site/plans')
+    expect(tabs[2].to).toBe('/project/My%20Site/task/t1/model')
   })
 })
 
 describe('activeSecondaryTab', () => {
   it('marks Map active on the project root', () => {
     expect(activeSecondaryTab('/project/p1')).toBe('/project/p1')
+  })
+
+  it('marks Flight plans active on the list and inside the planner', () => {
+    expect(activeSecondaryTab('/project/p1/plans')).toBe('/project/p1/plans')
+    expect(activeSecondaryTab('/project/p1/plans/new')).toBe('/project/p1/plans')
+    expect(activeSecondaryTab('/project/p1/plans/abc123')).toBe('/project/p1/plans')
+    // Not a plans route: nothing is marked.
+    expect(activeSecondaryTab('/project/p1/plans/abc/extra')).toBe(null)
   })
 
   it('marks the model tab active on the model route', () => {
