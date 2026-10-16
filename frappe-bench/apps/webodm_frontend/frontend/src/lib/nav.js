@@ -3,6 +3,7 @@ import {
   Images,
   LayoutGrid,
   Puzzle,
+  Route,
   SlidersHorizontal,
   Store,
 } from 'lucide-vue-next'
@@ -15,6 +16,8 @@ export const PRIMARY_TABS = Object.freeze([
   { to: '/projects', label: 'Projects', icon: Folder },
   // The reusable input-image library; a task picks one of these.
   { to: '/datasets', label: 'Datasets', icon: Images },
+  // Mission planning before the flight: every plan of the organization.
+  { to: '/flight-plans', label: 'Flight Plans', icon: Route },
   { to: '/presets', label: 'Presets', icon: SlidersHorizontal },
   { to: '/plugins', label: 'Plugins', icon: Puzzle },
   // Public catalog (layout: 'auto'); signed-in users get it as a tab so
@@ -27,6 +30,8 @@ export const PRIMARY_TABS = Object.freeze([
 // the user is inside a project.
 const PROJECT_DETAIL = /^\/project\/([^/]+)/
 const PROJECT_TASK = /^\/project\/([^/]+)\/task\/([^/]+)\/(model|console)$/
+// A project's flight plans, and one plan open in the planner.
+const PROJECT_PLANS = /^\/project\/([^/]+)\/plans(\/[^/]+)?$/
 
 // Strip a trailing slash so "/projects/" and "/projects" behave the same.
 // Returns '' for nullish input so every caller can treat the result as a string.
@@ -63,7 +68,10 @@ export function secondaryTabs(path) {
   if (!detail) return []
 
   const projectId = detail[1]
-  const tabs = [{ to: `/project/${projectId}`, label: 'Map' }]
+  const tabs = [
+    { to: `/project/${projectId}`, label: 'Map' },
+    { to: `/project/${projectId}/plans`, label: 'Flight plans' },
+  ]
 
   const task = p.match(PROJECT_TASK)
   if (task) {
@@ -83,6 +91,9 @@ export function activeSecondaryTab(path) {
   const p = normalize(path)
   const tabs = secondaryTabs(p)
   if (!tabs.length) return null
+  // A plan open in the planner keeps the Flight plans tab active.
+  const plans = p.match(PROJECT_PLANS)
+  if (plans) return `/project/${plans[1]}/plans`
   const hit = tabs.find(t => t.to === p)
   return hit ? hit.to : null
 }

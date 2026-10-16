@@ -224,6 +224,16 @@
           <CloudUpload />
           Add Task
         </Button>
+        <!-- Planning the next flight over this site lives next to its surveys. -->
+        <Button
+          class="mt-2 w-full"
+          variant="outline"
+          data-plan-flight
+          @click="router.push(`/project/${encodeURIComponent(route.params.id)}/plans`)"
+        >
+          <Route />
+          Plan a flight
+        </Button>
       </div>
     </div>
 
@@ -601,6 +611,7 @@ import {
   Minus,
   Pencil,
   Play,
+  Route,
   Sparkles,
   Square,
   Terminal,

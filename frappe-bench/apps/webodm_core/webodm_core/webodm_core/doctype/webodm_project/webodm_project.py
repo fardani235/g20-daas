@@ -10,3 +10,6 @@ class WebODMProject(Document):
         for name in frappe.get_all("WebODM Task", filters={"project": self.name}, pluck="name"):
             # Permission was checked on the project; its tasks go with it.
             frappe.delete_doc("WebODM Task", name, ignore_permissions=True)
+        # Flight plans are planned for a project and link to it the same way.
+        for name in frappe.get_all("WebODM Flight Plan", filters={"project": self.name}, pluck="name"):
+            frappe.delete_doc("WebODM Flight Plan", name, ignore_permissions=True)

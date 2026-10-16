@@ -1139,3 +1139,92 @@ spec `openspec/specs/change-detection/` + added requirements in `plugin-executio
 - **Not done**: two independent real flights with surveyed volumes; browser smoke on a running stack;
   dome correction; rotation/scale; user-drawn stable areas (needs geometry params); design-surface progress;
   marketplace listing of the two packages.
+
+## Phase 26: Flight planning (2026-10-16)
+
+Docs: `docs/flight-planning/{README,equipment,export,configuration,architecture}.md` (architecture.md is
+the full record: models, formulas, decisions, extension points, evidence, limits); spec
+`openspec/specs/flight-planning/`; change `openspec/changes/archive/2026-10-16-add-flight-planning/`.
+
+- **Planner = pure package** `webodm_core/flightplan/` (no Frappe, no geometry lib — the Frappe image has
+  none): `geo.LocalFrame` (transverse Mercator centred on the site), `geometry` (scan lines with the
+  even-odd rule → concave shapes and holes, rotating-calipers sweep direction, mitred polyline offsets,
+  vertical Douglas-Peucker), `photogrammetry`, `params` (the one parameter table the API and the form read),
+  `survey` (`area_layout` / `corridor_layout` → `Leg`s in flight order), `terrain` + `elevation`
+  (a cached grid, providers), `mission.plan_mission(definition, drone, camera, terrain, zones)` → the
+  mission dict that the map draws, the plan stores and the exporters read, `checks` + `issues`
+  (severity × basis), `airspace` (operator zone file), `geocode`, `exporters/`.
+- **Equipment is data**: `flightplan/catalog/{drones,cameras,regulations}.json` (26 aircraft, 33 cameras).
+  Custom `WebODM Drone Profile` / `WebODM Camera Profile` docs go through the same `normalize_*`
+  (controllers call `api.flightplan.{drone,camera}_from_doc`). `null` = not published → the check is
+  skipped visibly. Each drone lists `mission.formats` with `level` official | community | boundary;
+  custom drones pick a flight app family (`profiles.ECOSYSTEMS`). Tables in `equipment.md` come from
+  `python -m webodm_core.flightplan.catalog_table`. Camera sensor sizes for "4/3" / "1/2.3" formats are
+  derived from focal length + 35 mm equivalent so GSD matches vendor figures (M3E, P4P: H/36.5; P1 35 mm: H/80).
+- **Heights are relative to the takeoff point**, terrain following is computed here (DP over the sampled
+  target profile, tolerance default 5 % of height clamped 2–10 m) — so any elevation source works
+  regardless of datum, a task's own DSM included. Elevation = one grid per site (padded, snapped to
+  0.001°, ≤ 400 nodes global / 10 000 task raster), cached in Redis (`flightplan:terrain:*`, 30 d / 1 d).
+  `preview(terrain="cached")` answers at once and sets `terrain_pending`; the page then asks with `fetch`.
+  A failed fetch is a `TERRAIN_FETCH_FAILED` warning, never an error, and is not cached.
+- **Task raster as terrain**: geospatial `POST /raster/sample` (`app/utils/elevation.py`): `reproject`
+  with `Resampling.max` (surface) / `average` (terrain) into cells of half the spacing from the finest
+  overview within 30 Mpx, then the statistic of the 3 × 3 cells around each point. First attempt
+  (decimated `read(..., Resampling.average)` + pooling) flattened a 30 m mast to 7 m — GDAL's RasterIO
+  has no max resampling, `reproject` does. Client: `plugins.geospatial.raster_sample`.
+- **Findings**: `error` blocks mission export, `warning` needs acknowledgement, `info`; basis `checked` |
+  `estimated` | `advisory` | `not_checked` | `note`. Every mission has an `assurance` table (capability,
+  terrain, obstacles, battery, regulation, airspace, weather); obstacles and weather are always
+  `not_checked`, airspace `not_checked` unless `flightplan_airspace_file` is set (then `advisory`).
+  Nothing is ever worded as verified / safe / cleared (tests assert it). `issues.NOTICE` rides on every
+  mission, the export dialog, the overview KML, the GeoJSON and multi-file READMEs.
+- **Export** (`exporters/__init__.py`): `export_options` and `export` share `_gate` (format must be in the
+  drone's profile; plan or format `error` blocks mission files; warnings need `acknowledged`; boundary /
+  reference always available). `base.build_routes` splits per battery flight and per waypoint cap at leg
+  ends; the `waypoint` trigger rebuilds legs as one point per exposure. Formats: `dji-wpml` (waypoint
+  template, `relativeToStartPoint`, only elements in DJI's published reference — checked against
+  `dji-sdk/Cloud-API-Doc`; ids not in DJI's tables are `source: community`: Matrice 4 = 99/88,89, DJI Fly
+  consumer = 68, P1 payload = 50), `qgc-plan`, `mavlink-wpl`, `litchi-csv` (46 columns, 99 waypoints),
+  `kml-boundary`, `kml`, `geojson`. DJI Fly: no import (file swap), ~200 waypoints, interval triggers in
+  the file are not executed → default trigger `manual`.
+- **Platform**: `WebODM Flight Plan` (org-scoped, Link to project, deleted in `WebODMProject.on_trash`;
+  definition + `mission` JSON text in Long Text columns — not JSON fields, see the Postgres list gotcha —
+  + summary columns). `validate` recomputes the mission unless `flags.mission_computed` (set by the API),
+  so `/api/resource` cannot plant one. `api/flightplan.py`: `catalog`, `geocode`, `elevation_sources`,
+  `preview` (returns `{ok:false,error:{message,field}}` for an unusable definition — not an HTTP error),
+  `list_plans` / `get_plan` / `save_plan` / `duplicate_plan` / `delete_plan`, `export_options`,
+  `export_plan` (werkzeug Response; adds a Comment with the acknowledged warnings and **commits** — tests
+  that export must commit their clean-up), `save_/delete_{camera,drone}`. Mutating / outbound endpoints
+  are `methods=["POST"]`. Per-user budgets for uncached geocode / terrain lookups. A deleted profile falls
+  back to the plan's equipment snapshot (`source: "snapshot"`).
+- **Config** (`configure_site.py` ← `WEBODM_FLIGHTPLAN_*`, compose passthrough, Helm via `frappe.env`):
+  geocoder (`nominatim` | `none`, URL), elevation provider (`opentopodata` default dataset `mapzen` |
+  `open-elevation` | `open-meteo` | `none`, URL, dataset, resolution, accuracy, max points), contact,
+  airspace file + label. Gotcha: the public Nominatim answers **403** to a `User-Agent` containing a
+  placeholder contact (`…@example.invalid`); leave the contact empty rather than fake.
+- **Frontend**: `lib/flightplan.js` (client that awaits the CSRF token before the first POST — on a full
+  page load the token races the page's requests; pure helpers), `lib/planLayers.js`,
+  `composables/useShapeEditor.js` (divIcon handles: drag, midpoint insert, right-click remove; the vertex
+  list is owned by the page), `components/flightplan/*`, pages `FlightPlanner.vue` (fullBleed; 300 ms
+  debounce + sequence number; `computedFor` stops a saved plan from recomputing on load; fitBounds leaves
+  84 px at the top so corners are not under the search box), `FlightPlans.vue` (global + per project),
+  `Equipment.vue`. Routes `/flight-plans`, `/flight-plans/equipment`, `/project/:id/plans[/:planId]`
+  (`new` = unsaved); `nav.js` primary tab + project sub-tab; one button in `MapView.vue`. The test
+  fixture `src/lib/__fixtures__/flightplan.json` is generated by the real planner
+  (`make_flightplan_fixture.py`) — regenerate after changing the mission shape.
+- **Tests**: planner 233 (plain unittest, also discovered by `run-tests --app webodm_core`),
+  `api/test_flightplan.py` 55, geospatial `test_elevation_sample.py` 8 (suite: 163 pass, 6 converter-dependent skips locally), frontend 472 (94 new),
+  `e2e/flight-planner.e2e.mjs` 66 checks against a real stack. 16 seeded bugs all caught by the planner
+  suite (`/tmp/oak-fp/mutate.py`). Planning matrix: 180 missions (3 plans × 12 aircraft/cameras × 3
+  terrains × 2 altitude modes), every export rendered.
+- **Test env this round** (`/tmp/oak-fp/frappe-test.sh up|migrate|test|down`): network `oakfp-test`,
+  `oakfp-pg` / `oakfp-redis-*`, volume `oakfp-sites`, image `ghcr.io/fardani235/webodm-frappe:16.34.0`
+  (pulls anonymously) with the worktree's `webodm_core` at `/workspace/webodm_core`. Browser stack:
+  `oakfp-web` = same image, `FRAPPE_ROLE=web`, port 18080, plus `infra/frappe` and the built SPA
+  (`vite build --outDir /tmp/oak-fp/dist`) mounted over `/workspace/webodm_frontend/webodm_frontend/public/frontend`;
+  `oakfp-geo` = `webodm-geospatial:1` with `services/geospatial/app` mounted and the sites volume at the
+  same path. Venvs: `/tmp/oak-fp/venv` (py3.14 + pytest), `/tmp/oak-fp/geovenv` (geospatial requirements).
+  Playwright: `/home/ridwan/works/llm-explaination` + `/usr/bin/google-chrome`.
+- **Not done / not verified**: no export was imported into a vendor app or flown; catalog figures are
+  nominal; no wind / obstacle / NOTAM data; oblique capture not modelled; fixed-wing turns approximated;
+  no boundary import into the planner; no imperial units.

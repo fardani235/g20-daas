@@ -28,6 +28,7 @@ Without it every path must be local, exactly as before.
 | GET | `/tiles/tile/{z}/{x}/{y}.png?path=&kind=` | ✅ | XYZ tile PNG; `kind` = `orthophoto`\|`dsm`\|`dtm` |
 | POST | `/export/cogify` | ✅ | Convert raster → COG (in place, or S3 → S3), return georef + `metadata` |
 | GET | `/raster/metadata?path=` | ✅ | Header-only raster metadata (size, bands, CRS, transform, blocks, overviews…) |
+| POST | `/raster/sample` | ✅ | Elevation of a DSM / DTM at a list of points, for flight planning |
 | POST | `/export/raster` | 🚧 Stub | GeoTIFF/PNG/KMZ export |
 | POST | `/export/hillshade` | 🚧 Stub | Hillshade from DEM |
 | POST | `/export/colormap` | 🚧 Stub | Apply custom colormap |
@@ -135,6 +136,42 @@ file header, without reading pixels (milliseconds for a multi-GB orthophoto):
 Errors: 400 relative path, 404 missing file, 422 GDAL cannot open the file.
 A raster without a CRS is not an error (`georeference: "no_crs"`).
 
+### `/raster/sample`
+
+`POST /raster/sample` — the elevation of a DSM or DTM at a list of points.
+Flight planning uses it to turn a task's own surface or terrain model into
+the terrain a new mission over the same site is planned against.
+
+Request:
+
+```json
+{"path": "/abs/path/dsm.tif", "points": [[107.6180, -6.7900], [107.6185, -6.7900]],
+ "spacing_m": 20, "statistic": "max"}
+```
+
+`path` is an absolute path or an `s3://` URI; `points` are `[lng, lat]` in
+EPSG:4326 (at most 20 000); `spacing_m` is the caller's grid spacing;
+`statistic` is `max` (default: a surface model is cleared against the
+highest thing nearby), `mean` (a terrain model) or `min`.
+
+Response:
+
+```json
+{"values": [1458.6, null], "resolution_m": 0.25, "cell_m": 30.0, "statistic": "max", "covered": 1}
+```
+
+Each value summarises the ground around its point — the statistic over the
+3 × 3 cells of half the spacing that surround it, a neighbourhood 1.5 × the
+spacing across — so nothing between two grid points is left out: a 4 m wide
+mast in a 0.5 m DSM keeps its full height on a 20 m grid. The raster is
+resampled once with that statistic from real pixels (the finest overview
+within a 30 Mpx read budget), not from a pre-averaged decimation. `null`
+marks a point outside the raster or on nodata; that is an answer, not an
+error. Heights of a foot-based raster are returned in metres.
+
+Errors: 400 relative path or disallowed bucket, 404 missing file, 422 bad
+points / statistic, a raster without a CRS, or one GDAL cannot read.
+
 ## Quick Start
 
 ```bash
@@ -173,7 +210,7 @@ app/
 ├── routers/
 │   ├── tiles.py         # /info, /tile/{z}/{x}/{y}.png  (rio-tiler)
 │   ├── export.py        # /cogify (implemented); raster/hillshade/... (stub)
-│   ├── raster.py        # /metadata (header-only raster metadata)
+│   ├── raster.py        # /metadata (header-only raster metadata), /sample (elevation at points)
 │   └── pointcloud.py    # export, to-potree (stub)
 ├── models/
 │   └── task.py          # Pydantic request models

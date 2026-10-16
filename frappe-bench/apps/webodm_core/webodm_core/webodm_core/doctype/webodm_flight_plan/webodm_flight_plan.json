@@ -1,0 +1,309 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-16 00:00:00.000000",
+ "description": "A drone mapping mission planned for a project: the survey area or corridor, the aircraft and camera, the flight parameters and the mission computed from them.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "project",
+  "description",
+  "definition_section",
+  "plan_type",
+  "drone",
+  "camera",
+  "definition_column",
+  "corridor_width_m",
+  "elevation_source",
+  "takeoff",
+  "geometry_section",
+  "geometry",
+  "parameters",
+  "summary_section",
+  "drone_label",
+  "camera_label",
+  "gsd_cm",
+  "area_m2",
+  "summary_column",
+  "distance_m",
+  "duration_s",
+  "photo_count",
+  "batteries",
+  "summary_column_2",
+  "waypoint_count",
+  "issue_errors",
+  "issue_warnings",
+  "computed_at",
+  "mission_section",
+  "mission",
+  "planner_version",
+  "created_by",
+  "organization"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "project",
+   "fieldtype": "Link",
+   "label": "Project",
+   "options": "WebODM Project",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "definition_section",
+   "fieldtype": "Section Break",
+   "label": "Definition",
+   "description": "What the user specified. The mission below is computed from it."
+  },
+  {
+   "fieldname": "plan_type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "area\ncorridor",
+   "default": "area",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "drone",
+   "fieldtype": "Data",
+   "label": "Drone Profile",
+   "reqd": 1,
+   "description": "Profile id: a built-in catalog id, or custom:<WebODM Drone Profile name>."
+  },
+  {
+   "fieldname": "camera",
+   "fieldtype": "Data",
+   "label": "Camera Profile",
+   "reqd": 1
+  },
+  {
+   "fieldname": "definition_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "corridor_width_m",
+   "fieldtype": "Float",
+   "label": "Corridor Width (m)"
+  },
+  {
+   "fieldname": "elevation_source",
+   "fieldtype": "Data",
+   "label": "Elevation Source",
+   "description": "auto, none, or task:<task>:<dsm|dtm>."
+  },
+  {
+   "fieldname": "takeoff",
+   "fieldtype": "Data",
+   "label": "Takeoff Point",
+   "description": "JSON [lng, lat], empty when not set."
+  },
+  {
+   "fieldname": "geometry_section",
+   "fieldtype": "Section Break",
+   "label": "Geometry and parameters",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "geometry",
+   "fieldtype": "Long Text",
+   "label": "Geometry",
+   "reqd": 1,
+   "description": "GeoJSON Polygon (area) or LineString (corridor), EPSG:4326."
+  },
+  {
+   "fieldname": "parameters",
+   "fieldtype": "Long Text",
+   "label": "Parameters",
+   "description": "JSON object of flight parameters."
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break",
+   "label": "Estimates",
+   "description": "Planning estimates, not verified flight-safety information."
+  },
+  {
+   "fieldname": "drone_label",
+   "fieldtype": "Data",
+   "label": "Drone",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "camera_label",
+   "fieldtype": "Data",
+   "label": "Camera",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gsd_cm",
+   "fieldtype": "Float",
+   "label": "GSD (cm/px)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "area_m2",
+   "fieldtype": "Float",
+   "label": "Area (m2)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "summary_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "distance_m",
+   "fieldtype": "Float",
+   "label": "Flight Distance (m)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "duration_s",
+   "fieldtype": "Float",
+   "label": "Flight Time (s)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "photo_count",
+   "fieldtype": "Int",
+   "label": "Photos",
+   "read_only": 1
+  },
+  {
+   "fieldname": "batteries",
+   "fieldtype": "Int",
+   "label": "Batteries",
+   "read_only": 1
+  },
+  {
+   "fieldname": "summary_column_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "waypoint_count",
+   "fieldtype": "Int",
+   "label": "Waypoints",
+   "read_only": 1
+  },
+  {
+   "fieldname": "issue_errors",
+   "fieldtype": "Int",
+   "label": "Errors",
+   "read_only": 1,
+   "description": "Findings that block a mission export."
+  },
+  {
+   "fieldname": "issue_warnings",
+   "fieldtype": "Int",
+   "label": "Warnings",
+   "read_only": 1,
+   "description": "Findings that must be acknowledged before a mission export."
+  },
+  {
+   "fieldname": "computed_at",
+   "fieldtype": "Datetime",
+   "label": "Computed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mission_section",
+   "fieldtype": "Section Break",
+   "label": "Computed mission",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "mission",
+   "fieldtype": "Long Text",
+   "label": "Mission",
+   "read_only": 1,
+   "description": "JSON produced by the planner: flight lines, waypoints, estimates, findings and the equipment snapshot the exports use. Recomputed on every save."
+  },
+  {
+   "fieldname": "planner_version",
+   "fieldtype": "Int",
+   "label": "Planner Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "created_by",
+   "fieldtype": "Link",
+   "label": "Created By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "WebODM Organization",
+   "reqd": 1,
+   "read_only": 1,
+   "in_standard_filter": 1
+  }
+ ],
+ "modified": "2026-10-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Flight Plan",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WebODM User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "title",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title"
+}

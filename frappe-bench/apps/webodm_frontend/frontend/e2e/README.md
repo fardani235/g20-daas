@@ -56,3 +56,33 @@ E2E_PLAYWRIGHT_DIR=/path/to/scratch node e2e/point-cloud.e2e.mjs
 The dev server is enough (no proxy needed) because every backend call is
 mocked. A 2 M point octree reaches "ready" in ~20 s under swiftshader, most
 of it the simulated Queued → Running → Ready polling.
+
+## Flight planner (real backend)
+
+`flight-planner.e2e.mjs` drives the flight planner against a running stack
+(Frappe with the built SPA): sign-in, navigation from the project map,
+coordinate and address search, drawing an area by clicking the map,
+estimates and their labelling, terrain loading and terrain following, the
+takeoff point, the linked height / resolution inputs, five aircraft with
+different capabilities, a capability error, save, a blocked export, an
+acknowledged export whose downloaded DJI WPML archive is opened and
+checked, reload, dragging / inserting / removing corners, a corridor, the
+plan list and duplicate, a custom camera and drone and a QGroundControl
+export for it, and a phone viewport. It deletes every plan and profile it
+created.
+
+```sh
+npm run build            # the stack serves the built SPA
+E2E_BASE_URL=https://your-site.local \
+E2E_USER=pilot@example.org E2E_PASSWORD_FILE=/path/to/password \
+E2E_PROJECT='My Project' E2E_SHOTS=/tmp/planner-shots \
+E2E_CHROME=/usr/bin/google-chrome E2E_PLAYWRIGHT_DIR=/path/to/scratch \
+node e2e/flight-planner.e2e.mjs
+```
+
+The user must belong to an organization and the project must exist. By
+default the run uses the configured address and elevation services (a site
+with relief near Bandung; override with `E2E_SITE="lat, lng"`), so it needs
+outbound access from the stack; `E2E_OFFLINE=1` skips those checks and plans
+on flat ground. Around 65 checks, about two minutes.
+

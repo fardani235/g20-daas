@@ -1,0 +1,41 @@
+{
+  "about": "Planning presets, not legal advice. Each preset holds the few numeric limits a flight plan can be compared against. Rules differ by country, airspace class, category of operation and authorisation; the operator is responsible for knowing the ones that apply. `vlos_advisory_m` is a planning threshold for visual line of sight, not a legal distance.",
+  "rule_sets": [
+    {
+      "id": "generic-120m",
+      "label": "Generic: 120 m above ground, visual line of sight",
+      "max_agl_m": 120,
+      "vlos_advisory_m": 500,
+      "max_speed_ms": null,
+      "max_takeoff_mass_g": null,
+      "notes": "The height limit most national rules share for operations without a specific authorisation."
+    },
+    {
+      "id": "easa-open",
+      "label": "EU / EASA Open category",
+      "max_agl_m": 120,
+      "vlos_advisory_m": 500,
+      "max_speed_ms": null,
+      "max_takeoff_mass_g": 25000,
+      "notes": "Open category: within 120 m of the closest point of the surface, in visual line of sight, under 25 kg. Subcategory, class marking and UAS geographical zones are not evaluated here."
+    },
+    {
+      "id": "faa-part-107",
+      "label": "USA / FAA Part 107",
+      "max_agl_m": 121.92,
+      "vlos_advisory_m": 500,
+      "max_speed_ms": 44.7,
+      "max_takeoff_mass_g": 25000,
+      "notes": "400 ft above ground level (higher only within 400 ft of a structure), 100 mph groundspeed, under 55 lb, visual line of sight. Airspace authorisation (LAANC) is not evaluated here."
+    },
+    {
+      "id": "custom",
+      "label": "Custom limits (specific authorisation)",
+      "max_agl_m": null,
+      "vlos_advisory_m": null,
+      "max_speed_ms": null,
+      "max_takeoff_mass_g": null,
+      "notes": "No preset limits: enter the limits of your authorisation in the plan."
+    }
+  ]
+}

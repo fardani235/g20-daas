@@ -169,6 +169,13 @@ bootstrap:
 frappe:
   # Extra non-secret environment for every Frappe role, e.g.
   #   WEBODM_COMPUTE_MAX_INSTANCES: "5"
+  # Flight planning looks up addresses (Nominatim) and terrain elevation
+  # (Open Topo Data) from public services unless told otherwise; both receive
+  # the coordinates of the survey being planned. To use your own instances or
+  # switch a lookup off (docs/flight-planning/configuration.md):
+  #   WEBODM_FLIGHTPLAN_GEOCODER_URL: "http://nominatim.internal"
+  #   WEBODM_FLIGHTPLAN_ELEVATION_URL: "http://opentopodata.internal/v1"
+  #   WEBODM_FLIGHTPLAN_ELEVATION_PROVIDER: "none"
   env: {}
   web:
     replicas: 1
