@@ -58,7 +58,7 @@ submodule).
 | `docs/marketplace/` | Marketplace concepts (publishers, products, releases, licenses, entitlements) and the publishing runbook |
 | `docs/datasets/` | Dataset library (reusable input image sets a task references) and the staged migration runbook |
 | `docs/tasks/` | Ground control, upload feedback, editing a task's settings, duplicating a task: decisions and guide |
-| `docs/flight-planning/` | Flight planning: user guide, supported drones and cameras, mission export per flight app, operator configuration, architecture |
+| `docs/flight-planning/` | Flight planning: user guide, supported drones and cameras, flight simulation (2D / 3D replay of a plan), mission export per flight app, operator configuration, architecture |
 | `plugins/semantic-segmentation/` | Semantic Segmentation **user** plugin (orthophoto / DSM / DTM, pluggable ONNX + rule models) |
 | `plugins/3d-reconstruction/` | 3D Reconstruction **user** plugin (DSM/DTM/LAZ/orthophoto/ODM mesh → web-ready georeferenced GLB for the 3D viewer) |
 | `plugins/building-footprints/` | Building Footprints **user** plugin (orthophoto → one polygon per building; HOT DINOv3 mask + distance heads, watershed separation of touching buildings) |
@@ -307,6 +307,7 @@ docs/tasks/
 docs/flight-planning/
 ├── README.md                     # User guide: find the site, draw an area or corridor, estimates, checks, save, export
 ├── equipment.md                  # Built-in aircraft and cameras, custom profiles, adding a model to the catalog
+├── simulation.md                 # Flight simulator: what it shows, the flight / camera / terrain models, architecture, testing, limits
 ├── export.md                     # Mission formats, which aircraft take which, loading them into each flight app
 ├── configuration.md              # Address search, elevation service, airspace zone file, what leaves the platform
 └── architecture.md               # Module layout, models and formulas, decisions, extension points, testing

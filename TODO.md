@@ -305,9 +305,13 @@
 - [x] Export: DJI WPML, QGroundControl plan, MAVLink waypoints, Litchi CSV, boundary KML,
       overview KML, GeoJSON; per-aircraft compatibility, gate, splitting
 - [x] Planner, plan list and equipment pages; e2e script
+- [x] Flight simulation (2026-10-16): the mission replayed in 2D and 3D from one clock — timeline,
+      flight dynamics per airframe, battery flights, camera footprint and coverage, terrain from the
+      planner's own grid, dashboard and profile; read-only (`docs/flight-planning/simulation.md`)
 - [ ] Follow-ups: import a boundary (KML / GeoJSON) into the planner; oblique and multi-polygon
       missions; flyable fixed-wing turns; wind in the endurance estimate; an airspace data
-      provider; imperial units; verification of each export in its vendor app
+      provider; imperial units; verification of each export in its vendor app; comparing a
+      simulated flight with a flown one's log
 
 ## Phase 7: Core Plugins ⬜
 

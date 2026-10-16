@@ -1228,3 +1228,90 @@ the full record: models, formulas, decisions, extension points, evidence, limits
 - **Not done / not verified**: no export was imported into a vendor app or flown; catalog figures are
   nominal; no wind / obstacle / NOTAM data; oblique capture not modelled; fixed-wing turns approximated;
   no boundary import into the planner; no imperial units.
+
+## Phase 27: Flight simulation (2026-10-16)
+
+Docs: `docs/flight-planning/simulation.md` (the full record: flight / camera / terrain models, why three.js,
+simulation vs plan, evidence, limits); spec `openspec/specs/flight-simulation/`; change
+`openspec/changes/archive/2026-10-16-add-flight-simulation/`.
+
+- **What it is**: *Simulate flight* in the planner (and a play button per plan in the list, `?simulate=1`)
+  replays the mission `plan_mission` returned - saved or not - on the planner's own Leaflet map and in a
+  three.js scene, from one clock. It reads the mission and never writes it (tests deep-freeze it); the only
+  request is the read-only `simulation_terrain`. `plan_mission`, the mission's shape, findings and
+  exporters are untouched; no new dependency, service, config, Compose / Helm / CSP change.
+- **Library** `frontend/src/lib/flightsim/` (no Vue / Leaflet / three / planning client):
+  `frame.js` + `terrain.js` (ports of `geo.LocalFrame` and `TerrainModel.elevation`, tested against Python
+  reference values in the fixture), `kinematics.js` (trapezoidal profiles, closed form both ways;
+  forward/backward speed planning; corner speed), `dubins.js` (all six words; every candidate is flown
+  forward and kept only if it arrives), `trajectory.js` (`buildTrajectory(mission, {terrain})` → typed-array
+  timeline + photo events + `sample(t)`; a sample is a binary search, ~7 µs at 20 000 waypoints),
+  `camera.js`, `coverage.js` (raster linear in Web-Mercator: per cell first photo + count; "so far" is a
+  comparison, not a re-rasterization), `profile.js`, `clock.js`, `index.js` (`createSimulation`,
+  `SIMULATION_NOTICE`), `describe.js` (dashboard wording), `api.js`.
+- **Flight model = the planner's** (`DYNAMICS` mirrors `mission.py`: 2.5 m/s², ≤ 2 s yaw, 10 s + 10 s on the
+  ground, published climb/descent or 3/2 m/s). Multirotor: stop, yaw, go; bends inside a leg slow to
+  `a·τ/(2 sin θ/2)`; a stretch steeper than the climb rate at the planned speed is flown slower (noted).
+  Fixed-wing: Dubins turns at `min_turn_radius_m`, climbs/descends along the transit with loiter circles
+  when it is too short; VTOL: vertical takeoff/landing + fixed-wing cruise. Battery = flight time / rated
+  endurance per flight; 60 s battery change, not flight time. Multirotor sim vs plan: distance < 1 m,
+  time +1…4 % (transit accel, short hops, climb to RTH height - the estimate counts none of these).
+- **Heights**: `alt` stays relative to takeoff; `agl = ground(takeoff) + alt − ground(here)` from the
+  planner's own grid → equals the mission's `agl` at every waypoint. The simulator samples the grid more
+  finely than `_analyse_terrain`, so its lowest clearance can be a few metres *lower* than the plan's
+  (both shown). Unknown ground is `null` → "not known", never assumed; waypoint `ground` is the fallback
+  on legs when the grid is unavailable.
+- **Backend**: `flightplan/simulation.py::terrain_payload` (nodes unchanged, rounded to 0.01 m, holes kept)
+  and `api.flightplan.simulation_terrain(definition, project, terrain)` - reuses `_terrain_for`, so same
+  cache key, budget and permission path as `preview` (POST only; a foreign project is refused, a foreign
+  survey reads as missing).
+- **Views**: `mapLayer.js` (Leaflet: rotated divIcon marker, flown track in 256-piece chunks so finished
+  ones are never touched, footprint polygon, coverage as a `CanvasOverlay` = `L.ImageOverlay` holding a
+  canvas), `scene.js` (three: terrain mesh from the grid nodes, basemap mosaic via `<img crossorigin>`
+  tiles on a canvas - allowed by the existing CSP `img-src https:` -, `LineSegments2` path with the flown
+  part as `instanceCount`, coverage blended into the terrain material with `onBeforeCompile`, dynamic
+  near/far), `sceneGeometry.js` / `cameraRig.js` / `imagery.js` (pure, tested without a GPU),
+  `composables/useMissionSim.js` (clock + one `live` state object handed to every subscriber; dashboard
+  copy at 10 Hz; coverage repaint ≤ 20 Hz while playing, exact on pause / seek / end),
+  `components/flightsim/{FlightSimulator,SimSession,SimControls,SimDashboard,SimProfile,SimView3D}.vue`.
+  `FlightSimulator` is a light shell that wraps the planner's map in a slot (inactive = just the slot) and
+  lays out a pane for the 3D view and room for the dock; `SimSession` (async) is the open simulation and
+  teleports `SimView3D` (async, three.js) into that pane. Planner chunk 49.6 → 53.0 kB; `SimSession`
+  71 kB and `SimView3D` 44 kB load on demand (statically importing the simulator had made it 123 kB).
+- **Why not CesiumJS**: ≤ 60 km sites are exact in the planner's local frame; terrain must be the planner's
+  grid; Cesium needs workers/assets, `connect-src` to tile hosts and usually a token.
+- **Gotchas**:
+  - The page keeps the mission in a `ref` → props arrive as reactive proxies. `useMissionSim.open` takes
+    `toRaw(mission)` (tight loops over thousands of waypoints through a proxy are slow). Do **not**
+    `markRaw` a mission: it writes `__v_skip` onto the object. The simulation object itself is `markRaw`.
+  - Both transparent: a transparent `LineMaterial` is drawn after an opaque one regardless of
+    `renderOrder`, so the flown track must be `transparent: true` too to sit on top of the planned path.
+  - `data-sim-3d-mode` is `dataset['sim-3dMode']`, not `sim3dMode` (a hyphen before a digit is kept).
+  - vitest: a `vi.mock` of a module loaded through `defineAsyncComponent` must return `__esModule: true`,
+    or Vue takes the module object for the component. Leaflet vector layers cannot mount in jsdom → tests
+    use a stand-in map (`addLayer/removeLayer/hasLayer/getPane/createPane/on/off`), which is enough for
+    markers, polylines and overlays. jsdom canvases have no 2D context → stub `getContext` in the test.
+    A lazily loaded component that is *not* mocked (`SimSession`) needs the module loader's real I/O,
+    which fake timers never wait for: import it once at the top of the test file so `import()` is a
+    cache hit.
+  - Headless Chrome with `--use-angle=swiftshader` composites this page at 1-2 fps whatever is drawn
+    (a 4 px repaint on the planner page alone gets 17 fps); the main thread is idle. Use
+    `--enable-gpu --use-angle=gl-egl` (`E2E_GPU=1`) to measure: Intel HD 520 → 57-60 fps split view;
+    28-50 fps (once 16, load average 7) at 64× on a 48 000-photo mission, so the e2e only keeps a floor.
+- **Tests**: frontend 822 (350 new: `lib/flightsim/*.test.js` 288, `useMissionSim` 18, `FlightSimulator`
+  23, `SimView3D` 11, `FlightPlanner.simulation` 9, `FlightPlans` +1); planner 240 (`test_simulation.py`
+  7); `api/test_flightplan.py` 66 (`TestSimulationTerrain` 11); full `webodm_core` 844 OK;
+  `e2e/flight-sim.e2e.mjs` 69 checks (73 with `E2E_DSM_TASK`; 65 offline). 28 seeded bugs all caught
+  (`/tmp/elm-sim/mutate.py`). Fixtures: `src/lib/__fixtures__/flightsim.json` from the real planner
+  (`make_flightsim_fixture.py`; regenerate after changing the mission shape) and `syntheticMission.js`
+  (any size, for performance tests).
+- **Test env this round** (`/tmp/elm-sim/frappe-test.sh up|test|py|web|down`; names `elmsim-*`, separate from
+  the `oakfp-*` set, which another session was using): site `ci.localhost`, web on `127.0.0.1:18090` with
+  `vite build --outDir /tmp/elm-sim/dist` mounted, `elmsim-geo` = `webodm-geospatial:1` with the worktree's
+  `services/geospatial/app`; seeded user `pilot@example.com`, project `Quarry survey`, a Completed task
+  with a synthetic DSM + orthophoto (`seed_task.py`, `make_ortho.py`). Playwright as before.
+- **Not done / not verified**: no simulated flight was compared with a flown one's log; still air, nominal
+  aircraft; footprints assume level ground under each photo; exports are not simulated per file
+  (waypoint-cap splits); no recording or sharing. The existing `flight-planner.e2e.mjs` currently fails one
+  check ("an address search lists places") because the public Nominatim answers `[]` for its query
+  "Gedung Sate, Bandung" - an external answer, unrelated to this change (65/66).

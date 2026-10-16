@@ -13,6 +13,7 @@ and reused on its own. Layers, lowest first:
 - ``airspace``                advisory check against an operator's zone file
 - ``exporters/``              mission file formats, one module each
 - ``geocode``                 address / coordinate search
+- ``simulation``              the elevation grid, shaped for the flight simulator (read-only)
 
 ``webodm_core.api.flightplan`` is the only place that knows about Frappe,
 documents, permissions, caching and site configuration.

@@ -2,7 +2,8 @@
   <div class="flex h-full flex-col md:flex-row" data-flight-planner>
     <!-- Sidebar: the plan, top to bottom in the order it is made -->
     <aside
-      class="flex max-h-[48vh] w-full flex-shrink-0 flex-col border-b border-border bg-card md:max-h-none md:w-[400px] md:border-b-0 md:border-r"
+      class="max-h-[48vh] w-full flex-shrink-0 flex-col border-b border-border bg-card md:max-h-none md:w-[400px] md:border-b-0 md:border-r"
+      :class="simulating ? 'hidden md:flex' : 'flex'"
       aria-label="Flight plan"
     >
       <header class="space-y-2 border-b border-border p-3">
@@ -365,6 +366,18 @@
           <FileDown />
           Export…
         </Button>
+        <Button
+          class="flex-1"
+          :variant="simulating ? 'default' : 'outline'"
+          :disabled="!mission"
+          :title="simulateHint"
+          :aria-pressed="simulating"
+          data-plan-simulate
+          @click="simulating = !simulating"
+        >
+          <Play />
+          {{ simulating ? 'Simulating' : 'Simulate flight' }}
+        </Button>
         <Button v-if="savedPlan" variant="ghost" size="icon" title="Duplicate this plan" :loading="duplicating" @click="duplicate">
           <Copy />
           <span class="sr-only">Duplicate this plan</span>
@@ -372,8 +385,16 @@
       </footer>
     </aside>
 
-    <!-- Map -->
-    <div class="relative z-0 min-h-0 flex-1 bg-background">
+    <!-- Map; the simulator adds its 3D view and its dock around it when opened -->
+    <FlightSimulator
+      v-model:active="simulating"
+      :mission="mission"
+      :definition="definition"
+      :project="projectId"
+      :get-map="() => map"
+      :basemap="basemap"
+      :ortho="show.ortho ? ortho : null"
+    >
       <div ref="mapEl" class="h-full w-full" data-plan-map></div>
       <div class="pointer-events-none absolute inset-0 z-[1000] flex items-start justify-between gap-2 p-3 pl-14">
         <div class="pointer-events-auto min-w-0 flex-1">
@@ -429,7 +450,7 @@
         class="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2 rounded-full bg-card px-4 py-1.5 text-sm text-foreground shadow-md"
         role="status"
       >Click the map where you will launch</p>
-    </div>
+    </FlightSimulator>
 
     <ExportDialog v-model:open="showExport" :plan="savedPlan" />
   </div>
@@ -439,7 +460,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import {
-  ArrowLeft, Check, Copy, FileDown, Layers, LoaderCircle, Navigation, PenLine, Route, Save, Square, X,
+  ArrowLeft, Check, Copy, FileDown, Layers, LoaderCircle, Navigation, PenLine, Play, Route, Save, Square, X,
 } from 'lucide-vue-next'
 import L from 'leaflet'
 import { Alert, Badge, Button, Input, Label, Select } from '@/components/ui'
@@ -448,6 +469,7 @@ import PlaceSearch from '@/components/flightplan/PlaceSearch.vue'
 import PlanFindings from '@/components/flightplan/PlanFindings.vue'
 import TerrainProfile from '@/components/flightplan/TerrainProfile.vue'
 import ExportDialog from '@/components/flightplan/ExportDialog.vue'
+import FlightSimulator from '@/components/flightsim/FlightSimulator.vue'
 import { BASEMAPS, createBasemap } from '@/lib/mapLayers'
 import { buildPlanLayers, takeoffIcon } from '@/lib/planLayers'
 import { useShapeEditor } from '@/composables/useShapeEditor'
@@ -513,6 +535,7 @@ const saving = ref(false)
 const duplicating = ref(false)
 const showExport = ref(false)
 const placingTakeoff = ref(false)
+const simulating = ref(false)        // the flight simulator is open over the map
 const panelOpen = ref(false)
 const basemap = ref('esri-satellite')
 const show = reactive({ waypoints: true, footprint: true, ortho: false })
@@ -566,6 +589,10 @@ const saveHint = computed(() => {
 const exportHint = computed(() => {
   if (!mission.value) return 'Draw the survey first'
   return dirty.value || !savedPlan.value ? 'Saves the plan, then opens the export options' : 'Export this plan'
+})
+const simulateHint = computed(() => {
+  if (!mission.value) return 'Draw the survey first'
+  return simulating.value ? 'Close the simulation' : 'Replay this plan in 2D and 3D: an estimate, not a flight-safety check'
 })
 const startHint = computed(() => {
   if (!state.vertices.length) {
@@ -861,6 +888,7 @@ async function loadOrtho() {
 
 async function load() {
   loaded.value = false
+  simulating.value = false
   previewSeq++
   mission.value = null
   previewError.value = null
@@ -901,12 +929,16 @@ async function load() {
   else if (ortho.value?.bounds) map.fitBounds(ortho.value.bounds, { padding: [30, 30] })
   // A saved plan is shown as saved; a new one computes as soon as it can.
   if (!savedPlan.value) schedulePreview()
+  // "Simulate" on the plan list opens the plan with its simulation.
+  if (route.query?.simulate && mission.value) simulating.value = true
 }
 
 // Only the definition changes the mission; the title and description do not.
 watch(() => JSON.stringify(definition.value), now => {
   if (loaded.value && now !== computedFor) schedulePreview()
 })
+// Nothing to simulate once the route is gone (the shape was cleared, or the plan no longer computes).
+watch(mission, now => { if (!now) simulating.value = false })
 watch(() => [show.waypoints, show.footprint], drawPlan)
 watch(() => show.ortho, setOrtho)
 watch(() => state.takeoff, drawTakeoff)
