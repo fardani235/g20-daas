@@ -86,3 +86,47 @@ with relief near Bandung; override with `E2E_SITE="lat, lng"`), so it needs
 outbound access from the stack; `E2E_OFFLINE=1` skips those checks and plans
 on flat ground. Around 65 checks, about two minutes.
 
+
+## Flight simulator (real backend, WebGL)
+
+`flight-sim.e2e.mjs` drives the flight simulator against a running stack
+(Frappe with the built SPA). It creates its plans through the API, opens
+them from the plan list with *Simulate*, and checks: the dock and its
+wording (an estimate, not telemetry, no safety claim); play, pause, stop,
+restart, speed and scrubbing; the dashboard for a moment on a flight line;
+that the 2D map and the 3D scene draw the same state, paused and while
+playing; terrain and imagery in 3D; the five cameras (including orbiting
+with the mouse); the 2D / split / 3D layouts; the coverage views; a click
+on the elevation profile; the comparison with the plan; an edit while
+simulating; that after closing, the stored plan and its export options are
+identical to before; a three-battery mission; a fixed-wing; landing in
+place without elevation data; a mission of some 48 000 photos; and a phone
+viewport. It deletes every plan it created.
+
+It asserts through two read-only hooks the simulator puts on its elements:
+`document.querySelector('[data-flight-sim]').simSnapshot()` (playback, the
+sampled state, where the map layer has put the aircraft) and
+`document.querySelector('[data-sim-3d-host]').simSnapshot()` (camera,
+aircraft, terrain, imagery, draw calls).
+
+```sh
+npm run build            # the stack serves the built SPA
+E2E_BASE_URL=https://your-site.local \
+E2E_USER=pilot@example.org E2E_PASSWORD_FILE=/path/to/password \
+E2E_PROJECT='My Project' E2E_SHOTS=/tmp/sim-shots \
+E2E_CHROME=/usr/bin/google-chrome E2E_PLAYWRIGHT_DIR=/path/to/scratch \
+node e2e/flight-sim.e2e.mjs
+```
+
+| Variable | Effect |
+|---|---|
+| `E2E_OFFLINE=1` | Plans without elevation data and does not expect map imagery (65 checks). |
+| `E2E_GPU=1` | Uses the machine's GPU (`--enable-gpu --use-angle=gl-egl`) instead of software WebGL, and then also requires at least 10 frames per second at 64× on the large mission (a floor against a collapse, not a target). |
+| `E2E_DSM_TASK`, `E2E_DSM_CENTER="lat,lng"` | A Completed task of the project with a DSM (and, if it has one, an orthophoto) and a point inside it: also simulates over the survey's own surface model through the geospatial service (4 more checks). |
+| `E2E_SITE="lat, lng"` | Another site (default: hills near Bandung). |
+
+69 checks, about two minutes. Software WebGL is the default so the script
+runs anywhere; it composites a page of this size at one or two frames per
+second whatever is drawn, so judge smoothness only with `E2E_GPU=1` (on an
+Intel HD 520: 57–60 frames per second on an ordinary mission; the script
+prints the rate it measured on the large one).

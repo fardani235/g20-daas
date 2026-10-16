@@ -117,6 +117,18 @@ describe('FlightPlans', () => {
     expect(push).toHaveBeenCalledWith('/project/P2/plans/new')
   })
 
+  it('opens a plan straight into its flight simulation', async () => {
+    api.listPlans.mockImplementation(async () => [{ ...PLANS[0], waypoint_count: 14 }, { ...PLANS[1], waypoint_count: 0 }])
+    await mount()
+    const computed = q('[data-plan-simulate="A1"]')
+    expect(computed.title).toBe('Simulate the flight in 2D and 3D')
+    expect(computed.disabled).toBe(false)
+    computed.click()
+    expect(push).toHaveBeenCalledWith({ path: '/project/P1/plans/A1', query: { simulate: '1' } })
+    // A plan with no computed route has nothing to simulate.
+    expect(q('[data-plan-simulate="B2"]').disabled).toBe(true)
+  })
+
   it('duplicates into another project to reuse a plan', async () => {
     const el = await mount()
     el.querySelector('[data-plan-row] button[title^="Duplicate"]').click()

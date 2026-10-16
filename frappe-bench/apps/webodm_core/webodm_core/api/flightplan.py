@@ -44,6 +44,7 @@ from webodm_core.flightplan import elevation as elevation_mod
 from webodm_core.flightplan import exporters, geocode as geocode_mod
 from webodm_core.flightplan import issues as issues_mod
 from webodm_core.flightplan import profiles
+from webodm_core.flightplan import simulation as simulation_mod
 from webodm_core.flightplan.httpjson import fetch_json
 from webodm_core.flightplan.mission import LIMITS
 from webodm_core.flightplan.params import PLAN_TYPES, rule_sets, specs_as_dicts
@@ -727,6 +728,36 @@ def preview(definition=None, project=None, terrain="fetch", plan=None):
     except PlanError as e:
         return {"ok": False, "error": {"message": str(e), "field": e.field}}
     return {"ok": True, "mission": mission}
+
+
+@frappe.whitelist(allow_guest=False, methods=["POST"])
+def simulation_terrain(definition=None, project=None, terrain="fetch"):
+    """The elevation grid the planner uses for ``definition``, for the flight simulator.
+
+    Read-only: nothing is planned, stored or changed. The grid is the one
+    ``preview`` / ``save_plan`` interpolate from (same source, same extent,
+    same cache entry), so heights above ground simulated from it agree with
+    the mission's own. ``terrain`` works as in ``preview``: ``cached``
+    answers at once and sets ``pending`` when the grid would have to be
+    fetched. Access is that of ``preview``: an organization member, a
+    project of that organization, and for a survey's DSM / DTM a task the
+    caller may read in that project.
+
+    Returns ``{"terrain": grid | None, "pending": bool, "message": str | None}``;
+    without data (source ``none``, no provider, a failed lookup) ``terrain``
+    is ``None`` and ``message`` says why when there is a reason to give.
+    """
+    tenancy.require_org()
+    d = _definition(definition)
+    if project:
+        _project_checked(project)
+    model, problem, pending = _terrain_for(d, project, str(terrain) != "cached")
+    return {
+        "terrain": simulation_mod.terrain_payload(model) if model is not None else None,
+        "pending": pending,
+        "message": problem.message if problem is not None else None,
+        "elevation_source": d["elevation_source"],
+    }
 
 
 @frappe.whitelist(allow_guest=False)

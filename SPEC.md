@@ -399,6 +399,7 @@ planner itself is the Frappe-free package `webodm_core.flightplan`
 | POST | `geocode` | Coordinates parsed locally; an address goes to the configured geocoder |
 | POST | `elevation_sources` | Global model, the project's completed surveys (DSM / DTM), none |
 | POST | `preview` | Compute a mission without saving (`terrain`: `cached` \| `fetch`) |
+| POST | `simulation_terrain` | The elevation grid a definition is planned over, for the flight simulator (read-only; same cache, budget and access rules as `preview`) |
 | POST | `list_plans` / `get_plan` / `save_plan` / `duplicate_plan` / `delete_plan` | Plans in projects; the mission is always recomputed on the server |
 | POST | `export_options` | Per format: support for the plan's aircraft, file count, findings, verdict |
 | POST | `export_plan` | Download a mission, boundary or reference file (blocked by error findings; warnings need `acknowledged`) |
@@ -593,6 +594,7 @@ Spec: `openspec/specs/marketplace/spec.md`; docs: `docs/marketplace/`.
 - Live estimates (resolution, area, photos, time, distance, batteries), terrain profile, findings with their basis, and a per-topic "what was and was not checked" table
 - Export dialog: formats per aircraft with support level, photo trigger, blocking findings, acknowledgement of warnings
 - Drones and cameras (`/flight-plans/equipment`): built-in catalog and the organization's own profiles
+- Flight simulation (*Simulate flight* in the planner, *Simulate* in the plan list; `?simulate=1`): the mission replayed on the map and over 3D terrain from one clock — play / pause / stop / restart, timeline, 0.5–64× speed, free / follow / top-down / FPV / survey-camera views, photo footprints and coverage, dashboard and elevation profile, multi-battery flights. An estimate, labelled as one; changes nothing. See `docs/flight-planning/simulation.md`
 - See `docs/flight-planning/`
 
 ## 8. Authentication & Permissions

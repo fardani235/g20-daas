@@ -81,6 +81,16 @@
               </td>
               <td class="px-4 py-3 text-muted-foreground" :title="p.created_by || ''">{{ formatDate(p.modified) }}</td>
               <td class="whitespace-nowrap px-4 py-3 text-right">
+                <Button
+                  variant="ghost" size="icon" class="size-8"
+                  title="Simulate the flight in 2D and 3D"
+                  :disabled="!p.waypoint_count"
+                  :data-plan-simulate="p.name"
+                  @click="router.push({ path: planRoute(p), query: { simulate: '1' } })"
+                >
+                  <Play />
+                  <span class="sr-only">Simulate {{ p.title }}</span>
+                </Button>
                 <Button variant="ghost" size="icon" class="size-8" title="Export" @click="exportTarget = p; showExport = true">
                   <FileDown />
                   <span class="sr-only">Export {{ p.title }}</span>
@@ -169,7 +179,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Camera, Copy, FileDown, Plus, Route, Trash2 } from 'lucide-vue-next'
+import { Camera, Copy, FileDown, Play, Plus, Route, Trash2 } from 'lucide-vue-next'
 import { Badge, Button, Dialog, Input, Label, Select } from '@/components/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import ExportDialog from '@/components/flightplan/ExportDialog.vue'

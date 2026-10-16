@@ -78,6 +78,7 @@ one button on the project map, and optional environment variables.
 | `webodm_frontend/frontend/src/lib/flightplan.js` | Client + pure helpers (definition building, formatting, vertex editing). |
 | `…/src/composables/useShapeEditor.js`, `lib/planLayers.js` | Drawing / editing on Leaflet; the mission's map layers. |
 | `…/src/pages/{FlightPlanner,FlightPlans,Equipment}.vue`, `components/flightplan/` | Pages and their parts. |
+| `webodm_core/flightplan/simulation.py`, `…/src/lib/flightsim/`, `composables/useMissionSim.js`, `components/flightsim/` | The flight simulator: replays a computed mission in 2D and 3D. Reads the mission, never changes it; see [Flight simulation](simulation.md). |
 
 ## From a drawing to a mission
 
@@ -346,6 +347,7 @@ required):
 | `geocode(query)` | Coordinates parsed locally, otherwise the configured geocoder. |
 | `elevation_sources(project)` | Global model, the project's completed surveys, none. |
 | `preview(definition, project, terrain, plan)` | `{ok, mission}` or `{ok: false, error: {message, field}}`. |
+| `simulation_terrain(definition, project, terrain)` | The elevation grid `preview` interpolates from, for the simulator: `{terrain, pending, message}`. Read-only. |
 | `list_plans(project?)`, `get_plan(name)` | Summaries; one plan with definition and mission. |
 | `save_plan(project, title, definition, name?, description?)` | Create or update; always recomputes. |
 | `duplicate_plan(name, project?, title?)`, `delete_plan(name)` | Reuse; remove. |
@@ -366,6 +368,9 @@ covered}`.
 | `services/geospatial/tests/test_elevation_sample.py` (8) | Sampling statistics on real GeoTIFFs, nodata, overviews and budgets, foot-based rasters, the endpoint | `cd services/geospatial && python -m pytest tests/test_elevation_sample.py` |
 | Frontend vitest (94 new) | Client and helpers; map layer construction; the shape editor; findings panel; export dialog; planner, list and equipment pages | `cd frappe-bench/apps/webodm_frontend/frontend && npm test` |
 | `e2e/flight-planner.e2e.mjs` (66 checks) | The whole flow in a real browser against a running stack | see `e2e/README.md` |
+
+The flight simulator has its own suites, listed in
+[Flight simulation](simulation.md#testing).
 
 The planner suite is also discovered by Frappe's test runner, so CI's
 existing `run-tests --app webodm_core` step runs it; the geospatial and
@@ -427,5 +432,6 @@ each introduced once and each failed the planner suite.
 - **No boundary import** (KML / GeoJSON / shapefile) into the planner, no
   multi-polygon missions, no per-line manual editing, no imperial units.
 - **No real-time link**: this is planning and export; nothing is uploaded
-  to an aircraft or tracked in flight.
+  to an aircraft or tracked in flight. The [flight simulation](simulation.md)
+  replays the plan; it is not telemetry.
 - **Sites across the antimeridian** are planned without elevation data.

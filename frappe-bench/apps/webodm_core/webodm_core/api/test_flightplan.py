@@ -31,6 +31,7 @@ from frappe.tests.utils import FrappeTestCase
 from webodm_core.api import flightplan as api
 from webodm_core.flightplan import _fixtures as fx
 from webodm_core.flightplan import elevation as elevation_mod
+from webodm_core.flightplan.terrain import TerrainModel
 from webodm_core.testing import make_task
 
 PLAN = "WebODM Flight Plan"
@@ -508,6 +509,146 @@ class TestProjectSurveyAsElevationSource(_Base):
         self.assertIn("TERRAIN_FETCH_FAILED", [i["code"] for i in m["issues"]])
 
 
+class TestSimulationTerrain(_Base):
+    """The elevation grid handed to the flight simulator: the planner's own, read-only, org-scoped."""
+
+    def test_returns_the_grid_the_mission_was_planned_over(self):
+        self.use_provider(fx.ridge(700, 60, 120))
+        d = definition(geometry=fx.rect(600, 300), takeoff=fx.lnglat([(-300, 0)])[0],
+                       params={"altitude_mode": "terrain", "altitude_m": 80, "vlos_m": 1000})
+        mission = api.preview(definition=d, project=self.project)["mission"]
+        out = api.simulation_terrain(definition=d, project=self.project)
+        self.assertFalse(out["pending"])
+        self.assertIsNone(out["message"])
+        self.assertEqual(out["elevation_source"], "auto")
+        grid = out["terrain"]
+        self.assertEqual(grid["source"]["id"], "fake-dem")
+        self.assertLessEqual(grid["rows"] * grid["cols"], 400)
+        json.dumps(out)                                                # what the client receives
+        # Interpolating from it reproduces the ground the mission records at every waypoint.
+        model = TerrainModel.from_dict({**grid, "source": grid["source"]})
+        for wp in mission["waypoints"]:
+            self.assertAlmostEqual(model.elevation(wp["lng"], wp["lat"]), wp["ground"], delta=0.08)
+        take = mission["takeoff"]
+        self.assertAlmostEqual(model.elevation(take["lng"], take["lat"]), take["ground_m"], delta=0.06)
+
+    def test_is_served_from_the_planners_cache_without_asking_the_service_again(self):
+        calls = self.use_provider(fx.slope(700, 0.05))
+        api.preview(definition=definition())
+        self.assertEqual(len(calls), 1)
+        out = api.simulation_terrain(definition=definition())
+        self.assertIsNotNone(out["terrain"])
+        self.assertEqual(len(calls), 1)                                # the grid the preview fetched
+        # And the other way round: a grid fetched for the simulator serves the planner.
+        frappe.cache().delete_keys("flightplan:")
+        api.simulation_terrain(definition=definition())
+        api.preview(definition=definition())
+        self.assertEqual(len(calls), 2)
+
+    def test_cached_mode_answers_at_once_and_says_it_is_pending(self):
+        calls = self.use_provider()
+        out = api.simulation_terrain(definition=definition(), terrain="cached")
+        self.assertEqual((out["terrain"], out["pending"]), (None, True))
+        self.assertEqual(calls, [])
+        api.simulation_terrain(definition=definition())
+        again = api.simulation_terrain(definition=definition(), terrain="cached")
+        self.assertFalse(again["pending"])
+        self.assertIsNotNone(again["terrain"])
+
+    def test_no_elevation_source_is_no_terrain_not_an_error(self):
+        calls = self.use_provider()
+        out = api.simulation_terrain(definition=definition(elevation_source="none"))
+        self.assertEqual((out["terrain"], out["pending"], out["message"]), (None, False, None))
+        self.assertEqual(calls, [])
+        # No provider configured on the platform at all.
+        self._provider.stop()
+        self._provider = patch.object(api, "_global_provider", return_value=None)
+        self._provider.start()
+        out = api.simulation_terrain(definition=definition())
+        self.assertEqual((out["terrain"], out["message"]), (None, None))
+
+    def test_a_failed_lookup_is_reported_and_not_cached(self):
+        self.use_provider(fail="elevation service unreachable: ConnectTimeout")
+        out = api.simulation_terrain(definition=definition())
+        self.assertIsNone(out["terrain"])
+        self.assertIn("ConnectTimeout", out["message"])
+        calls = self.use_provider()
+        self.assertIsNotNone(api.simulation_terrain(definition=definition())["terrain"])
+        self.assertEqual(len(calls), 1)
+
+    def test_changes_nothing(self):
+        self.use_provider(fx.slope(700, 0.05))
+        saved = self.save()
+        before = frappe.get_doc(PLAN, saved["name"])
+        stamp, mission = before.modified, before.mission
+        plans = frappe.db.count(PLAN)
+        d = api.get_plan(saved["name"])["definition"]
+        api.simulation_terrain(definition=d, project=self.project)
+        after = frappe.get_doc(PLAN, saved["name"])
+        self.assertEqual((after.modified, after.mission), (stamp, mission))
+        self.assertEqual(frappe.db.count(PLAN), plans)
+        self.assertEqual(frappe.get_all("Comment", filters={"reference_doctype": PLAN, "reference_name": saved["name"]}), [])
+
+    def test_needs_an_organization_and_a_project_of_it(self):
+        self.use_provider()
+        with self.assertRaises(frappe.PermissionError):
+            api.simulation_terrain(definition=definition(), project=self.other_project)
+        _as(self.member)
+        self.assertIsNotNone(api.simulation_terrain(definition=definition(), project=self.project)["terrain"])
+        nobody = _user("fp_nobody@example.com")
+        _as(nobody)
+        with self.assertRaises(frappe.PermissionError):
+            api.simulation_terrain(definition=definition())
+
+    def test_a_survey_of_another_project_or_organization_reads_as_missing(self):
+        elsewhere = make_task(self.project_b, title="Elsewhere", status="Completed", dsm="/private/files/y.tif")
+        _as(self.outsider)
+        foreign = make_task(self.other_project, title="Foreign", status="Completed", dsm="/private/files/z.tif")
+        _as(self.owner)
+        for source in (f"task:{elsewhere.name}:dsm", f"task:{foreign.name}:dsm", "task:nope:dsm"):
+            with patch("webodm_core.plugins.geospatial.raster_sample") as sample:
+                out = api.simulation_terrain(definition=definition(elevation_source=source), project=self.project)
+            sample.assert_not_called()
+            self.assertIsNone(out["terrain"])
+            self.assertIn("no longer exists", out["message"])
+
+    def test_a_survey_of_the_project_is_the_grid(self):
+        task = make_task(self.project, title="Survey 1", status="Completed", dsm="/private/files/survey1_dsm.tif")
+        frame = fx.frame()
+
+        def raster_sample(path, points, *, spacing_m, statistic, timeout=120):
+            return {"values": [700 + 0.05 * frame.forward(lng, lat)[0] for lng, lat in points],
+                    "resolution_m": 0.05, "cell_m": spacing_m * 1.5, "statistic": statistic, "covered": len(points)}
+
+        with patch("webodm_core.storage.assets.raster_source", return_value=("local", "/sites/x/survey1_dsm.tif")), \
+                patch("webodm_core.plugins.geospatial.raster_sample", side_effect=raster_sample):
+            out = api.simulation_terrain(definition=definition(elevation_source=f"task:{task.name}:dsm"),
+                                         project=self.project)
+        grid = out["terrain"]
+        self.assertEqual((grid["source"]["kind"], grid["source"]["surface"]), ("project-raster", "surface"))
+        self.assertLessEqual(grid["rows"] * grid["cols"], 10000)
+        self.assertGreater(grid["max_m"] - grid["min_m"], 15)
+
+    def test_malformed_requests_are_rejected(self):
+        for bad in ({"type": "orbit"}, {"elevation_source": "moon"}):
+            with self.assertRaises(frappe.ValidationError):
+                api.simulation_terrain(definition=definition(**bad))
+
+    def test_lookups_are_budgeted_per_user(self):
+        calls = self.use_provider()
+        with patch.object(api, "TERRAIN_FETCHES_PER_MINUTE", 2):
+            for i in range(4):
+                frappe.cache().delete_keys("flightplan:terrain:")
+                d = definition(geometry=fx.rect(400 + 400 * i, 300))   # a different site each time
+                out = api.simulation_terrain(definition=d)
+                if i < 2:
+                    self.assertIsNotNone(out["terrain"], i)
+                else:
+                    self.assertIsNone(out["terrain"], i)
+                    self.assertIn("too many elevation requests", out["message"])
+        self.assertEqual(len(calls), 2)
+
+
 class TestPlans(_Base):
     def test_save_and_get(self):
         saved = self.save(description="First block")
@@ -688,8 +829,8 @@ class TestEndpointMethods(_Base):
     def test_state_changing_and_outbound_endpoints_are_post_only(self):
         # A GET carries no CSRF token; nothing that writes, deletes, exports or
         # calls an outside service may be reachable that way.
-        post_only = ("geocode", "preview", "save_plan", "delete_plan", "duplicate_plan", "export_plan",
-                     "save_camera", "delete_camera", "save_drone", "delete_drone")
+        post_only = ("geocode", "preview", "simulation_terrain", "save_plan", "delete_plan", "duplicate_plan",
+                     "export_plan", "save_camera", "delete_camera", "save_drone", "delete_drone")
         for name in post_only:
             fn = getattr(api, name)
             self.assertIn(fn, frappe.whitelisted, name)

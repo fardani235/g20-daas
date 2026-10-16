@@ -11,10 +11,11 @@ processing.
 |---|---|
 | [User guide](#user-guide) (this page) | Pilots and survey planners |
 | [Drones and cameras](equipment.md) | Supported equipment, custom profiles, adding models to the catalog |
+| [Flight simulation](simulation.md) | Replaying a plan in 2D and 3D before flying it: what it shows, what it assumes, how it is built |
 | [Exporting missions](export.md) | File formats, which aircraft take which, loading them into each flight app |
 | [Configuration](configuration.md) | Operators: address search, elevation data, airspace zone file |
 | [Architecture](architecture.md) | Developers: how it is built, the formulas, the decisions, the tests |
-| [`openspec/specs/flight-planning/spec.md`](../../openspec/specs/flight-planning/spec.md) | Requirements and scenarios |
+| [`openspec/specs/flight-planning/spec.md`](../../openspec/specs/flight-planning/spec.md), [`flight-simulation/spec.md`](../../openspec/specs/flight-simulation/spec.md) | Requirements and scenarios |
 
 > **A flight plan is a planning estimate, not verified flight-safety
 > information.** The planner checks your plan against the published limits
@@ -221,7 +222,21 @@ picks up the current drone and camera profiles.
 A saved plan keeps the equipment figures it was computed with. If a profile
 changes later, the plan changes only when you edit and save it.
 
-### 9. Export
+### 9. Simulate the flight
+
+**Simulate flight** (next to *Export…*, or the play button of a plan in the
+list) replays the plan: the aircraft flies the mission on the map and over
+3D terrain, with play / pause, a timeline you can drag, speeds up to 64×,
+five camera views, the photos and the ground they cover, and a dashboard of
+speed, heights, battery and progress next to an elevation profile of the
+whole flight. It works on an unsaved plan, changes nothing, and closes back
+to the planner as it was.
+
+It is an estimate replayed from the plan in still air - not telemetry and
+not a safety check - and it says so. See [Flight simulation](simulation.md)
+for what each part shows and what the simulation assumes.
+
+### 10. Export
 
 **Export…** saves the plan if needed and lists the formats for *your*
 aircraft:
@@ -242,7 +257,7 @@ README listing them in order.
 How to load each file into its flight app, and what each aircraft supports:
 [Exporting missions](export.md).
 
-### 10. After the flight
+### 11. After the flight
 
 Upload the photos to the project as usual (**Add Task** on the project map).
 If you planned a rolling-shutter camera at speed, the plan will have
