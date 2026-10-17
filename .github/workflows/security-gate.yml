@@ -15,6 +15,7 @@
 #
 # No secret is stored in GitHub for the gate: each job proves who it is with a short-lived
 # OIDC token that GitHub signs (repository, commit, workflow, environment).
+# Security gate host: gate.g20tech.site
 
 name: security-gate
 
