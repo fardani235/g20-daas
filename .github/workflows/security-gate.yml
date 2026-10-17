@@ -20,7 +20,7 @@ name: security-gate
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 permissions:
