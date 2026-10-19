@@ -203,7 +203,38 @@ Organization-scoped.
 - requested_at, ready_at, terminated_at: Datetime
 - max_lifetime_seconds: Int, expires_at: Datetime   (hard budget)
 - destroy_attempts: Int, last_error: Small Text
-- estimated_hourly_cost, estimated_cost: Float      (estimate only)
+- dispatched_at, released_at: Datetime; release_reason: Data
+                               (written once by the pipeline, read only by usage metering:
+                                a job was accepted by the node / we first asked for the machine
+                                back / why. Never consulted by the pipeline.)
+- estimated_hourly_cost, estimated_cost: Float      (estimate only; never read by usage metering)
+```
+
+#### WebODM Usage Record
+```
+The usage ledger: one row per fact about what one organization consumed.
+Append-only (no update, no delete; corrections are reversal rows), written
+only by webodm_core.metering.ledger, organization-scoped. Integers in natural
+units; no price, amount or currency anywhere. See docs/metering/README.md.
+
+- organization: Link → WebODM Organization
+- meter: Select [compute, analysis_run, storage]
+- dimension: Data              (provider/instance class | plugin id | storage class)
+- entry_type: Select [usage, reversal]
+- quantity: Long Int           (what counts; 0 when waived; negative only on a reversal)
+- unit: Data                   (second | run | byte-day)
+- waived_quantity: Long Int, waived_reason: Data   (measured, deliberately not counted)
+- period_start_utc, period_end_utc: Datetime       (UTC, whole seconds; a record belongs to
+                                                    the period in which it ended)
+- recorded_at_utc: Datetime, recorded_by: Data
+- source_doctype, source_name: Data                (plain text: outlives its source)
+- rule: Data                   (compute/v1 | analysis_run/v1 | storage/v1 | reversal/v1)
+- task, project: Data
+- idempotency_key: Data, unique                    (the record's name is derived from it)
+- reverses: Data, note: Small Text
+- caveats: Small Text
+- evidence: Long Text          (canonical JSON: the source facts the rule used)
+- record_hash: Data            (SHA-256 over the content)
 ```
 
 #### Task Media (Child Table of WebODM Task)
@@ -405,6 +436,13 @@ planner itself is the Frappe-free package `webodm_core.flightplan`
 | POST | `export_plan` | Download a mission, boundary or reference file (blocked by error findings; warnings need `acknowledged`) |
 | POST | `save_camera` / `delete_camera` / `save_drone` / `delete_drone` | The organization's own equipment profiles |
 
+#### Usage (`webodm_core.api.usage.*`, read-only, organization from the session)
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `summary` | Totals per meter for a period `(start, end]`, computed from usage records; work in progress, sources not yet recorded and unmeasured storage days listed separately; `as_of` reproduces an earlier answer |
+| GET | `records` | The usage records behind a summary, paged (`meter`, `with_evidence`) |
+| GET | `record` | One usage record with its evidence |
+
 #### Auth Operations
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -498,6 +536,8 @@ COMPACT (5) — Remove intermediate files, keep only outputs
 | `plugins.sync.sync_catalog_safe` | 5 min | Refresh the system plugin catalog |
 | `storage.assets.sync_pending_job` | 5 min | Copy host-only inputs/outputs to S3 (bounded batches) |
 | `storage.cache.evict_job` | hourly | Serving-cache eviction: idle, then LRU to the size budget |
+| `metering.sweep.run_job` | 5 min | Usage metering, catch-up: record closed machines and finished analysis runs that have no usage record (idempotent; also records history) |
+| `metering.storage.sample_job` | 10 min | Usage metering, storage: one measurement per organization per UTC day; never writes another day (own cron entry on purpose) |
 
 Planned (not implemented): `update_nodes_info`, `cleanup_projects`,
 `cleanup_tasks`, `check_quotas`.

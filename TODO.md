@@ -170,6 +170,20 @@
 - [ ] vast.ai GPU provider (next phase: new provider module + config only)
 - [ ] Warm pool / autoscaling, spot pricing (explicitly later)
 
+### Usage metering ✅ (2026-10-19) — see `docs/metering/`
+- [x] Append-only usage ledger (`WebODM Usage Record`): machine seconds, analysis runs, stored byte-days; integers only, no prices
+- [x] Storage measured once per organization per UTC day from `File` rows (own scheduler entry; never backfilled)
+- [x] Catch-up sweep for closed machines and finished runs (idempotent; also records history); capture before a run is deleted
+- [x] Lifecycle facts on `WebODM Compute Instance` (`dispatched_at`, `released_at`, `release_reason`)
+- [x] `api.usage.summary` / `records` / `record`; `metering.verify` and `metering.report.health`
+- [x] Compute safety sweep fixed on PostgreSQL (it raised on every run)
+- [ ] Decide: does a job that failed *after* work started count? (built: yes; `release_reason` is on every record)
+- [ ] Prices and rating; prepaid balance and top-ups; refusing work at zero balance; billing screens; payment
+- [ ] Meter processing on a static node (needs a durable per-run record on the task first)
+- [ ] Reconcile storage against a bucket listing (orphans, multipart leftovers, versions)
+- [ ] Stop members editing/deleting `WebODM Plugin Run` rows before they are recorded
+- [ ] Database-level immutability of usage records (triggers), if application-level + hash is not enough
+
 ## Phase 5: Vue Frontend ✅ (Core), ⬜ (Extended)
 
 ### Dashboard Page ✅

@@ -88,6 +88,21 @@ state, orphans within grace + 1 minute. Destroy failures are logged as
 **`WebODM Compute ALERT`** — that is the signal to look at the provider by hand
 (§7).
 
+> **Fixed 2026-10-19 — read this before upgrading.** On PostgreSQL the sweep
+> (`compute.reap`) raised on every run: one of its queries filtered a
+> timestamp column with `["is", "not set"]`, which Frappe 16.34 renders as a
+> comparison PostgreSQL rejects. `reap_job` caught the error and logged
+> `compute reaper failed` each minute, so none of the rules above were being
+> applied — destroy retries, the lifetime budget, the never-came-up timeout
+> and orphan reaping. Instances were still released when their task ended
+> (that path does not go through the sweep) and still shut themselves down
+> at lifetime + 10 minutes. After upgrading, the first sweep will destroy
+> whatever has been waiting: expect rows leaving `Terminating`, and orphan
+> destroys in the log. Check the Error Log for `compute reaper failed` to
+> see how long this was the case on your deployment. Covered by
+> `processing/test_compute_database.py`, which runs the sweep against a
+> real database.
+
 ## 4. What to watch
 
 **Desk → WebODM Compute Instance.** One row per provisioned node: status,
@@ -125,6 +140,13 @@ bench execute webodm_core.storage.cache.evict --kwargs '{"max_bytes":10000000000
 aws ec2 describe-instances --filters Name=tag:webodm:managed,Values=true Name=instance-state-name,Values=pending,running \
   --query 'Reservations[].Instances[].{id:InstanceId,task:Tags[?Key==`webodm:task`]|[0].Value,launched:LaunchTime,type:InstanceType}' --output table
 ```
+
+**Usage metering.** What each organization consumed — machine seconds,
+analysis runs, stored bytes — is recorded separately, in whole units and
+without prices: `docs/metering/README.md` (operations in §10; is it keeping
+up: `bench execute webodm_core.metering.report.health`). The
+`estimated_cost` above is an operator's estimate of spend and is not what
+metering records.
 
 **Bill.** EC2 hours for `webodm:managed` instances (tag-based cost allocation
 works: activate the `webodm:deployment` and `webodm:org` tags as cost

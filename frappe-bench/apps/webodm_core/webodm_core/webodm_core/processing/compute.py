@@ -25,6 +25,14 @@ Lifecycle, one record per task run::
   whose task is done or gone, that outlived their budget, that never came up,
   whose destroy failed earlier, and provider-side orphans nothing records.
 
+Three facts are written on the record for usage metering and for nothing
+else (``stamp_once``): ``dispatched_at`` (a job was accepted by the node),
+``released_at`` (the first time we asked for the machine back — unlike
+``terminated_at``, which is when the provider confirmed it) and
+``release_reason``. Nothing here reads them. The cost fields on the record
+are estimates for a progress screen and are not what a customer is charged
+from; see ``docs/metering/README.md``.
+
 Config (site config, from ``WEBODM_COMPUTE_*`` env via configure_site.py):
 ``provisioner_url``, ``compute_max_instances``, ``compute_max_instances_per_org``,
 ``compute_provision_timeout_seconds``, ``compute_max_lifetime_seconds``,
@@ -96,6 +104,73 @@ def node_token(instance_name: str) -> str:
     msg = f"webodm-node-token:{frappe.local.site}:{instance_name}".encode()
     digest = hmac.new(secret.encode(), msg, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+
+# -- facts for usage metering ---------------------------------------------------
+
+_STAMP_FIELDS = {"dispatched_at": "time", "released_at": "time", "release_reason": "text"}
+
+
+def stamp_once(instance_name: str | None, field: str, value=None) -> None:
+    """Write a lifecycle fact on an instance unless it is already there. Never raises.
+
+    The facts (``dispatched_at``, ``released_at``, ``release_reason``) are
+    what usage metering later reads to tell a machine that did work from one
+    that never received any, and to know when we stopped needing it. The
+    pipeline itself never reads them, so a failure to write one must not
+    cost a dispatch or a teardown: the statement runs in its own savepoint
+    (a failed statement would otherwise abort the caller's transaction on
+    PostgreSQL), and any error is logged and dropped. A missed stamp makes
+    metering waive that machine's time; it can never make it count more.
+
+    "Once" is in the statement itself (``... AND <field> IS NULL``), so the
+    first writer wins without reading first.
+    """
+    kind = _STAMP_FIELDS.get(field)
+    if not instance_name or kind is None:
+        return
+    savepoint = f"webodm_stamp_{field}"
+    try:
+        frappe.db.savepoint(savepoint)
+    except Exception:
+        return
+    try:
+        unset = f"`{field}` IS NULL" if kind == "time" else f"(`{field}` IS NULL OR `{field}` = '')"
+        frappe.db.sql(
+            f"UPDATE `tabWebODM Compute Instance` SET `{field}` = %s WHERE name = %s AND {unset}",
+            (now_datetime() if value is None else value, instance_name),
+        )
+        frappe.db.release_savepoint(savepoint)
+    except Exception as e:
+        try:
+            frappe.db.rollback(save_point=savepoint)
+        except Exception:
+            pass
+        try:
+            frappe.log_error(f"{instance_name}: could not record {field}: {e}", "WebODM Compute")
+        except Exception:
+            pass
+
+
+def mark_dispatched(node: dict | None) -> None:
+    """Record that the node on an on-demand instance accepted a job. Never raises.
+
+    A no-op for a static node (no ``compute_instance`` in the node dict).
+    """
+    try:
+        stamp_once((node or {}).get("compute_instance"), "dispatched_at")
+    except Exception:
+        pass
+
+
+def mark_released(instance_name: str | None, reason: str | None = None) -> None:
+    """Record when, and why, the platform first asked for a machine back. Never raises."""
+    try:
+        stamp_once(instance_name, "released_at")
+        if reason:
+            stamp_once(instance_name, "release_reason", reason)
+    except Exception:
+        pass
 
 
 # -- config -------------------------------------------------------------------
@@ -396,7 +471,7 @@ def check_provisioning(task_name: str):
     started = get_datetime(inst.requested_at or inst.creation)
     if started and (now_datetime() - started).total_seconds() > provision_timeout():
         _mark_failed(inst, f"provisioning timed out after {provision_timeout()}s")
-        destroy_instance(inst)
+        destroy_instance(inst, "provisioning-timeout")
         _requeue(task, "provisioning timed out")
         return
 
@@ -411,7 +486,7 @@ def check_provisioning(task_name: str):
         return  # try again next sweep; the timeout above bounds this
     except ProvisionerError as e:
         _mark_failed(inst, str(e))
-        destroy_instance(inst)
+        destroy_instance(inst, "provisioner-error")
         _requeue(task, f"provisioner error: {e}")
         return
 
@@ -427,7 +502,7 @@ def check_provisioning(task_name: str):
         task_runner.enqueue_process(task.name)
     elif status in ("failed", "terminated"):
         _mark_failed(inst, f"instance {status}: {state.get('detail') or 'no detail'}")
-        destroy_instance(inst)
+        destroy_instance(inst, "provisioning-failed")
         _requeue(task, f"compute instance {status}")
     # anything else ("pending", "booting"...): still coming up, check again next sweep
 
@@ -444,7 +519,7 @@ def _mark_failed(inst, error: str):
     inst.db_set({"status": "Failed", "last_error": error[:1000]})
 
 
-def destroy_instance(inst) -> bool:
+def destroy_instance(inst, reason: str | None = None) -> bool:
     """Ask the provisioner to destroy ``inst``. Returns True when confirmed.
 
     Never raises: a failed destroy leaves the record in ``Terminating`` for the
@@ -453,9 +528,21 @@ def destroy_instance(inst) -> bool:
     directly. A record that was ``Failed`` (timeout, provider error) closes as
     ``Failed`` so the reason stays visible; everything else closes as
     ``Terminated``.
+
+    ``reason`` says why the machine is being given back. It and the time of
+    this first request are kept on the record (``release_reason``,
+    ``released_at``) whether or not the destroy succeeds. Only the *first*
+    attempt records them: a retry is by definition later than the moment we
+    stopped needing the machine, so a retry never writes a release time —
+    not even when the first attempt's write was lost, and not for a record
+    that was already waiting for a retry when these fields were introduced.
+    Such a record keeps an empty ``released_at`` and usage metering waives
+    its time rather than count it to a retry.
     """
     if inst.status == "Terminated" or (inst.status == "Failed" and inst.get("terminated_at")):
         return True
+    if inst.status != "Terminating" and not cint(inst.destroy_attempts):
+        mark_released(inst.name, reason)
     final = "Failed" if inst.status == "Failed" else "Terminated"
     if not inst.handle:
         _close(inst, final)
@@ -487,8 +574,13 @@ def _close(inst, status: str):
     })
 
 
-def release_for_task(task) -> None:
-    """Give the task's instance back. Best-effort; never raises, never blocks the task."""
+def release_for_task(task, reason: str | None = None) -> None:
+    """Give the task's instance back. Best-effort; never raises, never blocks the task.
+
+    ``reason`` defaults to the task's status at this moment (``task:Completed``,
+    ``task:Failed``, ``task:Cancelled``): callers release right after writing
+    the terminal state.
+    """
     name = getattr(task, "compute_instance", None)
     if not name:
         return
@@ -498,7 +590,7 @@ def release_for_task(task) -> None:
         inst = frappe.get_doc("WebODM Compute Instance", name)
         if inst.status in ("Terminated",):
             return
-        destroy_instance(inst)
+        destroy_instance(inst, reason or f"task:{getattr(task, 'status', None) or 'unknown'}")
     except Exception as e:
         frappe.log_error(f"{task.name}: releasing compute failed: {e}", "WebODM Compute")
 
@@ -524,9 +616,13 @@ def reap() -> dict:
     )
     # Failed records whose destroy never got confirmed (process died between
     # marking and destroying) must not leak a machine either.
+    # `None`, not ["is", "not set"]: for a Datetime column the latter becomes
+    # `terminated_at IS NULL OR terminated_at = ''`, which PostgreSQL rejects
+    # ("invalid input syntax for type timestamp"), so the whole sweep raised
+    # on every run and nothing was ever reaped.
     rows += frappe.get_all(
         "WebODM Compute Instance",
-        filters={"status": "Failed", "terminated_at": ["is", "not set"], "handle": ["!=", ""]},
+        filters={"status": "Failed", "terminated_at": None, "handle": ["!=", ""]},
         pluck="name",
     )
     for name in dict.fromkeys(rows):
@@ -539,11 +635,17 @@ def reap() -> dict:
                 stats["destroyed"] += int(destroy_instance(inst))
                 continue
             if task is None or task.status in TERMINAL_TASK_STATUSES or getattr(task, "compute_instance", None) != inst.name:
-                stats["destroyed"] += int(destroy_instance(inst))
+                if task is None:
+                    reason = "task-deleted"
+                elif getattr(task, "compute_instance", None) != inst.name:
+                    reason = "task-reassigned"
+                else:
+                    reason = f"task:{task.status}"
+                stats["destroyed"] += int(destroy_instance(inst, reason))
                 continue
             if inst.expires_at and now >= get_datetime(inst.expires_at):
                 _mark_failed(inst, "max lifetime exceeded")
-                destroy_instance(inst)
+                destroy_instance(inst, "lifetime-exceeded")
                 stats["destroyed"] += 1
                 if task.status in ("Running", "Provisioning", "Queued"):
                     task_runner._fail(task, f"compute instance exceeded its {inst.max_lifetime_seconds}s lifetime budget")
@@ -552,7 +654,7 @@ def reap() -> dict:
                 started = get_datetime(inst.requested_at or inst.creation)
                 if started and (now - started).total_seconds() > provision_timeout():
                     _mark_failed(inst, f"provisioning timed out after {provision_timeout()}s")
-                    destroy_instance(inst)
+                    destroy_instance(inst, "provisioning-timeout")
                     stats["destroyed"] += 1
                     if task.status == "Provisioning":
                         _requeue(task, "provisioning timed out")

@@ -43,7 +43,7 @@ class WebODMTask(Document):
         from webodm_core.webodm_core.processing import compute
 
         try:
-            compute.release_for_task(self)
+            compute.release_for_task(self, reason="task-deleted")
         except Exception as e:
             frappe.log_error(f"{self.name}: release on delete failed: {e}", "WebODM Compute")
         # The viewer octree files are attachments (Frappe drops them below) but

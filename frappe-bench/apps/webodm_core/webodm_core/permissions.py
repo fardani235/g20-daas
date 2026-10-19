@@ -267,3 +267,19 @@ def has_compute_instance_permission(doc, ptype, user=None):
     # no create bypass is needed: members read their org's instances, platform
     # admins see everything.
     return _org_has_permission(doc, user or frappe.session.user)
+
+
+def get_usage_record_permission_query_conditions(user=None):
+    return _org_query_conditions("WebODM Usage Record", user or frappe.session.user)
+
+
+def has_usage_record_permission(doc, ptype, user=None):
+    # The usage ledger (webodm_core.metering). Members read their own
+    # organization's records; platform admins read every organization's.
+    # Nobody writes: rows are inserted by the recorder with permissions
+    # bypassed and the controller refuses every update and delete, so there
+    # is no create bypass here and anything but a read is denied outright --
+    # for platform admins too, whose role perms are read-only as well.
+    if ptype not in ("read", "select", "report", "export", "print", "email"):
+        return False
+    return _org_has_permission(doc, user or frappe.session.user)

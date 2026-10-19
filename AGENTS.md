@@ -1315,3 +1315,85 @@ simulation vs plan, evidence, limits); spec `openspec/specs/flight-simulation/`;
   (waypoint-cap splits); no recording or sharing. The existing `flight-planner.e2e.mjs` currently fails one
   check ("an address search lists places") because the public Nominatim answers `[]` for its query
   "Gedung Sate, Bandung" - an external answer, unrelated to this change (65/66).
+
+## Phase 28: Usage metering (2026-10-19)
+
+Docs: `docs/metering/README.md` (the full record: the ledger, the three meters, rules, where the brief and the
+code disagreed, decisions, how to check a figure, operations, what was measured, what was not verified); spec
+`openspec/specs/usage-metering/`; change `openspec/changes/archive/2026-10-19-add-usage-metering/` (design.md =
+findings F1-F7, decisions D1-D17, found-while-building B1-B4, the independent review R1-R13, open questions).
+Tooling in the repo: `scripts/metering/{test-site.sh,e2e.py,seeded_faults.py}`.
+
+- **What it is**: the measuring layer under pay-as-you-go — a durable, per-organization record of what was
+  consumed. No prices, balance, screens or payment; those sit on top later. New DocType `WebODM Usage Record`
+  (append-only ledger, org-scoped, in both permission hook maps), package `webodm_core/metering/`, API
+  `api/usage.py` (`summary`, `records`, `record`; read-only; organization from the session).
+- **Meters** (integers, natural units): `compute` = seconds a machine was useful (`ready_at` → `released_at`,
+  start rounded up / end down), `analysis_run` = plugin runs (Completed = 1), `storage` = bytes held on a UTC day
+  (`byte-day`, one measurement per org per day). `quantity` counts; `waived_quantity` + `waived_reason` is what
+  was measured and absorbed (never_ready, no_work_dispatched, platform_failure, end_time_not_recorded,
+  invalid_interval, failed, cancelled, deleted_before_*). A waived row always has `quantity = 0`.
+- **Shape**: catch-up. `metering.sweep.run_job` (cron `*/5`, ≤ 2000 records / 120 s per run, one transaction per
+  record) finds closed instances and terminal runs without a record; the same code records history.
+  `metering.storage.sample_job` (cron `*/10`, its own entry) takes today's measurement where missing and can
+  never write another day. Third exception besides storage and one-time facts: `metering.hooks` records a plugin
+  run / instance in `on_trash`, because `api.plugins.run_plugin` **deletes the previous run** of a plugin on a
+  task and task deletion cascades. Same idempotency key from both routes.
+- **Layout**: `timeutil.py` + `rules.py` are pure (no Frappe; `compute/v1`, `analysis_run/v1`, `storage/v1`;
+  a rule change = a new version next to the old). `ledger.py` is the only writer (`record`, `reverse`).
+  `guard.isolated` = savepoint + swallow + log for metering work on someone else's code path. `report.py`
+  (`summary`, `records`, `in_progress`, `unrecorded`, `health`) computes every total from rows at request time —
+  nothing is stored. `verify.py` (`verify`, `trace`) re-derives each row from the evidence stored on it.
+- **Rules worth remembering**: a record belongs to the period in which it *ended* (`start < period_end_utc <=
+  end`, never split); nothing counts before its interval has ended (today's storage record is listed under
+  `in_progress`, counts from midnight UTC); provisional = totals can still change, gaps = storage days never
+  measured (permanent, not provisional); `as_of` = records written up to an instant, refused if in the future;
+  periods > 400 days refused; a date-time without an offset is refused.
+- **Pipeline changes (minimal)**: `WebODM Compute Instance` += `dispatched_at`, `released_at`, `release_reason`
+  (**run `migrate`**). `compute.stamp_once` (own savepoint, never raises, `... AND field IS NULL`),
+  `mark_dispatched(node)` called from `task_runner.process_task` after the task is Running, `mark_released` on
+  the **first** destroy attempt only (`destroy_instance(inst, reason=None)`; a retry never writes a release
+  time). `release_for_task(task, reason=None)` defaults to `task:<status>`. Nothing in the pipeline reads these
+  fields; `test_no_harm` asserts `compute` / `task_runner` / `plugins.runner` do not import metering.
+- **Reaper bug fixed (not metering, found by it)**: `compute.reap()` raised on every run on PostgreSQL —
+  `{"terminated_at": ["is", "not set"]}` on a Datetime column renders as `terminated_at = ''`. `reap_job` caught
+  and logged it, so destroy retries / lifetime budget / never-ready timeout / orphan reaping never ran. Now
+  `{"terminated_at": None}`; `processing/test_compute_database.py` runs the sweep on a real DB (the mock tests
+  could not see it). Runbook has an upgrade note: the first working sweep will clear stuck `Terminating` rows.
+- **Frappe / PostgreSQL gotchas met**:
+  - `["is", "not set"]` on Datetime / Long Int columns → invalid SQL on PG; use `None` (→ `IS NULL`).
+  - `SUM(bigint)` is `numeric`, which Frappe's PG driver returns as **float** (exact to 2^53). Sums leave SQL as
+    text: `CONCAT(COALESCE(SUM(x), 0), '')` → `int()`.
+  - PostgreSQL runs at **REPEATABLE READ** under Frappe: the loser of an insert race cannot read the winner's
+    row. The unique-key refusal is the proof; `ledger.record` returns `(None, False)` then.
+  - Any failed statement aborts the PG transaction — everything metering does inside another operation is in a
+    savepoint. Tests assert `select 1` still works afterwards.
+  - Frappe's HTML sanitizer runs *after* `before_insert` and drops tag-like text (`<OPS-1423>`); the ledger's
+    text fields set `ignore_xss_filter` and the controller re-checks the hash in `after_insert`.
+  - `read_only` is not enforced server-side: members can edit / delete `WebODM Plugin Run` via `/api/resource`
+    (not fixed; noted as F7). A run's `task` / `plugin` are member-writable links → project and plugin facts are
+    copied into a record only when they belong to the record's organization.
+  - Usage records link to their organization → an organization with records cannot be deleted (intended).
+  - `FrappeTestCase` rolls back what is open when a class ends: tests that commit must commit their clean-up
+    (`metering.testing.wipe`). A TestCase helper named `run` shadows `unittest.TestCase.run`.
+  - Scheduled cron jobs run on the `default` queue (300 s job timeout), de-duplicated per job.
+- **Decisions still open** (docs §8): a job that failed or was cancelled *after* work started counts (letter of
+  the brief; `release_reason` is on every record so a rating layer can waive it); storage is daily; every member
+  may read usage; static-node processing is not metered (no record of it exists).
+- **Tests**: `webodm_core` 844 → 1103 on a fresh site (259 new: `metering/test_{timeutil,rules,ledger,guard,
+  storage,sweep,pipeline,no_harm,report,verify,concurrency}.py`, `api/test_usage.py`,
+  `processing/test_compute_database.py`). `test_concurrency` uses threads with their own `frappe.init` /
+  `connect` (forced interleaving + races); `api/test_usage.TestOverHttp` drives the WSGI app with a member's
+  session cookie; `test_pipeline` runs the real `task_runner` / `compute` functions with an in-memory
+  provisioner and a scripted node. Seeded faults: 61, 59 caught, 2 equivalent halves of one double filter.
+  An independent review found 13 defects (one over-count on old `Terminating` rows); all fixed or recorded.
+- **Measured** (`scripts/metering/e2e.py`): storage measurement of 200 k files / 400 datasets 3.5 s, exact,
+  46 kB evidence; sweep 81 records/s; `summary` over 2000 records 46 ms; `verify` 0.33 s.
+- **Test env this round**: `scripts/metering/test-site.sh up|migrate|test|py|down` (`METER_PREFIX` names the
+  network / containers / volume; image `ghcr.io/fardani235/webodm-frappe:16.34.0`, postgis 16-3.4, redis
+  7-alpine). Site time zone on a fresh site is Frappe's default `Asia/Kolkata`.
+- **Not done / not verified**: no production data, no real cloud or NodeODM, the jobs were not left on a real
+  scheduler across a UTC midnight, no reconciliation against a bucket listing, MariaDB, Frappe 16.26.3, the
+  security-gate workflow, a frontend. `docs/on-demand-processing/user-guide.md` still tells customers a machine
+  "is billed by the minute while it exists" — what is recorded is Ready → release in seconds; reword when
+  prices are set.

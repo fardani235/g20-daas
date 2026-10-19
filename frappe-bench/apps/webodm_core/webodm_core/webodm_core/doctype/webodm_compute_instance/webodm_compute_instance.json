@@ -22,6 +22,10 @@
   "expires_at",
   "destroy_attempts",
   "last_error",
+  "metering_section",
+  "dispatched_at",
+  "released_at",
+  "release_reason",
   "cost_section",
   "estimated_hourly_cost",
   "estimated_cost"
@@ -147,6 +151,33 @@
    "read_only": 1
   },
   {
+   "fieldname": "metering_section",
+   "fieldtype": "Section Break",
+   "label": "Facts for Usage Metering",
+   "description": "Written once by the pipeline, read only by usage metering (webodm_core.metering). Never used to decide anything about the task or the machine."
+  },
+  {
+   "fieldname": "dispatched_at",
+   "fieldtype": "Datetime",
+   "label": "Dispatched At",
+   "read_only": 1,
+   "description": "When a job was first accepted by the node on this machine. Empty: the machine never received work."
+  },
+  {
+   "fieldname": "released_at",
+   "fieldtype": "Datetime",
+   "label": "Released At",
+   "read_only": 1,
+   "description": "When the platform first asked for this machine to be destroyed. Terminated At is when the provider confirmed it, which can be much later if the destroy had to be retried."
+  },
+  {
+   "fieldname": "release_reason",
+   "fieldtype": "Data",
+   "label": "Release Reason",
+   "read_only": 1,
+   "description": "Why it was released: task:Completed | task:Failed | task:Cancelled | task-deleted | task-reassigned | lifetime-exceeded | provisioning-timeout | provisioning-failed | provisioner-error."
+  },
+  {
    "fieldname": "cost_section",
    "fieldtype": "Section Break",
    "label": "Cost Estimate"
@@ -168,7 +199,7 @@
   }
  ],
  "index_web_pages_for_search": 0,
- "modified": "2026-09-25 00:00:00.000000",
+ "modified": "2026-10-19 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "WebODM Core",
  "name": "WebODM Compute Instance",
