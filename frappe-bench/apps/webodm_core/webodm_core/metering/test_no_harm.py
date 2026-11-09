@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import add_to_date, now_datetime
 
 from webodm_core.metering import ledger, sweep
 from webodm_core.metering.testing import (
@@ -130,7 +131,18 @@ class TestDispatch(_Base):
 
 class TestTeardown(_Base):
     def test_a_stamp_that_fails_does_not_keep_a_machine_alive(self):
-        inst = make_instance(self.org, status="Ready", released_at=None, terminated_at=None, release_reason=None)
+        # ready_at is the only end of the interval this test measures -- the
+        # release stamp is the thing being broken -- so it must be pinned near
+        # now. The fixture's fixed 2026-10-19 date makes the measured interval
+        # grow with the wall clock until the assertion below trips.
+        inst = make_instance(
+            self.org,
+            status="Ready",
+            released_at=None,
+            terminated_at=None,
+            release_reason=None,
+            ready_at=add_to_date(now_datetime(), hours=-1),
+        )
         client = MagicMock()
         client.destroy.return_value = {}
         real_sql = frappe.db.sql
