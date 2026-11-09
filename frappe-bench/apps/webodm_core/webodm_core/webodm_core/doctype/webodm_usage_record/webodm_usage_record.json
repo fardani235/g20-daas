@@ -1,0 +1,307 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-19 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "organization",
+  "meter",
+  "dimension",
+  "entry_type",
+  "quantity_section",
+  "quantity",
+  "unit",
+  "column_break_quantity",
+  "waived_quantity",
+  "waived_reason",
+  "period_section",
+  "period_start_utc",
+  "period_end_utc",
+  "column_break_period",
+  "recorded_at_utc",
+  "recorded_by",
+  "source_section",
+  "source_doctype",
+  "source_name",
+  "rule",
+  "column_break_source",
+  "task",
+  "project",
+  "idempotency_key",
+  "correction_section",
+  "reverses",
+  "note",
+  "evidence_section",
+  "caveats",
+  "evidence",
+  "record_hash"
+ ],
+ "fields": [
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "WebODM Organization",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "meter",
+   "fieldtype": "Select",
+   "label": "Meter",
+   "options": "compute\nanalysis_run\nstorage",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "description": "compute: seconds a rented machine was useful to a job. analysis_run: plugin runs. storage: bytes held on one UTC day."
+  },
+  {
+   "fieldname": "dimension",
+   "fieldtype": "Data",
+   "label": "Dimension",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "description": "What kind, within the meter: provider/instance class, plugin id, storage class. The key a price list will price; never a price.",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "entry_type",
+   "fieldtype": "Select",
+   "label": "Entry Type",
+   "options": "usage\nreversal",
+   "default": "usage",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "description": "A reversal negates one earlier record. Records are never edited or deleted."
+  },
+  {
+   "fieldname": "quantity_section",
+   "fieldtype": "Section Break",
+   "label": "Quantity"
+  },
+  {
+   "fieldname": "quantity",
+   "fieldtype": "Long Int",
+   "label": "Quantity",
+   "in_list_view": 1,
+   "read_only": 1,
+   "description": "What counts, as a whole number of the unit. Zero when the usage was waived. Negative only on a reversal."
+  },
+  {
+   "fieldname": "unit",
+   "fieldtype": "Data",
+   "label": "Unit",
+   "in_list_view": 1,
+   "read_only": 1,
+   "description": "second | run | byte-day",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "column_break_quantity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "waived_quantity",
+   "fieldtype": "Long Int",
+   "label": "Waived Quantity",
+   "read_only": 1,
+   "description": "What was measured and deliberately not counted (a machine that never became useful, a run that failed). Never part of Quantity."
+  },
+  {
+   "fieldname": "waived_reason",
+   "fieldtype": "Data",
+   "label": "Waived Reason",
+   "read_only": 1,
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "period_section",
+   "fieldtype": "Section Break",
+   "label": "When (UTC)"
+  },
+  {
+   "fieldname": "period_start_utc",
+   "fieldtype": "Datetime",
+   "label": "Period Start (UTC)",
+   "reqd": 1,
+   "read_only": 1,
+   "description": "UTC, whole seconds. Not the site's local time."
+  },
+  {
+   "fieldname": "period_end_utc",
+   "fieldtype": "Datetime",
+   "label": "Period End (UTC)",
+   "reqd": 1,
+   "search_index": 1,
+   "read_only": 1,
+   "description": "UTC. A record belongs to the period in which it ended: start < this <= end."
+  },
+  {
+   "fieldname": "column_break_period",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "recorded_at_utc",
+   "fieldtype": "Datetime",
+   "label": "Recorded At (UTC)",
+   "reqd": 1,
+   "read_only": 1,
+   "description": "UTC. When this row was written; later than the period when usage is recorded by catching up."
+  },
+  {
+   "fieldname": "recorded_by",
+   "fieldtype": "Data",
+   "label": "Recorded By",
+   "read_only": 1,
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "source_section",
+   "fieldtype": "Section Break",
+   "label": "Where it came from"
+  },
+  {
+   "fieldname": "source_doctype",
+   "fieldtype": "Data",
+   "label": "Source DocType",
+   "read_only": 1,
+   "description": "Plain text, not a link: a record never blocks the deletion of its source and outlives it.",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "source_name",
+   "fieldtype": "Data",
+   "label": "Source Name",
+   "search_index": 1,
+   "read_only": 1,
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "rule",
+   "fieldtype": "Data",
+   "label": "Rule",
+   "read_only": 1,
+   "description": "The rule (and version) in webodm_core.metering.rules that derived the quantity from the evidence.",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "task",
+   "fieldtype": "Data",
+   "label": "Task",
+   "read_only": 1,
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "project",
+   "fieldtype": "Data",
+   "label": "Project",
+   "read_only": 1,
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "idempotency_key",
+   "fieldtype": "Data",
+   "label": "Idempotency Key",
+   "length": 255,
+   "reqd": 1,
+   "unique": 1,
+   "read_only": 1,
+   "description": "The identity of the fact. Unique in the database: the same use cannot be recorded twice.",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "correction_section",
+   "fieldtype": "Section Break",
+   "label": "Correction"
+  },
+  {
+   "fieldname": "reverses",
+   "fieldtype": "Data",
+   "label": "Reverses",
+   "search_index": 1,
+   "read_only": 1,
+   "description": "On a reversal: the name of the record it negates.",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "read_only": 1,
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "evidence_section",
+   "fieldtype": "Section Break",
+   "label": "Evidence"
+  },
+  {
+   "fieldname": "caveats",
+   "fieldtype": "Small Text",
+   "label": "Caveats",
+   "read_only": 1,
+   "description": "Anything about this record that a reader should know before relying on it. Empty when there is nothing.",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "evidence",
+   "fieldtype": "Long Text",
+   "label": "Evidence",
+   "read_only": 1,
+   "description": "Canonical JSON: the source facts exactly as read, the rule, what was derived, what was and was not checked. Enough to rebuild the quantity with the source deleted.",
+   "ignore_xss_filter": 1
+  },
+  {
+   "fieldname": "record_hash",
+   "fieldtype": "Data",
+   "label": "Record Hash",
+   "read_only": 1,
+   "description": "SHA-256 over the record's content. webodm_core.metering.verify reports a row that no longer matches.",
+   "ignore_xss_filter": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-19 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "WebODM Core",
+ "name": "WebODM Usage Record",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "Administrator",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "WebODM User",
+   "read": 1
+  }
+ ],
+ "sort_field": "period_end_utc",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

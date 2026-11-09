@@ -153,7 +153,7 @@ after_migrate = "webodm_core.install.after_migrate"
 # WebODM Organization itself) MUST appear in BOTH maps below; enforce
 # organization-scoped access (deny-by-default). System presets and System
 # plugins are shared; user plugins, datasets (the reusable input image
-# library) and marketplace entitlements are org-scoped.
+# library), marketplace entitlements and usage records are org-scoped.
 # Marketplace listings (Publisher / Product / Release / License / Category)
 # carry no organization: they are global, read by everyone (guests through
 # api/marketplace.py) and written by platform admins only via role perms.
@@ -176,6 +176,7 @@ permission_query_conditions = {
     "WebODM Org Invitation": "webodm_core.permissions.get_org_invitation_permission_query_conditions",
     "WebODM Compute Instance": "webodm_core.permissions.get_compute_instance_permission_query_conditions",
     "WebODM Entitlement": "webodm_core.permissions.get_entitlement_permission_query_conditions",
+    "WebODM Usage Record": "webodm_core.permissions.get_usage_record_permission_query_conditions",
 }
 
 has_permission = {
@@ -195,6 +196,7 @@ has_permission = {
     "WebODM Org Invitation": "webodm_core.permissions.has_org_invitation_permission",
     "WebODM Compute Instance": "webodm_core.permissions.has_compute_instance_permission",
     "WebODM Entitlement": "webodm_core.permissions.has_entitlement_permission",
+    "WebODM Usage Record": "webodm_core.permissions.has_usage_record_permission",
 }
 
 doc_events = {
@@ -207,10 +209,20 @@ doc_events = {
     "WebODM Preset": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Settings": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     "WebODM Plugin Setting": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
-    "WebODM Plugin Run": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
+    "WebODM Plugin Run": {
+        "before_insert": "webodm_core.tenancy_hooks.stamp_organization",
+        # Usage metering. A run is deleted whenever its plugin is run again on
+        # the same task, so the catch-up sweep alone would lose it: it is
+        # recorded as it goes. The hook cannot fail or delay the delete.
+        "on_trash": "webodm_core.metering.hooks.before_run_delete",
+    },
     "WebODM Entitlement": {"before_insert": "webodm_core.tenancy_hooks.stamp_organization"},
     # WebODM Compute Instance is created by background jobs only, with the
     # organization copied from the task (no session org to stamp from).
+    "WebODM Compute Instance": {"on_trash": "webodm_core.metering.hooks.before_instance_delete"},
+    # WebODM Usage Record is written only by webodm_core.metering.ledger, with
+    # the organization of the source it records; it is never stamped from a
+    # session (the recorder is a background job).
 }
 
 # Request Events
@@ -237,6 +249,17 @@ scheduler_events = {
             "webodm_core.plugins.sync.sync_catalog_safe",
             # Object storage backfill: anything still host-only gets copied up.
             "webodm_core.storage.assets.sync_pending_job",
+            # Usage metering, catch-up: closed machines and finished analysis
+            # runs that have no usage record yet. Idempotent; also what
+            # records history.
+            "webodm_core.metering.sweep.run_job",
+        ],
+        "*/10 * * * *": [
+            # Usage metering, storage: one measurement per organization per
+            # UTC day, taken at the first tick of the day. Its own entry on
+            # purpose -- a day that is not measured can never be recovered,
+            # so nothing else is allowed to hold this up.
+            "webodm_core.metering.storage.sample_job",
         ],
         "17 * * * *": [
             # Serving-cache eviction (idle + size budget; S3 stays authoritative).

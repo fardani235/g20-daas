@@ -210,13 +210,25 @@ their inputs from the cache.
 | `WebODM Task Asset` (child) | new | `kind`, `filename`, `file_url` (cache), `storage_key`, `file_size`, `etag`, `content_type`, `is_cog`, `synced_at` |
 | `WebODM Dataset` / `WebODM Dataset Image` (child) | replaces `WebODM Task Image` | the reusable input set a task references; `storage_key` on each image row is the canonical input key |
 | `WebODM Plugin Run` | `storage_key` | canonical output key |
-| `WebODM Compute Instance` | new, org-scoped | `task`, `organization`, `status` (Requested / Provisioning / Ready / Terminating / Terminated / Failed), `provider`, `handle`, `instance_class`, `hostname`, `port`, `token` (Password), `requested_at`, `ready_at`, `terminated_at`, `max_lifetime_seconds`, `expires_at`, `destroy_attempts`, `last_error`, `estimated_hourly_cost`, `estimated_cost` |
+| `WebODM Compute Instance` | new, org-scoped | `task`, `organization`, `status` (Requested / Provisioning / Ready / Terminating / Terminated / Failed), `provider`, `handle`, `instance_class`, `hostname`, `port`, `token` (Password), `requested_at`, `ready_at`, `terminated_at`, `max_lifetime_seconds`, `expires_at`, `destroy_attempts`, `last_error`, `dispatched_at`, `released_at`, `release_reason` (facts for usage metering, see below), `estimated_hourly_cost`, `estimated_cost` |
 | `WebODM Processing Node` | unchanged | static registry of known endpoints (the fallback) |
 
 `WebODM Compute Instance` is in both permission hook maps (org-scoped reads
 for members, everything for platform admins) and in `ignore_links_on_delete`
 so a task can be deleted while its history stays; the sweep treats a missing
 task as "destroy".
+
+Three fields exist for usage metering (`docs/metering/README.md`) and for
+nothing else: `dispatched_at` (a job was accepted by the node on this
+machine), `released_at` (the first time the app asked for the machine to be
+destroyed — `terminated_at` is when the provider confirmed it, which a failed
+destroy can make much later) and `release_reason` (`task:Completed`,
+`task:Failed`, `task:Cancelled`, `task-deleted`, `task-reassigned`,
+`lifetime-exceeded`, `provisioning-timeout`, `provisioning-failed`,
+`provisioner-error`). `compute.stamp_once` writes each at most once, in its
+own savepoint, and swallows any error; only the first destroy attempt writes
+a release time. Nothing in the pipeline reads them. The two cost fields are
+estimates for this screen and are never read by metering.
 
 ## 5. Task state machine
 
@@ -268,5 +280,7 @@ for storage, both enforced in code and covered by tests.
 
 Warm pools / autoscaling, spot pricing, multi-region, a node-side pull agent,
 browser-to-S3 uploads, a credentials UI, cost accounting beyond the stored
-estimate, removing the static path. GPU on vast.ai is the next provider
+estimate (what a machine was *used* for, in seconds, is recorded by usage
+metering — `docs/metering/` — which holds no prices), removing the static
+path. GPU on vast.ai is the next provider
 module behind the same interface.

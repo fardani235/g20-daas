@@ -58,6 +58,7 @@ submodule).
 | `docs/marketplace/` | Marketplace concepts (publishers, products, releases, licenses, entitlements) and the publishing runbook |
 | `docs/datasets/` | Dataset library (reusable input image sets a task references) and the staged migration runbook |
 | `docs/tasks/` | Ground control, upload feedback, editing a task's settings, duplicating a task: decisions and guide |
+| `docs/metering/` | Usage metering: the per-organization record of machine time, analysis runs and stored bytes — what is recorded and how, decisions, how to check any figure, operations, what was not verified |
 | `docs/flight-planning/` | Flight planning: user guide, supported drones and cameras, flight simulation (2D / 3D replay of a plan), mission export per flight app, operator configuration, architecture |
 | `plugins/semantic-segmentation/` | Semantic Segmentation **user** plugin (orthophoto / DSM / DTM, pluggable ONNX + rule models) |
 | `plugins/3d-reconstruction/` | 3D Reconstruction **user** plugin (DSM/DTM/LAZ/orthophoto/ODM mesh → web-ready georeferenced GLB for the 3D viewer) |
@@ -217,7 +218,7 @@ g20-daas/
 ├── SPEC.md                       # Specification document
 ├── TRD.md                        # Technical requirements document
 ├── docker-compose.dev.yml        # Dev override: MinIO + fixed compute provider
-├── docs/                         # Runbook, deployment guide, migration, plugin guide, on-demand processing
+├── docs/                         # Runbook, deployment guide, migration, plugin guide, on-demand processing, usage metering
 ├── infra/                        # Caddy, backup, Frappe entrypoint, AWS artefacts
 ├── services/geospatial/          # Standalone FastAPI geospatial service (local + s3:// rasters)
 ├── services/plugin-runner/       # Sandbox service for user analysis plugins
@@ -304,6 +305,8 @@ docs/datasets/
 └── migration.md                  # Staged task-images → dataset migration, verification, rollback
 docs/tasks/
 └── README.md                     # Imagery in, task managed: ground control, upload progress, edit settings, duplicate — design record
+docs/metering/
+└── README.md                     # Usage metering: the ledger, the three meters, rules, how to verify a figure, operations, limits
 docs/flight-planning/
 ├── README.md                     # User guide: find the site, draw an area or corridor, estimates, checks, save, export
 ├── equipment.md                  # Built-in aircraft and cameras, custom profiles, adding a model to the catalog

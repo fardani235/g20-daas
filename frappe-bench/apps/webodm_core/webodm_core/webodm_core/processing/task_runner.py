@@ -384,6 +384,9 @@ def process_task(task_name: str):
         "next_attempt_at": None,
         "last_error": None,
     })
+    # For usage metering only: this machine has now been given work. Written
+    # after the task's own state so nothing about it can affect the dispatch.
+    compute.mark_dispatched(node)
 
 
 def _build_node_options(opts: dict | list) -> list[dict]:
