@@ -1397,3 +1397,55 @@ Tooling in the repo: `scripts/metering/{test-site.sh,e2e.py,seeded_faults.py}`.
   security-gate workflow, a frontend. `docs/on-demand-processing/user-guide.md` still tells customers a machine
   "is billed by the minute while it exists" — what is recorded is Ready → release in seconds; reword when
   prices are set.
+
+## Phase 29: CI publishing incident + a metering test time bomb (2026-11-10)
+
+The first master push since 2026-10-19 (run `42710842330`, head `3b464c7`, the Usage metering merge) turned the
+whole release red. Two unrelated problems, and neither was the merge.
+
+- **Symptom 1 — GHCR refused every push.** Attempt 1: `webodm-backup:1`, `webodm-caddy:2`,
+  `webodm-provisioner:1`, `webodm-plugin-runner:1` all died with
+  `denied: permission_denied: write_package` after a clean build (`docker login` → `Login Succeeded!`, buildx
+  even fetched a `pull,push` token, then the push was refused). `webodm_core` and `geospatial` were cancelled
+  mid-build, so the run's conclusion is `cancelled`, not `failure`.
+- **Ruled out with evidence**: `build-and-push.yml` is byte-identical to the 2026-10-17 run (`be788c8`); all six
+  push jobs declare `contents: read` + `packages: write`; `default_workflow_permissions` is `read` both before
+  and after; the packages are still linked and public (the repo package page resolves `200`, a bogus name
+  `404`, last tag `2-be788c8…`); the 2026-11-09 critical Actions incident was resolved 18:59Z and the run
+  started 22:19Z.
+- **What actually fixed it**: re-running the failed jobs (attempt 2) with **no** change to the workflow, the
+  commit or any setting — all five push jobs passed and the new tags appeared (`2-3b464c75…`, `1-…`, and so
+  on). So the denial was transient. If `write_package` ever returns, re-run first; check package *Manage
+  Actions access* and the token's scope only if a re-run also fails. (The fix was attributed at the time to
+  re-enabling the `security-gate` workflow; the timing is the only link and no mechanism supports it.)
+- **What is published now**: nothing between 2026-10-17 and attempt 2. Attempt 2 pushed caddy, backup,
+  provisioner, plugin-runner and geospatial, but **not** `webodm-frappe` — that job failed at the test step, so
+  its push step was skipped and the newest tag is still `16.34.0-be788c818ec4…`. `docker-compose.yml` therefore
+  still pins October digests (its `webodm-frappe:16.34.0@sha256:3ef1b3bb…` is not even the current `latest`);
+  re-pin with `scripts/pin-images.sh` once the Frappe image pushes.
+- **`security-gate`**: was `disabled_manually` since 2026-10-19 (which is why the 2026-11-09 push did not trigger
+  it at all), re-enabled 2026-11-10. It has not run since; when it does it will repeat 2026-10-17's refusal —
+  `sgate: evaluate refused (HTTP 403): This pipeline may not request gates for development.
+  (environment_not_allowed)` — because `security-gate.yml:91` asks for `--environment development` and pipeline
+  `PL-00002` is not authorised for that environment. A control-plane change, not a workflow change.
+- **Symptom 2 — `webodm_core` failed on one test**: `metering/test_no_harm.py:156`
+  `AssertionError: 1881654 not less than or equal to 21600`. Cause is `metering/testing.py:make_instance`,
+  which pins the fixture to **2026-10-19** (`ready_at` 10:00 IST = 04:30Z). That test nulls `released_at` and
+  `terminated_at`, so `destroy_instance` stamps `terminated_at = now` and the compute rule measures
+  `ready_at → terminated_at` = 21 d 18 h 40 m 54 s = 1 881 654 s. It last passed in PR run `39213667879`
+  (2026-10-19 07:14Z, interval ≈ 2 h 44 m) and went permanently red at `ready_at + 6 h` = 2026-10-19 10:30Z.
+  No master push happened in those 21 days, so the rot went unseen — the two problems were masking each other.
+- **Test bug, not a metering bug**: the rule deliberately never guesses downward and records the fallback in
+  the record's own `caveats` (`"the instance predates released_at; the interval ends at terminated_at"`); the
+  assertion assumed `ready_at ≈ now`. Only `test_no_harm.py:156` compares a measured interval to a constant.
+  The sibling null-stamp fixtures (`test_report.py:290-292`, `test_sweep.py:418/430`) are latent, and the other
+  `quantity` assertions pin both ends (10:00 → 11:00 → exactly `3600`) so they are stable.
+- **Reading a `run-tests` log**: the pinned Frappe runs the suite in categories — `Running 811
+  unspecified-category tests for webodm_core` then `Running 292 old-frappe-test-class-category tests for
+  webodm_core` — prints a summary per category, and `frappe/commands/testing.py:171` exits 1 if **any** category
+  failed. The tail can therefore read `OK (skipped=8)` while the step exits 1; never judge the run by the tail.
+  `--failfast` also stopped the first category at 419 of 811, so 392 tests never ran — the first green run after
+  the fix may surface more.
+- **Not fixed** (needs a change): the fixture. Narrow fix = give that one test a recent `ready_at`; broad fix =
+  decide whether `make_instance`'s defaults become relative to `now`, which touches every test that asserts the
+  fixed date.
